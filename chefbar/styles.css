@@ -1,343 +1,344 @@
-/* ChefBar 2.0 · ChefGroep instrument panel
- * Design language: DESIGN.md / taste.md + vault tokens.css (dark char theme).
- * Hard planes, 1px borders, zero radius, mono figures, square status dots,
- * coral sparingly. No gradients, no shadows, no glass.
+/* ChefBar · Dutch Signal Modernism ("Signaal, warm")
+ * Bindt aan .ulpi/design/DESIGN.md: licht is standaard (Cursor-warm cream),
+ * Archivo voor interface, IBM Plex Mono alleen voor echte data.
+ * Vormcontract: 10px zones, 6px controls, 12px dialogs/popovers.
+ * Geen gradients, geen glow, geen glassmorphism, geen decoratieve beweging.
  */
 
-@define-color cb_bg #12100e;
-@define-color cb_soft #1c1916;
-@define-color cb_card #24201c;
-@define-color cb_card_hover #2c2722;
-@define-color cb_border #3a342e;
-@define-color cb_text #f3ece4;
-@define-color cb_dim #a39e97;
-@define-color cb_accent #ff6b4a;
-@define-color cb_green #3ecf8e;
-@define-color cb_yellow #e8a923;
-@define-color cb_red #f07178;
+@define-color sg_canvas #F7F7F4;
+@define-color sg_surface #FFFFFF;
+@define-color sg_surface_muted #EFEEE8;
+@define-color sg_line #E6E5E0;
+@define-color sg_control_border #8A877C;
+@define-color sg_text #26251E;
+@define-color sg_text_muted #5A5852;
+@define-color sg_brand #E14B2E;
+@define-color sg_focus #0B5FFF;
+@define-color sg_success #1F8A65;
+@define-color sg_warning #9A5700;
+@define-color sg_error #CF2D56;
+@define-color sg_info #2E5B8F;
+
+/* ============================================================
+ * Panel (mission control, rechtsboven onder de tray)
+ * ============================================================ */
 
 window.chefbar-panel {
-  background-color: @cb_bg;
-  color: @cb_text;
-  border: 1px solid @cb_border;
-  border-radius: 0;
+  background-color: @sg_canvas;
+  color: @sg_text;
+  border: 1px solid @sg_line;
+  border-radius: 10px;
 }
 
 window.chefbar-panel decoration {
-  border-radius: 0;
-  box-shadow: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px alpha(@sg_text, 0.05);
 }
 
 .chefbar-panel * {
-  color: @cb_text;
-  font-family: "JetBrains Mono", "Ubuntu Mono", monospace;
-  border-radius: 0;
+  color: @sg_text;
+  font-family: "Archivo", sans-serif;
 }
 
 .chefbar-root {
-  background-color: @cb_bg;
+  background-color: @sg_canvas;
   padding: 0;
 }
 
-/* Header: single hard band, bottom rule */
+/* Header: rustige band met hairline eronder */
 .chefbar-header {
-  background-color: @cb_soft;
-  border-bottom: 1px solid @cb_border;
-  padding: 10px 12px;
+  background-color: @sg_surface;
+  border-bottom: 1px solid @sg_line;
+  padding: 12px;
+  border-radius: 10px 10px 0 0;
 }
 
 .chefbar-title {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: @cb_text;
+  font-size: 15px;
+  font-weight: 600;
+  color: @sg_text;
 }
 
 .chefbar-subtitle {
-  font-size: 10px;
-  color: @cb_dim;
+  font-size: 12px;
+  font-family: "IBM Plex Mono", monospace;
+  color: @sg_text_muted;
 }
 
-/* Kickers: small caps mono labels, `// SECTION` style */
+/* Zone-eyebrows: kort, interface-face, medium met tracking */
 .chefbar-section-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: @cb_dim;
-  padding: 8px 12px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: @sg_text_muted;
+  padding: 12px 12px 4px;
 }
 
-/* Rows: flat, divided by hairlines, no cards-in-cards */
+/* Rijen: vlak, gescheiden door hairlines, geen geneste kaarten */
 .chefbar-card {
   background-color: transparent;
-  border-bottom: 1px solid alpha(@cb_border, 0.6);
-  padding: 6px 12px;
+  border-bottom: 1px solid alpha(@sg_line, 0.8);
+  padding: 8px 12px;
 }
 
 .chefbar-card:hover {
-  background-color: @cb_card;
+  background-color: @sg_surface_muted;
 }
 
 .chefbar-card-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  color: @cb_text;
+  color: @sg_text;
 }
 
 .chefbar-card-meta {
-  font-size: 10px;
-  color: @cb_dim;
+  font-size: 12px;
+  font-family: "IBM Plex Mono", monospace;
+  color: @sg_text_muted;
 }
 
-/* Status: small SQUARE dots only */
+/* Statusdots: kleur is nooit de enige drager; tekst staat er altijd naast */
 .chefbar-dot {
-  min-width: 7px;
-  min-height: 7px;
-  border-radius: 0;
-  background-color: @cb_dim;
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 8px;
+  background-color: @sg_text_muted;
 }
 
-.chefbar-dot.ok { background-color: @cb_green; }
-.chefbar-dot.warn { background-color: @cb_yellow; }
-.chefbar-dot.down { background-color: @cb_red; }
-.chefbar-dot.info { background-color: @cb_dim; }
+.chefbar-dot.ok { background-color: @sg_success; }
+.chefbar-dot.warn { background-color: @sg_warning; }
+.chefbar-dot.down { background-color: @sg_error; }
+.chefbar-dot.info { background-color: @sg_info; }
 
+/* Lopend werk: statisch gevuld met brand-rand; geen permanente animatie */
 .chefbar-dot.pulse {
-  background-color: @cb_green;
-  animation: chefbar-pulse 1.4s ease-in-out infinite;
+  background-color: @sg_success;
+  border: 1px solid alpha(@sg_success, 0.4);
 }
 
-@keyframes chefbar-pulse {
-  0%   { opacity: 1.0; }
-  50%  { opacity: 0.3; }
-  100% { opacity: 1.0; }
-}
-
-/* Usage bars: flat single-colour fill on hairline track */
+/* Usage-bars: vlakke vulling op hairline-track */
 .chefbar-bar-track {
-  background-color: @cb_bg;
-  border: 1px solid @cb_border;
-  min-height: 5px;
+  background-color: @sg_surface_muted;
+  border: 1px solid @sg_line;
+  border-radius: 6px;
+  min-height: 6px;
   padding: 0;
 }
 
 .chefbar-bar-fill {
-  background-color: @cb_green;
-  min-height: 5px;
+  background-color: @sg_success;
+  border-radius: 6px;
+  min-height: 6px;
 }
 
-.chefbar-bar-fill.ok { background-color: @cb_green; }
-.chefbar-bar-fill.warn { background-color: @cb_yellow; }
-.chefbar-bar-fill.down { background-color: @cb_red; }
+.chefbar-bar-fill.ok { background-color: @sg_success; }
+.chefbar-bar-fill.warn { background-color: @sg_warning; }
+.chefbar-bar-fill.down { background-color: @sg_error; }
 
-/* Quick actions: flat buttons, 1px border, mechanical hover */
+/* Snelacties: vlakke controls, 6px radius, brand alleen op de primaire */
 .chefbar-actions {
-  padding: 6px 12px 2px;
+  padding: 8px 12px 4px;
 }
 
 .chefbar-actions button {
-  background-color: @cb_soft;
+  background-color: @sg_surface;
   background-image: none;
-  border: 1px solid @cb_border;
-  border-radius: 0;
-  color: @cb_text;
-  padding: 5px 6px;
-  font-size: 10px;
-  font-weight: 600;
+  border: 1px solid @sg_control_border;
+  border-radius: 6px;
+  color: @sg_text;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
   min-height: 0;
   box-shadow: none;
   text-shadow: none;
+  transition: background-color 180ms ease, border-color 180ms ease;
 }
 
 .chefbar-actions button:hover {
-  background-color: @cb_card_hover;
-  border-color: @cb_dim;
+  background-color: @sg_surface_muted;
+}
+
+.chefbar-actions button:focus {
+  outline: 2px solid @sg_focus;
+  outline-offset: 1px;
 }
 
 .chefbar-actions button:active {
-  background-color: @cb_card;
+  background-color: @sg_line;
 }
 
-/* Coral: sparse. Only the primary action carries it. */
 .chefbar-actions button.chefbar-primary {
-  border-color: @cb_accent;
-  color: @cb_accent;
-  background-color: @cb_soft;
+  border-color: @sg_brand;
+  color: #ffffff;
+  background-color: @sg_brand;
 }
 
 .chefbar-actions button.chefbar-primary:hover {
-  background-color: @cb_accent;
-  color: @cb_bg;
+  background-color: shade(@sg_brand, 0.92);
 }
 
 .chefbar-footer {
-  font-size: 9px;
-  color: @cb_dim;
-  padding: 6px 12px 8px;
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+  color: @sg_text_muted;
+  padding: 8px 12px 10px;
 }
 
 .chefbar-switch-btn {
   background: none;
   background-color: transparent;
   background-image: none;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
   box-shadow: none;
   text-shadow: none;
-  padding: 0 2px;
+  padding: 1px 6px;
   min-height: 0;
-  color: @cb_dim;
-  font-size: 9px;
-  letter-spacing: 0.08em;
+  color: @sg_text_muted;
+  font-size: 11px;
 }
 
 .chefbar-switch-btn:hover {
-  color: @cb_accent;
-  background: none;
-  background-color: transparent;
-  border: none;
+  color: @sg_brand;
+  background-color: @sg_surface_muted;
+  border-color: @sg_line;
   box-shadow: none;
 }
 
-/* Account switch popover: flat list */
+.chefbar-switch-btn:focus {
+  outline: 2px solid @sg_focus;
+  outline-offset: 1px;
+}
+
+/* Account-popover: vlakke lijst, 12px radius */
 popover.chefbar-popover,
 .chefbar-popover contents {
-  background-color: @cb_soft;
-  border: 1px solid @cb_border;
-  border-radius: 0;
-  color: @cb_text;
-  box-shadow: none;
+  background-color: @sg_surface;
+  border: 1px solid @sg_line;
+  border-radius: 12px;
+  color: @sg_text;
 }
 
 .chefbar-popover button {
   background-color: transparent;
   background-image: none;
   border: none;
-  border-radius: 0;
+  border-radius: 6px;
   box-shadow: none;
-  color: @cb_text;
-  padding: 5px 10px;
-  font-size: 10px;
+  color: @sg_text;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .chefbar-popover button:hover {
-  background-color: @cb_card_hover;
+  background-color: @sg_surface_muted;
 }
 
-/* Agent task dialog */
+/* Agent-taakdialog: 12px radius, focus via ring */
 dialog.chefbar-dialog,
 .chefbar-dialog {
-  background-color: @cb_bg;
-  color: @cb_text;
-  border: 1px solid @cb_border;
-  border-radius: 0;
+  background-color: @sg_canvas;
+  color: @sg_text;
+  border: 1px solid @sg_line;
+  border-radius: 12px;
 }
 
 .chefbar-dialog entry {
-  background-color: @cb_soft;
+  background-color: @sg_surface;
   background-image: none;
-  color: @cb_text;
-  border: 1px solid @cb_border;
-  border-radius: 0;
-  padding: 6px 8px;
+  color: @sg_text;
+  border: 1px solid @sg_control_border;
+  border-radius: 6px;
+  padding: 8px 10px;
   box-shadow: none;
-  caret-color: @cb_accent;
+  caret-color: @sg_brand;
 }
 
 .chefbar-dialog entry:focus {
-  border-color: @cb_accent;
+  border-color: @sg_focus;
 }
 
 .chefbar-dialog label {
-  font-size: 10px;
-  color: @cb_dim;
+  font-size: 12px;
+  color: @sg_text_muted;
 }
 
 .chefbar-dialog button {
-  background-color: @cb_soft;
+  background-color: @sg_surface;
   background-image: none;
-  border: 1px solid @cb_border;
-  border-radius: 0;
+  border: 1px solid @sg_control_border;
+  border-radius: 6px;
   box-shadow: none;
   text-shadow: none;
-  color: @cb_text;
-  font-size: 10px;
-  padding: 5px 12px;
+  color: @sg_text;
+  font-size: 12px;
+  padding: 6px 14px;
 }
 
 .chefbar-dialog button:hover {
-  background-color: @cb_card_hover;
+  background-color: @sg_surface_muted;
 }
 
 /* ============================================================
- * Command-bar · De Pas (DESIGN.md, gelockte lichte identiteit)
- * Tegelwit vlak, gietijzer tekst, koraal alleen voor actie,
- * bonnen in mono met geperforeerde bovenrand.
+ * Command-bar (Super+Space): command palette in dezelfde taal
  * ============================================================ */
 
-@define-color pas_tegelwit #F5F7F4;
-@define-color pas_gietijzer #201E1B;
-@define-color pas_gietijzer60 #5C5852;
-@define-color pas_rvs #9AA29C;
-@define-color pas_rvs_licht #E4E8E3;
-@define-color pas_koraal #E23A17;
-@define-color pas_gaar #20714A;
-@define-color pas_wijn #8F1D2C;
-
 window.chefbar-bar {
-  background-color: @pas_tegelwit;
-  color: @pas_gietijzer;
-  border: 1px solid @pas_rvs_licht;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(32, 30, 27, 0.08);
+  background-color: @sg_canvas;
+  color: @sg_text;
+  border: 1px solid @sg_line;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px alpha(@sg_text, 0.05);
 }
 
 window.chefbar-bar decoration {
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: none;
 }
 
 .chefbar-bar-root {
-  background-color: @pas_tegelwit;
+  background-color: @sg_canvas;
   padding: 8px;
 }
 
 .chefbar-bar * {
-  color: @pas_gietijzer;
-  font-family: "Archivo", "Inter", sans-serif;
+  color: @sg_text;
+  font-family: "Archivo", sans-serif;
 }
 
 .chefbar-bar-entry {
-  background-color: #ffffff;
+  background-color: @sg_surface;
   background-image: none;
-  border: 1px solid @pas_rvs_licht;
-  border-radius: 4px;
+  border: 1px solid @sg_control_border;
+  border-radius: 6px;
   box-shadow: none;
-  color: @pas_gietijzer;
-  caret-color: @pas_koraal;
+  color: @sg_text;
+  caret-color: @sg_brand;
   font-size: 16px;
   padding: 12px 14px;
   margin: 4px 4px 8px;
 }
 
 .chefbar-bar-entry:focus {
-  border-color: @pas_koraal;
+  border-color: @sg_focus;
 }
 
-/* Suggestiebon van de watcher: geperforeerde bovenrand */
+/* Suggestie van de watcher: brand-linkerrand markeert urgentie */
 .chefbar-bar-suggestion {
-  border-top: 2px dotted @pas_rvs;
-  border-bottom: 1px solid @pas_rvs_licht;
-  background-color: #ffffff;
+  border-left: 3px solid @sg_brand;
+  border-bottom: 1px solid @sg_line;
+  background-color: @sg_surface;
   padding: 8px 10px;
   margin: 0 4px 8px;
 }
 
 .chefbar-bar-suggestion:hover {
-  background-color: @pas_rvs_licht;
+  background-color: @sg_surface_muted;
 }
 
 .chefbar-bar-suggestion-act {
-  color: @pas_gietijzer;
+  color: @sg_text;
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
   font-weight: 600;
@@ -347,85 +348,86 @@ window.chefbar-bar decoration {
 .chefbar-bar-row {
   padding: 8px 10px;
   margin: 0 4px;
-  border-bottom: 1px solid alpha(@pas_rvs_licht, 0.8);
+  border-bottom: 1px solid alpha(@sg_line, 0.8);
   background-color: transparent;
 }
 
 .chefbar-bar-row:hover {
-  background-color: @pas_rvs_licht;
+  background-color: @sg_surface_muted;
 }
 
 .chefbar-bar-row.selected {
-  background-color: @pas_rvs_licht;
-  border-left: 3px solid @pas_koraal;
+  background-color: @sg_surface_muted;
+  border-left: 3px solid @sg_brand;
   padding-left: 7px;
 }
 
 .chefbar-bar-row-title {
   font-size: 13px;
   font-weight: 600;
-  color: @pas_gietijzer;
+  color: @sg_text;
 }
 
 .chefbar-bar-row-meta {
   font-size: 11px;
-  color: @pas_gietijzer60;
+  color: @sg_text_muted;
   font-family: "IBM Plex Mono", monospace;
 }
 
 .chefbar-bar-empty {
   font-size: 12px;
-  color: @pas_gietijzer60;
+  color: @sg_text_muted;
   padding: 12px 14px;
 }
 
-/* Stempels: mono, uppercase, 2px radius kader */
+/* Statuswoorden (BEZIG/KLAAR/HULP): interface-face medium met tracking,
+ * niet in mono (DESIGN.md typografie) */
 .chefbar-stamp {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "Archivo", sans-serif;
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  border: 1px solid @pas_gietijzer;
-  border-radius: 2px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  border: 1px solid @sg_control_border;
+  border-radius: 6px;
   padding: 1px 6px;
   min-width: 44px;
-  color: @pas_gietijzer;
+  color: @sg_text;
   background-color: transparent;
 }
 
 .chefbar-stamp.bezig {
-  border-color: @pas_gietijzer;
-  color: @pas_gietijzer;
+  border-color: @sg_info;
+  color: @sg_info;
 }
 
 .chefbar-stamp.klaar {
-  border-color: @pas_gaar;
-  color: @pas_gaar;
+  border-color: @sg_success;
+  color: @sg_success;
 }
 
 .chefbar-stamp.hulp {
-  border-color: @pas_koraal;
-  background-color: @pas_koraal;
+  border-color: @sg_brand;
+  background-color: @sg_brand;
   color: #ffffff;
 }
 
 .chefbar-stamp.fout {
-  border-color: @pas_wijn;
-  background-color: @pas_wijn;
+  border-color: @sg_error;
+  background-color: @sg_error;
   color: #ffffff;
 }
 
 .chefbar-stamp.stil {
-  border-color: @pas_rvs;
-  color: @pas_gietijzer60;
+  border-color: @sg_line;
+  color: @sg_text_muted;
 }
 
-/* Statusstrook onderin: bon-mono */
+/* Statusstrook onderin: echte data in mono */
 .chefbar-bar-status {
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: @pas_gietijzer60;
+  color: @sg_text_muted;
   padding: 8px 14px 4px;
-  border-top: 1px solid @pas_rvs_licht;
+  border-top: 1px solid @sg_line;
   margin-top: 4px;
 }

@@ -293,7 +293,7 @@ class Watcher:
                 Suggestion(
                     key="vault:down",
                     title="Vault-API reageert niet (poort 8321)",
-                    meta="Check de keuken op het dashboard",
+                    meta="Kijk op het dashboard wat er aan de hand is",
                     stamp="FOUT",
                     action_label="Dashboard",
                     run=lambda: subprocess.Popen(
@@ -310,19 +310,30 @@ class Watcher:
                     Suggestion(
                         key=f"limit:{row.provider}",
                         title=f"{row.label} zit bijna aan de limiet",
-                        meta="Wissel van ploegpas via de bar",
+                        meta="Wissel van account via de bar",
                         stamp="LIMIET",
                         action_label="Oké",
                         run=lambda: None,
                     ),
                     notify_status="warn",
                 )
-        if snap.health.level == "down" and not (prev and prev.health.level == "down"):
+        # total == 0 betekent "nog geen healthdata", geen storing.
+        # Een eerdere no-data snapshot (level=down, down==0) mag de eerste
+        # echte storing niet onderdrukken — check daarom ook prev.down > 0.
+        if (
+            snap.health.level == "down"
+            and snap.health.down > 0
+            and not (
+                prev
+                and prev.health.level == "down"
+                and prev.health.down > 0
+            )
+        ):
             down = snap.health.down
             self._push(
                 Suggestion(
                     key="health:down",
-                    title=f"{down} service{'s' if down != 1 else ''} down in de keuken",
+                    title=f"{down} dienst{'en' if down != 1 else ''} down",
                     meta="Kijk even op het dashboard wat er stilstaat",
                     stamp="FOUT",
                     action_label="Dashboard",

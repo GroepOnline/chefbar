@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 from pathlib import Path
@@ -20,10 +21,10 @@ log = logging.getLogger("chefbar.panel")
 PACKAGE_DIR = Path(__file__).resolve().parent
 STYLES_PATH = PACKAGE_DIR / "styles.css"
 
-DASHBOARD = __import__("os").environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
-DESKTOP_URL = __import__("os").environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
-PANEL_REFRESH = int(__import__("os").environ.get("CHEFBAR_PANEL_REFRESH", "30"))
-PANEL_WIDTH = int(__import__("os").environ.get("CHEFBAR_PANEL_WIDTH", "380"))
+DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
+DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
+PANEL_REFRESH = int(os.environ.get("CHEFBAR_PANEL_REFRESH", "30"))
+PANEL_WIDTH = int(os.environ.get("CHEFBAR_PANEL_WIDTH", "380"))
 
 
 def load_css() -> None:
@@ -173,7 +174,7 @@ class ChefBarPanel:
         self.body.pack_start(self.fleet_box, False, False, 0)
 
         # Quick actions
-        outer.pack_start(_label("// ACTIONS", "chefbar-section-label"), False, False, 0)
+        outer.pack_start(_label("// ACTIES", "chefbar-section-label"), False, False, 0)
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         actions.get_style_context().add_class("chefbar-actions")
         actions.set_homogeneous(True)
@@ -181,7 +182,7 @@ class ChefBarPanel:
             ("Dashboard", self._act_dashboard, False),
             ("Desktop", self._act_desktop, False),
             ("HUD", self._act_hud, False),
-            ("Refresh", self._act_refresh, False),
+            ("Ververs", self._act_refresh, False),
             ("Agent", self._act_agent_task, True),
         ):
             btn = Gtk.Button(label=label)
@@ -194,7 +195,7 @@ class ChefBarPanel:
         footer_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.footer_lab = _label("", "chefbar-footer")
         footer_row.pack_start(self.footer_lab, True, True, 0)
-        quit_btn = Gtk.Button(label="Quit")
+        quit_btn = Gtk.Button(label="Afsluiten")
         quit_btn.get_style_context().add_class("chefbar-switch-btn")
         quit_btn.connect("clicked", self._act_quit)
         footer_row.pack_end(quit_btn, False, False, 0)
@@ -236,6 +237,10 @@ class ChefBarPanel:
     def _on_key(self, _w, event):
         if event.keyval == Gdk.KEY_Escape:
             self.hide()
+            return True
+        ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
+        if event.keyval == Gdk.KEY_F5 or (ctrl and event.keyval in (Gdk.KEY_r, Gdk.KEY_R)):
+            self.refresh_async(force=True)
             return True
         return False
 
@@ -343,8 +348,11 @@ class ChefBarPanel:
 
         self._clear(self.providers_box)
         if not snap.providers:
+            meta = snap.error or "Nog geen providerdata · Ververs probeert opnieuw"
             self.providers_box.pack_start(
-                self._card_text("Geen providerdata", snap.error or "—"),
+                self._card_text("Geen contact met de Vault-API", meta)
+                if snap.error
+                else self._card_text("Nog geen providers", meta),
                 False,
                 False,
                 0,
@@ -355,28 +363,31 @@ class ChefBarPanel:
         self._clear(self.agents_box)
         if not snap.agents:
             self.agents_box.pack_start(
-                self._card_text("Geen agent-events", "—"), False, False, 0
+                self._card_text("Nog niks gebeurd vandaag", "Start een agent via de knop hieronder"),
+                False,
+                False,
+                0,
             )
         for agent in snap.agents:
             self.agents_box.pack_start(self._agent_card(agent), False, False, 0)
 
         self._clear(self.fleet_box)
         fleet = snap.fleet
-        stale = " · stale" if fleet.stale else ""
+        stale = " · verouderd" if fleet.stale else ""
         fleet_card = Gtk.EventBox()
         inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         inner.get_style_context().add_class("chefbar-card")
-        level = "ok" if fleet.online == fleet.total and fleet.total else (
-            "warn" if fleet.online else "down"
-        )
+        if fleet.total:
+            level = "ok" if fleet.online == fleet.total else (
+                "warn" if fleet.online else "down"
+            )
+            title = f"{fleet.online}/{fleet.total} nodes online{stale}"
+        else:
+            level = "info"
+            title = "Nog geen fleet-data"
         inner.pack_start(_dot(level), False, False, 0)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        col.pack_start(
-            _label(f"{fleet.online}/{fleet.total} nodes online{stale}", "chefbar-card-title"),
-            False,
-            False,
-            0,
-        )
+        col.pack_start(_label(title, "chefbar-card-title"), False, False, 0)
         host = fleet.host or "tailnet"
         col.pack_start(_label(f"{host} · klik → dashboard Fleet", "chefbar-card-meta"), False, False, 0)
         inner.pack_start(col, True, True, 0)
@@ -384,9 +395,11 @@ class ChefBarPanel:
         fleet_card.connect("button-press-event", lambda *_: self._act_fleet())
         self.fleet_box.pack_start(fleet_card, False, False, 0)
 
-        ts = snap.fetched_at.strftime("%H:%M:%S") if snap.fetched_at else "—"
-        err = f" · {snap.error}" if snap.error else ""
-        self.footer_lab.set_text(f"cache {ts}{err}")
+        ts = snap.fetched_at.strftime("%H:%M") if snap.fetched_at else "—"
+        if snap.error:
+            self.footer_lab.set_text(f"{snap.error} · {ts}")
+        else:
+            self.footer_lab.set_text(f"Vers · {ts}")
         self.window.show_all()
         if not self._open:
             self.window.hide()
@@ -412,7 +425,7 @@ class ChefBarPanel:
             title += f" · {row.active_label}"
         top.pack_start(_label(title, "chefbar-card-title", ellipsize=True), True, True, 0)
         if row.accounts:
-            sw = Gtk.Button(label="switch")
+            sw = Gtk.Button(label="wissel")
             sw.get_style_context().add_class("chefbar-switch-btn")
             sw.connect("clicked", self._on_switch_clicked, row)
             top.pack_end(sw, False, False, 0)
@@ -524,14 +537,14 @@ class ChefBarPanel:
 
     def _act_agent_task(self, *_a) -> None:
         dialog = Gtk.Dialog(
-            title="Agent task",
+            title="Nieuwe agent-taak",
             transient_for=self.window,
             modal=True,
             flags=0,
         )
         dialog.get_style_context().add_class("chefbar-dialog")
         dialog.add_buttons(
-            Gtk.STOCK_CANCEL,
+            "Annuleer",
             Gtk.ResponseType.CANCEL,
             "Start",
             Gtk.ResponseType.OK,
@@ -543,7 +556,7 @@ class ChefBarPanel:
         box.set_margin_bottom(12)
         box.set_margin_start(12)
         box.set_margin_end(12)
-        box.add(Gtk.Label(label="Prompt voor commander task:", xalign=0))
+        box.add(Gtk.Label(label="Wat moet er gebeuren?", xalign=0))
         entry = Gtk.Entry()
         entry.set_activates_default(True)
         entry.set_placeholder_text("bijv. check CI op chefgroep-vault PR")
@@ -583,7 +596,7 @@ class ChefBarPanel:
             notify("Taak starten lukte niet", "zie chefbar.log", status="error")
         else:
             tid = result.get("id") or "?"
-            notify("Taak gestart", f"{tid} · {prompt[:60]}", status="ok")
+            notify("Agent aan de slag", f"{tid} · {prompt[:60]}", status="ok")
         self.refresh_async(force=True)
         return False
 

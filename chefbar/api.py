@@ -452,13 +452,14 @@ FAILED_STATUSES = frozenset({"failed", "error", "crashed"})
 
 
 def tray_state(snap: Snapshot) -> tuple[str, str]:
-    """Snapshot -> (tray-iconstate, NL tooltip) volgens De Pas.
+    """Snapshot -> (tray-iconstate, NL tooltip) volgens de statuslijn-spec.
 
     Prioriteit: offline > fout > hulp > bezig > stil.
     """
     if snap.error:
-        return "offline", "ChefGroep · keuken offline"
-    if snap.health.level == "down":
+        return "offline", "ChefGroep · alles offline"
+    # health.total == 0 betekent "nog geen data", geen storing.
+    if snap.health.level == "down" and snap.health.total > 0:
         status = snap.raw.get("status") if isinstance(snap.raw, dict) else None
         services = (status or {}).get("services") or [] if isinstance(status, dict) else []
         down = next(
@@ -481,7 +482,7 @@ def tray_state(snap: Snapshot) -> tuple[str, str]:
         return "bezig", f"ChefGroep · {running} aan het werk"
     if snap.health.level == "warn":
         return "hulp", "ChefGroep · even jou nodig"
-    return "stil", "ChefGroep · nog stil in de keuken"
+    return "stil", "ChefGroep · nog niks gebeurd vandaag"
 
 
 def fetch_snapshot() -> Snapshot:
@@ -511,7 +512,7 @@ def fetch_snapshot() -> Snapshot:
 
     snap.raw = results
     if all(results.get(k) is None for k in paths):
-        snap.error = "vault-API onbereikbaar"
+        snap.error = "Vault-API reageert niet"
 
     snap.health = load_health()
     # If watchdog missing, degrade from /api/status services
