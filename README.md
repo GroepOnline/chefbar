@@ -1,6 +1,7 @@
 # ChefBar 2.0
 
-Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland).
+Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland), in de
+"Signaal, warm"-designtaal (`.ulpi/design/DESIGN.md`).
 
 ## Architectuurkeuze
 
@@ -10,39 +11,47 @@ Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland).
 | Optie | Keuze |
 |-------|--------|
 | Tray | Ayatana AppIndicator (bewezen op deze host + AppIndicator-extensie) |
-| Panel | GTK3 window + CSS provider (cards, statusdots, usage-bars) |
-| GTK4 / libadwaita | **Niet** in-process — `gi.require_version` kan GTK3 en GTK4 niet mixen; een los GTK4-proces zou IPC + koude start kosten en het &lt;300 ms-budget schaden |
+| Panel | GTK3 window + CSS provider (statusrijen, dots, usage-bars) |
+| GTK4 / libadwaita | **Niet** in-process — `gi.require_version` kan GTK3 en GTK4 niet mixen; een los GTK4-proces zou IPC + koude start kosten en het &lt;300 ms-budget schaden |
 
-Klik op het tray-icoon opent het panel (menu-show wordt gehijackt). Quit zit
-in de panel-footer; middle-click opent het panel via secondary-activate.
+Klik op het tray-icoon opent het panel (menu-show wordt gehijackt). Afsluiten
+zit in de panel-footer; middle-click opent Thuis via secondary-activate.
 
 ## Panel-secties
 
 1. **Kop** — OS-health (`X/14 ok` uit `watchdog-state.json`) + dagscore uit laatste `chef-eval` rapport
-2. **Providers** — actief account per provider + OCX usage-bar; **switch** → account-popover → `POST /api/accounts/<id>/switch`
-3. **Agents** — lopende/laatste events uit `/api/agents` (running = pulse-dot)
+2. **Providers** — actief account per provider + OCX usage-bar; **wissel** → account-popover → `POST /api/accounts/<id>/switch`
+3. **Agents** — lopende/laatste events uit `/api/agents`
 4. **Fleet** — online nodes; klik → dashboard `#fleet`
-5. **Quick actions** — Dashboard, Desktop `:3000`, HUD (`chef-hud`), Refresh, Agent task → `POST /api/commander/tasks`
+5. **Acties** — Dashboard, Desktop `:3000`, HUD (`chef-hud`), Ververs, Agent-taak → `POST /api/commander/tasks`
 
-Data: één parallel fetch-cyclus (`/status`, `/accounts/status`, `/agents`, `/fleet`, `/usage`). Cache voor snelle open; auto-refresh 30 s alleen terwijl het panel open is. Tray-health refresht op de achtergrond (60 s).
+Data: één parallel fetch-cyclus (`/status`, `/accounts/status`, `/agents`, `/fleet`, `/usage`). Cache voor snelle open; auto-refresh 30 s alleen terwijl het panel open is. Tray-health refresht op de achtergrond (60 s).
 
-## Tray: de bon (De Pas)
+Toetsenbord: `Escape` sluit panel en bar; `Ctrl+R` / `F5` ververst het panel;
+in de bar navigeren `↑`/`↓`/`Tab` en start `Enter` de geselecteerde actie.
 
-Icoonstates volgen `.ulpi/design/chefbar-tray.md`: een gestileerde bon,
-status via vorm + badge. Bron-SVG's in `~/.local/share/icons/chefgroep/`
-(`cg-tray-<state>.svg`, gegenereerd door `build-icons.py`), PNG-renders in
-`chefbar/icons/tray-<state>[-32|-48].png`.
+## Tray: de statuslijn-glyph
+
+Icoonstates volgen `.ulpi/design/chefbar-tray.md`: een gestileerde verticale
+CG-statuslijn, status via vorm + badge (nooit alleen kleur). De PNG's in
+`chefbar/icons/` (`tray-<state>[-32|-48].png` plus `ok/warn/down`) worden
+deterministisch gegenereerd door `build_icons.py` (pure stdlib, geen Pillow):
+
+```bash
+python3 build_icons.py          # regenereer alle iconen
+python3 build_icons.py --check  # verifieer dat de repo-assets actueel zijn
+```
 
 | State | Betekenis | Tooltip |
 |-------|-----------|---------|
-| `stil` | lege bon | ChefGroep · nog stil in de keuken |
-| `bezig` | bon met koraal regels | ChefGroep · {n} aan het werk |
-| `hulp` | koraal dot (attention) | ChefGroep · even jou nodig |
-| `fout` | wijn !-badge (attention) | ChefGroep · {dienst} hapert |
-| `offline` | gestreepte rvs-bon | ChefGroep · keuken offline |
+| `stil` | lijn, outline | ChefGroep · nog niks gebeurd vandaag |
+| `bezig` | lijn met gevuld segment | ChefGroep · {n} aan het werk |
+| `hulp` | brand-dot (attention) | ChefGroep · even jou nodig |
+| `fout` | !-badge (attention) | ChefGroep · {dienst} hapert |
+| `offline` | gestreepte lijn | ChefGroep · alles offline |
 
-Het tray-menu is de bonnenstrook: max 3 live bonregels (klik → `joep-ops
-focus`), Open Thuis / Open Ploeg / panel, `Pas: <account>`-submenu,
+Het tray-menu is de compacte statuslijn: max 3 live eventregels (klik →
+`joep-ops focus`), Open Thuis / Open Ploeg / panel, `Account: <naam>`-submenu,
 Desktop starten, Notificaties pauzeren (via `joep-notify pause`),
 Meelopen vanaf login, Afsluiten. Meldingen lopen via `joep-notify`
 (bron/status → icoon + urgency; pauze en GNOME-niet-storen gerespecteerd).
@@ -75,6 +84,7 @@ systemd user unit `chefbar.service`.
 
 ```bash
 chefbar --show-panel   # testmodus zonder tray
+chefbar --bar          # open de command-bar (Super+Space)
 chefbar --version
 ```
 

@@ -69,7 +69,7 @@ class ChefBarApp:
             AppIndicator.IndicatorCategory.APPLICATION_STATUS,
         )
         self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
-        self.indicator.set_title("ChefGroep · nog stil in de keuken")
+        self.indicator.set_title("ChefGroep · nog niks gebeurd vandaag")
 
         self.menu = self._build_menu()
         self.indicator.set_menu(self.menu)
@@ -79,23 +79,23 @@ class ChefBarApp:
         GLib.timeout_add_seconds(BACKGROUND_REFRESH, self._bg_tick)
         log.info("ChefBar 2.0 gestart (bg refresh %ss)", BACKGROUND_REFRESH)
 
-    # -- menu: de bonnenstrook -------------------------------------------------
+    # -- menu: de compacte statuslijn -------------------------------------------
 
     def _build_menu(self) -> Gtk.Menu:
         menu = Gtk.Menu()
 
-        # Bovenin max 3 live bonregels; gevuld door _rebuild_tickets.
-        self.ticket_items: list[Gtk.MenuItem] = []
+        # Bovenin max 3 live eventregels; gevuld door _rebuild_events.
+        self.event_items: list[Gtk.MenuItem] = []
         for _ in range(3):
             it = Gtk.MenuItem(label="")
             it.set_no_show_all(True)
             it.hide()
             menu.append(it)
-            self.ticket_items.append(it)
-        self.ticket_sep = Gtk.SeparatorMenuItem()
-        self.ticket_sep.set_no_show_all(True)
-        self.ticket_sep.hide()
-        menu.append(self.ticket_sep)
+            self.event_items.append(it)
+        self.event_sep = Gtk.SeparatorMenuItem()
+        self.event_sep.set_no_show_all(True)
+        self.event_sep.hide()
+        menu.append(self.event_sep)
 
         bar_item = Gtk.MenuItem(label="Bar (Super+Space)")
         bar_item.connect("activate", lambda *_: self.bar.show())
@@ -115,13 +115,13 @@ class ChefBarApp:
         )
         menu.append(ploeg_item)
 
-        panel_item = Gtk.MenuItem(label="Open de pas (panel)")
+        panel_item = Gtk.MenuItem(label="Open het paneel")
         panel_item.connect("activate", lambda *_: self.panel.show())
         menu.append(panel_item)
 
         menu.append(Gtk.SeparatorMenuItem())
 
-        self.accounts_item = Gtk.MenuItem(label="Pas")
+        self.accounts_item = Gtk.MenuItem(label="Account")
         self.accounts_item.set_submenu(Gtk.Menu())
         menu.append(self.accounts_item)
 
@@ -160,9 +160,9 @@ class ChefBarApp:
         _run_bg(["chefvault", "desktop", "start"])
         open_url(DESKTOP_URL)
 
-    def _rebuild_tickets(self, snap: api.Snapshot) -> None:
+    def _rebuild_events(self, snap: api.Snapshot) -> None:
         rows = snap.agents[:3]
-        for it, agent in zip(self.ticket_items, rows):
+        for it, agent in zip(self.event_items, rows):
             if agent.running:
                 text = f"{agent.agent} werkt in {agent.workspace}"
             elif agent.status in api.FAILED_STATUSES:
@@ -171,27 +171,27 @@ class ChefBarApp:
                 text = f"{agent.agent} is klaar in {agent.workspace}"
             it.set_label(text)
             try:
-                it.disconnect_by_func(self._on_ticket)
+                it.disconnect_by_func(self._on_event)
             except TypeError:
                 pass
-            it.connect("activate", self._on_ticket, agent)
+            it.connect("activate", self._on_event, agent)
             it.show()
-        for it in self.ticket_items[len(rows):]:
+        for it in self.event_items[len(rows):]:
             it.hide()
-        self.ticket_sep.set_visible(bool(rows))
+        self.event_sep.set_visible(bool(rows))
 
-    def _on_ticket(self, _item, agent: api.AgentRow) -> None:
+    def _on_event(self, _item, agent: api.AgentRow) -> None:
         _run_bg(["joep-ops", "focus", "--agent", agent.agent])
 
     def _rebuild_accounts(self, snap: api.Snapshot) -> None:
         active = next(
             (r.active_label for r in snap.providers if r.active_label), None
         )
-        self.accounts_item.set_label(f"Pas: {active}" if active else "Pas")
+        self.accounts_item.set_label(f"Account: {active}" if active else "Account")
         sub = Gtk.Menu()
         rows = [r for r in snap.providers if r.accounts]
         if not rows:
-            empty = Gtk.MenuItem(label="Nog geen ploegpassen")
+            empty = Gtk.MenuItem(label="Nog geen accounts gekoppeld")
             empty.set_sensitive(False)
             sub.append(empty)
         for row in rows:
@@ -276,7 +276,7 @@ class ChefBarApp:
         except Exception:  # noqa: BLE001
             log.exception("icon update faalde")
         GLib.idle_add(self._rebuild_accounts, snap)
-        GLib.idle_add(self._rebuild_tickets, snap)
+        GLib.idle_add(self._rebuild_events, snap)
 
     def _prefetch(self) -> None:
         snap = api.fetch_snapshot()

@@ -1,14 +1,14 @@
 """ChefBar command-bar: global hotkey → prompt → agents en acties.
 
 Eén balk, midden bovenin. Typ wat er moet gebeuren en de bar doet het:
-agent starten, herdr focussen, ploegpas wisselen, dashboard openen.
+agent starten, herdr focussen, account wisselen, dashboard openen.
 Bovenin hangen verse suggesties van de watcher (agent klaar, hulp nodig).
 """
 
 from __future__ import annotations
 
 import logging
-import subprocess
+import os
 import threading
 from dataclasses import dataclass, field
 from typing import Callable
@@ -25,11 +25,10 @@ from .panel import load_css, notify, open_url
 
 log = logging.getLogger("chefbar.bar")
 
-_os = __import__("os")
-DASHBOARD = _os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
-DESKTOP_URL = _os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
-OPS_URL = _os.environ.get("CHEFBAR_OPS_API", "http://127.0.0.1:10101")
-BAR_WIDTH = int(_os.environ.get("CHEFBAR_BAR_WIDTH", "640"))
+DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
+DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
+OPS_URL = os.environ.get("CHEFBAR_OPS_API", "http://127.0.0.1:10101")
+BAR_WIDTH = int(os.environ.get("CHEFBAR_BAR_WIDTH", "640"))
 MAX_ROWS = 8
 
 
@@ -58,7 +57,7 @@ STAMP_CLASS = {
     "FOUT": "fout",
     "STIL": "stil",
     "LIMIET": "hulp",
-    "BON": "stil",
+    "TAAK": "stil",
 }
 
 
@@ -134,7 +133,7 @@ class CommandBar:
         outer.get_style_context().add_class("chefbar-bar-root")
         self.window.add(outer)
 
-        # Suggestiestrook (bonnen van de watcher)
+        # Suggestiestrook (verse signalen van de watcher)
         self.suggestion_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         outer.pack_start(self.suggestion_box, False, False, 0)
 
@@ -282,7 +281,7 @@ class CommandBar:
                 Action(
                     title=f"Stuur naar {agent.name} · {agent.workspace}",
                     meta="typ je opdracht en kies deze regel",
-                    stamp="BON",
+                    stamp="TAAK",
                     keywords=f"stuur send prompt opdracht {agent.name} {agent.workspace}",
                     needs_text=True,
                     run=lambda q, a=agent: self._do_send(a, q),
@@ -298,7 +297,7 @@ class CommandBar:
                 Action(
                     title=f"Nieuwe agent in {agent.workspace}",
                     meta="start een cursor-agent met jouw opdracht",
-                    stamp="BON",
+                    stamp="TAAK",
                     keywords=f"nieuwe start agent workspace {agent.workspace}",
                     needs_text=True,
                     run=lambda q, cwd=agent.cwd: self._do_task(q, cwd),
@@ -313,9 +312,9 @@ class CommandBar:
                 actions.append(
                     Action(
                         title=f"Werk als {label}",
-                        meta=f"{row.label} · ploegpas wisselen",
+                        meta=f"{row.label} · account wisselen",
                         stamp="STIL",
-                        keywords=f"account switch wissel pas {row.label} {label}",
+                        keywords=f"account switch wissel {row.label} {label}",
                         run=lambda _q, aid=acc.get("id"), lab=label: self._do_switch(
                             str(aid), str(lab)
                         ),
@@ -330,11 +329,10 @@ class CommandBar:
                     stamp="STIL",
                     keywords=f"open ops joep-ops {OPS_PORT_LABEL} herdr overzicht",
                     run=lambda _q: self._do_open(OPS_URL),
-
                 ),
                 Action(
                     title="Open dashboard (Thuis)",
-                    meta="vault dashboard · keukenoverzicht",
+                    meta="vault dashboard · alles in één oogopslag",
                     stamp="STIL",
                     keywords="open dashboard thuis vault 8080",
                     run=lambda _q: self._do_open(DASHBOARD),
@@ -348,7 +346,7 @@ class CommandBar:
                 ),
                 Action(
                     title="Ververs status",
-                    meta="haal verse data uit de keuken",
+                    meta="haal de nieuwste status op",
                     stamp="STIL",
                     keywords="ververs refresh status",
                     run=lambda _q: self._refresh_async(),
@@ -371,7 +369,7 @@ class CommandBar:
             free = Action(
                 title=f"Start agent met: \u201c{query}\u201d",
                 meta="cursor-agent thuis · via commander",
-                stamp="BON",
+                stamp="TAAK",
                 keywords="",
                 pinned=True,
                 run=lambda q: self._do_task(q, str(api.HOME)),
@@ -383,7 +381,7 @@ class CommandBar:
                     Action(
                         title=f"Stuur naar gefocuste agent ({focused.name})",
                         meta=f"{focused.workspace} · direct in de terminal",
-                        stamp="BON",
+                        stamp="TAAK",
                         keywords="",
                         pinned=True,
                         run=lambda q, a=focused: self._do_send(a, q),
@@ -403,7 +401,7 @@ class CommandBar:
             self.results_box.pack_start(row, False, False, 0)
             self._rows.append((row, action))
         if not actions:
-            empty = Gtk.Label(label="Nog stil in de keuken.", xalign=0)
+            empty = Gtk.Label(label="Nog niks gebeurd vandaag.", xalign=0)
             empty.get_style_context().add_class("chefbar-bar-empty")
             self.results_box.pack_start(empty, False, False, 0)
         self.results_box.show_all()
@@ -475,11 +473,13 @@ class CommandBar:
         vault = self.data.vault
         herdr = self.data.herdr
         parts: list[str] = []
+        if vault.error:
+            parts.append(vault.error)
         if vault.health.total:
             parts.append(f"OS {vault.health.ok}/{vault.health.total} ok")
         busy = sum(1 for a in herdr.agents if a.status == "working")
         if herdr.ok:
-            parts.append(f"{busy} bezig" if busy else "keuken rustig")
+            parts.append(f"{busy} bezig" if busy else "alles rustig")
         else:
             parts.append(f"joep-ops slaapt (poort {OPS_PORT_LABEL})")
 
@@ -536,7 +536,7 @@ class CommandBar:
             ok = ops.send_prompt(agent, text)
             if ok:
                 notify(
-                    f"Bon ligt bij {agent.name}",
+                    f"Opdracht ligt bij {agent.name}",
                     f"{agent.workspace} · {text[:60]}",
                     status="ok",
                 )
