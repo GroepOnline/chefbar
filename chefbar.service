@@ -1,0 +1,20 @@
+[Unit]
+Description=ChefBar 2.0 — ChefGroep OS mission-control tray
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/chefbar
+Restart=on-failure
+RestartSec=5
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CHEFBAR_VAULT_API=http://127.0.0.1:8321/api
+Environment=CHEFBAR_OPS_API=http://127.0.0.1:10101
+Environment=CHEFBAR_DASHBOARD=http://127.0.0.1:8080
+Environment=CHEFBAR_DESKTOP=http://127.0.0.1:3000
+Environment=CHEFBAR_PANEL_REFRESH=30
+Environment=CHEFBAR_REFRESH=60
+
+[Install]
+WantedBy=graphical-session.target
