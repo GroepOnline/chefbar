@@ -1,0 +1,431 @@
+/* ChefBar 2.0 · ChefGroep instrument panel
+ * Design language: DESIGN.md / taste.md + vault tokens.css (dark char theme).
+ * Hard planes, 1px borders, zero radius, mono figures, square status dots,
+ * coral sparingly. No gradients, no shadows, no glass.
+ */
+
+@define-color cb_bg #12100e;
+@define-color cb_soft #1c1916;
+@define-color cb_card #24201c;
+@define-color cb_card_hover #2c2722;
+@define-color cb_border #3a342e;
+@define-color cb_text #f3ece4;
+@define-color cb_dim #a39e97;
+@define-color cb_accent #ff6b4a;
+@define-color cb_green #3ecf8e;
+@define-color cb_yellow #e8a923;
+@define-color cb_red #f07178;
+
+window.chefbar-panel {
+  background-color: @cb_bg;
+  color: @cb_text;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+}
+
+window.chefbar-panel decoration {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chefbar-panel * {
+  color: @cb_text;
+  font-family: "JetBrains Mono", "Ubuntu Mono", monospace;
+  border-radius: 0;
+}
+
+.chefbar-root {
+  background-color: @cb_bg;
+  padding: 0;
+}
+
+/* Header: single hard band, bottom rule */
+.chefbar-header {
+  background-color: @cb_soft;
+  border-bottom: 1px solid @cb_border;
+  padding: 10px 12px;
+}
+
+.chefbar-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: @cb_text;
+}
+
+.chefbar-subtitle {
+  font-size: 10px;
+  color: @cb_dim;
+}
+
+/* Kickers: small caps mono labels, `// SECTION` style */
+.chefbar-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: @cb_dim;
+  padding: 8px 12px 4px;
+}
+
+/* Rows: flat, divided by hairlines, no cards-in-cards */
+.chefbar-card {
+  background-color: transparent;
+  border-bottom: 1px solid alpha(@cb_border, 0.6);
+  padding: 6px 12px;
+}
+
+.chefbar-card:hover {
+  background-color: @cb_card;
+}
+
+.chefbar-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: @cb_text;
+}
+
+.chefbar-card-meta {
+  font-size: 10px;
+  color: @cb_dim;
+}
+
+/* Status: small SQUARE dots only */
+.chefbar-dot {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 0;
+  background-color: @cb_dim;
+}
+
+.chefbar-dot.ok { background-color: @cb_green; }
+.chefbar-dot.warn { background-color: @cb_yellow; }
+.chefbar-dot.down { background-color: @cb_red; }
+.chefbar-dot.info { background-color: @cb_dim; }
+
+.chefbar-dot.pulse {
+  background-color: @cb_green;
+  animation: chefbar-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chefbar-pulse {
+  0%   { opacity: 1.0; }
+  50%  { opacity: 0.3; }
+  100% { opacity: 1.0; }
+}
+
+/* Usage bars: flat single-colour fill on hairline track */
+.chefbar-bar-track {
+  background-color: @cb_bg;
+  border: 1px solid @cb_border;
+  min-height: 5px;
+  padding: 0;
+}
+
+.chefbar-bar-fill {
+  background-color: @cb_green;
+  min-height: 5px;
+}
+
+.chefbar-bar-fill.ok { background-color: @cb_green; }
+.chefbar-bar-fill.warn { background-color: @cb_yellow; }
+.chefbar-bar-fill.down { background-color: @cb_red; }
+
+/* Quick actions: flat buttons, 1px border, mechanical hover */
+.chefbar-actions {
+  padding: 6px 12px 2px;
+}
+
+.chefbar-actions button {
+  background-color: @cb_soft;
+  background-image: none;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+  color: @cb_text;
+  padding: 5px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  min-height: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.chefbar-actions button:hover {
+  background-color: @cb_card_hover;
+  border-color: @cb_dim;
+}
+
+.chefbar-actions button:active {
+  background-color: @cb_card;
+}
+
+/* Coral: sparse. Only the primary action carries it. */
+.chefbar-actions button.chefbar-primary {
+  border-color: @cb_accent;
+  color: @cb_accent;
+  background-color: @cb_soft;
+}
+
+.chefbar-actions button.chefbar-primary:hover {
+  background-color: @cb_accent;
+  color: @cb_bg;
+}
+
+.chefbar-footer {
+  font-size: 9px;
+  color: @cb_dim;
+  padding: 6px 12px 8px;
+}
+
+.chefbar-switch-btn {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  text-shadow: none;
+  padding: 0 2px;
+  min-height: 0;
+  color: @cb_dim;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.chefbar-switch-btn:hover {
+  color: @cb_accent;
+  background: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* Account switch popover: flat list */
+popover.chefbar-popover,
+.chefbar-popover contents {
+  background-color: @cb_soft;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+  color: @cb_text;
+  box-shadow: none;
+}
+
+.chefbar-popover button {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: @cb_text;
+  padding: 5px 10px;
+  font-size: 10px;
+}
+
+.chefbar-popover button:hover {
+  background-color: @cb_card_hover;
+}
+
+/* Agent task dialog */
+dialog.chefbar-dialog,
+.chefbar-dialog {
+  background-color: @cb_bg;
+  color: @cb_text;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+}
+
+.chefbar-dialog entry {
+  background-color: @cb_soft;
+  background-image: none;
+  color: @cb_text;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+  padding: 6px 8px;
+  box-shadow: none;
+  caret-color: @cb_accent;
+}
+
+.chefbar-dialog entry:focus {
+  border-color: @cb_accent;
+}
+
+.chefbar-dialog label {
+  font-size: 10px;
+  color: @cb_dim;
+}
+
+.chefbar-dialog button {
+  background-color: @cb_soft;
+  background-image: none;
+  border: 1px solid @cb_border;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+  color: @cb_text;
+  font-size: 10px;
+  padding: 5px 12px;
+}
+
+.chefbar-dialog button:hover {
+  background-color: @cb_card_hover;
+}
+
+/* ============================================================
+ * Command-bar · De Pas (DESIGN.md, gelockte lichte identiteit)
+ * Tegelwit vlak, gietijzer tekst, koraal alleen voor actie,
+ * bonnen in mono met geperforeerde bovenrand.
+ * ============================================================ */
+
+@define-color pas_tegelwit #F5F7F4;
+@define-color pas_gietijzer #201E1B;
+@define-color pas_gietijzer60 #5C5852;
+@define-color pas_rvs #9AA29C;
+@define-color pas_rvs_licht #E4E8E3;
+@define-color pas_koraal #E23A17;
+@define-color pas_gaar #20714A;
+@define-color pas_wijn #8F1D2C;
+
+window.chefbar-bar {
+  background-color: @pas_tegelwit;
+  color: @pas_gietijzer;
+  border: 1px solid @pas_rvs_licht;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(32, 30, 27, 0.08);
+}
+
+window.chefbar-bar decoration {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.chefbar-bar-root {
+  background-color: @pas_tegelwit;
+  padding: 8px;
+}
+
+.chefbar-bar * {
+  color: @pas_gietijzer;
+  font-family: "Archivo", "Inter", sans-serif;
+}
+
+.chefbar-bar-entry {
+  background-color: #ffffff;
+  background-image: none;
+  border: 1px solid @pas_rvs_licht;
+  border-radius: 4px;
+  box-shadow: none;
+  color: @pas_gietijzer;
+  caret-color: @pas_koraal;
+  font-size: 16px;
+  padding: 12px 14px;
+  margin: 4px 4px 8px;
+}
+
+.chefbar-bar-entry:focus {
+  border-color: @pas_koraal;
+}
+
+/* Suggestiebon van de watcher: geperforeerde bovenrand */
+.chefbar-bar-suggestion {
+  border-top: 2px dotted @pas_rvs;
+  border-bottom: 1px solid @pas_rvs_licht;
+  background-color: #ffffff;
+  padding: 8px 10px;
+  margin: 0 4px 8px;
+}
+
+.chefbar-bar-suggestion:hover {
+  background-color: @pas_rvs_licht;
+}
+
+.chefbar-bar-suggestion-act {
+  color: @pas_gietijzer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Actieregels */
+.chefbar-bar-row {
+  padding: 8px 10px;
+  margin: 0 4px;
+  border-bottom: 1px solid alpha(@pas_rvs_licht, 0.8);
+  background-color: transparent;
+}
+
+.chefbar-bar-row:hover {
+  background-color: @pas_rvs_licht;
+}
+
+.chefbar-bar-row.selected {
+  background-color: @pas_rvs_licht;
+  border-left: 3px solid @pas_koraal;
+  padding-left: 7px;
+}
+
+.chefbar-bar-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: @pas_gietijzer;
+}
+
+.chefbar-bar-row-meta {
+  font-size: 11px;
+  color: @pas_gietijzer60;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.chefbar-bar-empty {
+  font-size: 12px;
+  color: @pas_gietijzer60;
+  padding: 12px 14px;
+}
+
+/* Stempels: mono, uppercase, 2px radius kader */
+.chefbar-stamp {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  border: 1px solid @pas_gietijzer;
+  border-radius: 2px;
+  padding: 1px 6px;
+  min-width: 44px;
+  color: @pas_gietijzer;
+  background-color: transparent;
+}
+
+.chefbar-stamp.bezig {
+  border-color: @pas_gietijzer;
+  color: @pas_gietijzer;
+}
+
+.chefbar-stamp.klaar {
+  border-color: @pas_gaar;
+  color: @pas_gaar;
+}
+
+.chefbar-stamp.hulp {
+  border-color: @pas_koraal;
+  background-color: @pas_koraal;
+  color: #ffffff;
+}
+
+.chefbar-stamp.fout {
+  border-color: @pas_wijn;
+  background-color: @pas_wijn;
+  color: #ffffff;
+}
+
+.chefbar-stamp.stil {
+  border-color: @pas_rvs;
+  color: @pas_gietijzer60;
+}
+
+/* Statusstrook onderin: bon-mono */
+.chefbar-bar-status {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: @pas_gietijzer60;
+  padding: 8px 14px 4px;
+  border-top: 1px solid @pas_rvs_licht;
+  margin-top: 4px;
+}
