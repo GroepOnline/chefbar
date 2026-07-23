@@ -206,17 +206,22 @@ class ChefBarApp:
                 if active:
                     it.set_sensitive(False)
                 else:
-                    it.connect("activate", self._on_switch, acc)
+                    it.connect("activate", self._on_switch, acc, row)
                 sub.append(it)
         sub.show_all()
         self.accounts_item.set_submenu(sub)
 
-    def _on_switch(self, _item, acc: dict) -> None:
+    def _on_switch(self, _item, acc: dict, row: api.ProviderRow) -> None:
         acc_id = str(acc.get("id"))
         label = acc.get("label") or acc_id
 
         def worker() -> None:
-            ok = api.switch_account(acc_id) is not None
+            ok = api.switch_account(
+                acc_id,
+                row.source,
+                self.panel.snapshot.revision,
+                driver=row.driver,
+            ) is not None
             msg = ["-s", "ops", "-S", "ok", "Je werkt nu als " + label] if ok else [
                 "-s", "ops", "-S", "error", "Wisselen naar " + label + " lukte niet",
             ]

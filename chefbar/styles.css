@@ -1,7 +1,7 @@
 /* ChefBar · Dutch Signal Modernism ("Signaal, warm")
  * Bindt aan .ulpi/design/DESIGN.md: licht is standaard (Cursor-warm cream),
- * Archivo voor interface, IBM Plex Mono alleen voor echte data.
- * Vormcontract: 10px zones, 6px controls, 12px dialogs/popovers.
+ * Archivo voor display, Source Sans 3 voor interface, IBM Plex Mono voor data.
+ * Vormcontract: 0px zones, 6px controls, 10px dialogs/popovers.
  * Geen gradients, geen glow, geen glassmorphism, geen decoratieve beweging.
  */
 
@@ -27,17 +27,17 @@ window.chefbar-panel {
   background-color: @sg_canvas;
   color: @sg_text;
   border: 1px solid @sg_line;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 window.chefbar-panel decoration {
-  border-radius: 10px;
+  border-radius: 0;
   box-shadow: 0 1px 2px alpha(@sg_text, 0.05);
 }
 
 .chefbar-panel * {
   color: @sg_text;
-  font-family: "Archivo", sans-serif;
+  font-family: "Source Sans 3", sans-serif;
 }
 
 .chefbar-root {
@@ -50,10 +50,11 @@ window.chefbar-panel decoration {
   background-color: @sg_surface;
   border-bottom: 1px solid @sg_line;
   padding: 12px;
-  border-radius: 10px 10px 0 0;
+  border-radius: 0;
 }
 
 .chefbar-title {
+  font-family: "Archivo", sans-serif;
   font-size: 15px;
   font-weight: 600;
   color: @sg_text;
@@ -97,11 +98,11 @@ window.chefbar-panel decoration {
   color: @sg_text_muted;
 }
 
-/* Statusdots: kleur is nooit de enige drager; tekst staat er altijd naast */
+/* Compacte CG-statuslijn: kleur is nooit de enige drager; tekst staat ernaast */
 .chefbar-dot {
-  min-width: 8px;
-  min-height: 8px;
-  border-radius: 8px;
+  min-width: 3px;
+  min-height: 18px;
+  border-radius: 0;
   background-color: @sg_text_muted;
 }
 
@@ -170,7 +171,7 @@ window.chefbar-panel decoration {
 
 .chefbar-actions button.chefbar-primary {
   border-color: @sg_brand;
-  color: #ffffff;
+  color: @sg_canvas;
   background-color: @sg_brand;
 }
 
@@ -211,12 +212,12 @@ window.chefbar-panel decoration {
   outline-offset: 1px;
 }
 
-/* Account-popover: vlakke lijst, 12px radius */
+/* Account-popover: vlakke lijst, 10px radius */
 popover.chefbar-popover,
 .chefbar-popover contents {
   background-color: @sg_surface;
   border: 1px solid @sg_line;
-  border-radius: 12px;
+  border-radius: 10px;
   color: @sg_text;
 }
 
@@ -235,13 +236,13 @@ popover.chefbar-popover,
   background-color: @sg_surface_muted;
 }
 
-/* Agent-taakdialog: 12px radius, focus via ring */
+/* Agent-taakdialog: 10px radius, focus via ring */
 dialog.chefbar-dialog,
 .chefbar-dialog {
   background-color: @sg_canvas;
   color: @sg_text;
   border: 1px solid @sg_line;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .chefbar-dialog entry {
@@ -288,12 +289,12 @@ window.chefbar-bar {
   background-color: @sg_canvas;
   color: @sg_text;
   border: 1px solid @sg_line;
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: 0 1px 2px alpha(@sg_text, 0.05);
 }
 
 window.chefbar-bar decoration {
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: none;
 }
 
@@ -304,7 +305,7 @@ window.chefbar-bar decoration {
 
 .chefbar-bar * {
   color: @sg_text;
-  font-family: "Archivo", sans-serif;
+  font-family: "Source Sans 3", sans-serif;
 }
 
 .chefbar-bar-entry {
@@ -322,6 +323,8 @@ window.chefbar-bar decoration {
 
 .chefbar-bar-entry:focus {
   border-color: @sg_focus;
+  outline: 2px solid @sg_focus;
+  outline-offset: 1px;
 }
 
 /* Suggestie van de watcher: brand-linkerrand markeert urgentie */
@@ -362,7 +365,20 @@ window.chefbar-bar decoration {
   padding-left: 7px;
 }
 
+.chefbar-bar-row.destructive {
+  border-left: 3px solid @sg_error;
+  padding-left: 7px;
+}
+
+.chefbar-shortcut {
+  color: @sg_text_muted;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
 .chefbar-bar-row-title {
+  font-family: "Archivo", sans-serif;
   font-size: 13px;
   font-weight: 600;
   color: @sg_text;
@@ -383,7 +399,7 @@ window.chefbar-bar decoration {
 /* Statuswoorden (BEZIG/KLAAR/HULP): interface-face medium met tracking,
  * niet in mono (DESIGN.md typografie) */
 .chefbar-stamp {
-  font-family: "Archivo", sans-serif;
+  font-family: "Source Sans 3", sans-serif;
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -408,13 +424,13 @@ window.chefbar-bar decoration {
 .chefbar-stamp.hulp {
   border-color: @sg_brand;
   background-color: @sg_brand;
-  color: #ffffff;
+  color: @sg_canvas;
 }
 
 .chefbar-stamp.fout {
   border-color: @sg_error;
   background-color: @sg_error;
-  color: #ffffff;
+  color: @sg_canvas;
 }
 
 .chefbar-stamp.stil {

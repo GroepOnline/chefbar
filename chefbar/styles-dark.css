@@ -1,0 +1,14 @@
+/* Signaal donker. Zelfde rollen en contrast als de lichte basis. */
+@define-color sg_canvas #0B0C0E;
+@define-color sg_surface #131416;
+@define-color sg_surface_muted #191A1D;
+@define-color sg_line #242728;
+@define-color sg_control_border #6A6B6C;
+@define-color sg_text #F4F4F6;
+@define-color sg_text_muted #9C9C9D;
+@define-color sg_brand #FF6B52;
+@define-color sg_focus #7CB7FF;
+@define-color sg_success #59D499;
+@define-color sg_warning #FFC533;
+@define-color sg_error #FF6161;
+@define-color sg_info #57C1FF;

@@ -1,5 +1,5 @@
 [Unit]
-Description=ChefBar 2.0 — ChefGroep OS mission-control tray
+Description=ChefBar 3.0 — Raycast-stijl ChefGroep agent bar
 After=graphical-session.target
 PartOf=graphical-session.target
 

@@ -7,7 +7,9 @@ import logging
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -92,6 +94,8 @@ class ProviderRow:
     active_label: str | None
     active_id: str | None
     color: str
+    source: str = "vault"
+    driver: str | None = None
     accounts: list[dict[str, Any]] = field(default_factory=list)
     requests: int | None = None
     tokens: int | None = None
@@ -127,6 +131,12 @@ class Snapshot:
     providers: list[ProviderRow] = field(default_factory=list)
     agents: list[AgentRow] = field(default_factory=list)
     fleet: FleetInfo = field(default_factory=FleetInfo)
+    revision: int = 0
+    tasks: list[dict[str, Any]] = field(default_factory=list)
+    clipboard: list[dict[str, Any]] = field(default_factory=list)
+    events: list[dict[str, Any]] = field(default_factory=list)
+    desktop: dict[str, Any] = field(default_factory=dict)
+    share_sync: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -151,22 +161,24 @@ def api_request(
     method: str = "GET",
     body: dict | None = None,
     timeout: float = 5.0,
+    headers: dict[str, str] | None = None,
 ) -> dict | list | None:
     token = read_api_token()
-    if not token:
-        log.warning("Geen CHEF_VAULT_API_TOKEN (env of %s)", ENV_FILE)
-        return None
     url_path = path if path.startswith("/") else f"/{path}"
     data = None
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    request_headers = {"Accept": "application/json"}
+    if token:
+        request_headers["Authorization"] = f"Bearer {token}"
+    if headers:
+        request_headers.update(headers)
     if body is not None:
         data = json.dumps(body).encode()
-        headers["Content-Type"] = "application/json"
+        request_headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
         f"{VAULT_API}{url_path}",
         data=data,
         method=method,
-        headers=headers,
+        headers=request_headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -174,13 +186,61 @@ def api_request(
             if not raw:
                 return {}
             return json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        log.warning("API %s %s antwoordde %s: %s", method, url_path, exc.code, detail)
+        return None
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, ValueError) as exc:
         log.warning("API %s %s faalde: %s", method, url_path, exc)
         return None
 
 
-def switch_account(account_id: str) -> dict | None:
-    return api_request(f"/accounts/{account_id}/switch", method="POST")  # type: ignore[return-value]
+def switch_account(
+    account_id: str,
+    source: str,
+    expected_revision: int,
+    driver: str | None = None,
+) -> dict | None:
+    body: dict[str, Any] = {
+        "source": source,
+        "accountId": account_id,
+        "expectedRevision": expected_revision,
+    }
+    if driver:
+        body["driver"] = driver
+    return api_request(
+        "/coding/accounts/switch",
+        method="POST",
+        body=body,
+        headers={"Idempotency-Key": f"chefbar-{uuid.uuid4()}"},
+    )  # type: ignore[return-value]
+
+
+def cancel_commander_task(task_id: str) -> dict | None:
+    return api_request(
+        f"/commander/tasks/{urllib.parse.quote(task_id, safe='')}/cancel",
+        method="POST",
+    )  # type: ignore[return-value]
+
+
+def clipboard_add(text: str) -> dict | None:
+    return api_request("/clipboard", method="POST", body={"text": text})  # type: ignore[return-value]
+
+
+def clipboard_delete(row: int) -> dict | None:
+    return api_request(f"/clipboard/{row}", method="DELETE")  # type: ignore[return-value]
+
+
+def desktop_action(action: str) -> dict | None:
+    if action not in ("start", "stop"):
+        raise ValueError(f"Onbekende desktopactie: {action}")
+    return api_request(f"/desktop/{action}", method="POST")  # type: ignore[return-value]
+
+
+def share_sync_action(action: str) -> dict | None:
+    if action not in ("pull", "push"):
+        raise ValueError(f"Onbekende syncactie: {action}")
+    return api_request(f"/share-sync/{action}", method="POST")  # type: ignore[return-value]
 
 
 def create_commander_task(
@@ -305,85 +365,42 @@ def _usage_frac(requests: int | None, tokens: int | None) -> tuple[float, str, s
     return frac, level, text
 
 
-def _build_providers(accounts_status: dict | None, usage: dict | None) -> list[ProviderRow]:
-    today = {}
-    if usage:
-        today = usage.get("today") or (usage.get("ocx") or {}).get("today") or {}
-    if accounts_status and not today:
-        today = (accounts_status.get("usage") or {}).get("today") or {}
-
-    by_provider_usage = today.get("byProvider") or {}
-    total_req = today.get("requests")
-    total_tok = today.get("totalTokens")
-
-    providers_raw = (accounts_status or {}).get("providers") or []
-    by_key = {p.get("provider"): p for p in providers_raw if p.get("provider")}
-
+def _build_providers(overview: dict | None) -> list[ProviderRow]:
     rows: list[ProviderRow] = []
-    ordered = list(PROVIDER_ORDER)
-    for key in by_key:
-        if key not in ordered:
-            ordered.append(key)
-
-    for key in ordered:
-        pdata = by_key.get(key)
-        if pdata is None:
-            continue
-        active = pdata.get("activeAccount") or None
-        accounts = list(pdata.get("accounts") or [])
-        # Skip empty custom with no accounts
-        if key == "custom" and not accounts and not active:
-            continue
-        color = (active or {}).get("color") or "#8b93a7"
-        active_label = (active or {}).get("label")
-        active_id = (active or {}).get("id")
-
-        req = tok = None
-        usage_text = ""
-        frac = 0.0
-        level = "ok"
-        if key in ("ocx", "openai", "codex"):
-            # OCX aggregate is the best live usage signal.
-            if key == "ocx" or (key in ("openai", "codex") and total_req):
-                req = int(total_req or 0)
-                tok = int(total_tok or 0)
-                if key in by_provider_usage and key != "ocx":
-                    # per-provider request count when available
-                    req = int(by_provider_usage.get(key) or req)
-                frac, level, usage_text = _usage_frac(req, tok)
-        elif key in by_provider_usage:
-            req = int(by_provider_usage[key] or 0)
-            frac, level, usage_text = _usage_frac(req, None)
-
-        if not active_label and not accounts and key not in CORE_PROVIDERS:
-            # Still show non-core providers when auth files exist on disk.
-            auth_files = pdata.get("authFiles") or []
-            present = any(f.get("present") for f in auth_files)
-            if not present:
-                continue
-
-        if key == "ocx" and not usage_text:
-            ocx = (accounts_status or {}).get("ocx") or {}
-            usage_text = "proxy ok" if ocx.get("proxyHealthy") else "proxy ?"
-            if total_req is not None:
-                req = int(total_req or 0)
-                tok = int(total_tok or 0)
-                frac, level, usage_text = _usage_frac(req, tok)
-
+    for provider in (overview or {}).get("providers") or []:
+        accounts = list(provider.get("accounts") or [])
+        active_id = provider.get("activeAccountId")
+        active = next((item for item in accounts if item.get("id") == active_id), None)
+        usage = provider.get("usage") or {}
+        requests = usage.get("requests")
+        tokens = usage.get("tokens")
+        req = int(requests) if isinstance(requests, (int, float)) else None
+        tok = int(tokens) if isinstance(tokens, (int, float)) else None
+        frac, level, usage_text = _usage_frac(req, tok)
+        source = provider.get("source") or "vault"
+        provider_id = provider.get("id") or "custom"
+        driver = provider_id.removeprefix("cpm:") if source == "cpm" else None
+        refresh = provider.get("refresh") or {}
+        if provider.get("availability") == "unavailable" or provider.get("error"):
+            level = "down"
+        elif provider.get("stale") or refresh.get("error"):
+            level = "warn"
         rows.append(
             ProviderRow(
-                provider=key,
-                label=PROVIDER_LABELS.get(key, key.title()),
-                active_label=active_label,
+                provider=provider_id,
+                label=provider.get("label") or PROVIDER_LABELS.get(provider_id, provider_id.title()),
+                active_label=(active or {}).get("label"),
                 active_id=active_id,
-                color=color,
+                color="#8A877C",
+                source=source,
+                driver=driver,
                 accounts=accounts,
-                requests=req,
-                tokens=tok,
+                requests=int(requests) if isinstance(requests, (int, float)) else None,
+                tokens=int(tokens) if isinstance(tokens, (int, float)) else None,
                 usage_frac=frac,
                 usage_level=level,
                 usage_text=usage_text
-                or (active_label or ("geen account" if not accounts else f"{len(accounts)} accounts")),
+                or ((active or {}).get("label") or f"{len(accounts)} accounts"),
             )
         )
     return rows
@@ -490,14 +507,18 @@ def fetch_snapshot() -> Snapshot:
     snap = Snapshot()
     paths = {
         "status": "/status",
-        "accounts_status": "/accounts/status",
+        "accounts_overview": "/accounts/overview",
         "agents": "/agents",
+        "agent_events": "/agents/events?limit=8",
         "fleet": "/fleet",
-        "usage": "/usage",
+        "tasks": "/commander/tasks?limit=12",
+        "clipboard": "/clipboard",
+        "desktop": "/desktop/status",
+        "share_sync": "/share-sync/status",
     }
     results: dict[str, Any] = {}
     try:
-        with ThreadPoolExecutor(max_workers=5) as pool:
+        with ThreadPoolExecutor(max_workers=len(paths)) as pool:
             futs = {pool.submit(api_request, path): key for key, path in paths.items()}
             for fut in as_completed(futs):
                 key = futs[fut]
@@ -536,15 +557,25 @@ def fetch_snapshot() -> Snapshot:
 
     agents = results.get("agents") if isinstance(results.get("agents"), dict) else None
     snap.day_score = load_day_score(agents)
-    accounts_status = (
-        results.get("accounts_status")
-        if isinstance(results.get("accounts_status"), dict)
+    accounts_overview = (
+        results.get("accounts_overview")
+        if isinstance(results.get("accounts_overview"), dict)
         else None
     )
-    usage = results.get("usage") if isinstance(results.get("usage"), dict) else None
-    snap.providers = _build_providers(accounts_status, usage)
+    snap.revision = int((accounts_overview or {}).get("revision") or 0)
+    snap.providers = _build_providers(accounts_overview)
     snap.agents = _build_agents(agents)
     fleet = results.get("fleet") if isinstance(results.get("fleet"), dict) else None
     snap.fleet = _build_fleet(fleet)
+    tasks = results.get("tasks")
+    snap.tasks = list(tasks.get("tasks") or []) if isinstance(tasks, dict) else []
+    clipboard = results.get("clipboard")
+    snap.clipboard = list(clipboard.get("items") or []) if isinstance(clipboard, dict) else []
+    agent_events = results.get("agent_events")
+    snap.events = list(agent_events.get("events") or []) if isinstance(agent_events, dict) else []
+    snap.desktop = results.get("desktop") if isinstance(results.get("desktop"), dict) else {}
+    snap.share_sync = (
+        results.get("share_sync") if isinstance(results.get("share_sync"), dict) else {}
+    )
     snap.fetched_at = datetime.now()
     return snap

@@ -20,6 +20,7 @@ log = logging.getLogger("chefbar.panel")
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 STYLES_PATH = PACKAGE_DIR / "styles.css"
+DARK_STYLES_PATH = PACKAGE_DIR / "styles-dark.css"
 
 DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
 DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
@@ -39,6 +40,23 @@ def load_css() -> None:
         provider,
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
+    settings = Gtk.Settings.get_default()
+    prefer_dark = bool(
+        settings
+        and settings.get_property("gtk-application-prefer-dark-theme")
+    )
+    theme_name = str(settings.get_property("gtk-theme-name") or "") if settings else ""
+    if prefer_dark or "dark" in theme_name.lower():
+        dark_provider = Gtk.CssProvider()
+        try:
+            dark_provider.load_from_path(str(DARK_STYLES_PATH))
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(),
+                dark_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+            )
+        except GLib.Error as exc:
+            log.warning("Donker thema laden faalde: %s", exc)
 
 
 def notify(title: str, body: str, status: str = "info") -> None:
@@ -60,7 +78,7 @@ def open_url(url: str) -> None:
 
 def _dot(level: str = "ok", pulse: bool = False) -> Gtk.Label:
     lab = Gtk.Label(label="")
-    lab.set_size_request(10, 10)
+    lab.set_size_request(3, 18)
     ctx = lab.get_style_context()
     ctx.add_class("chefbar-dot")
     ctx.add_class(level if level in ("ok", "warn", "down", "info") else "ok")
@@ -145,7 +163,7 @@ class ChefBarPanel:
         title_row.pack_start(self.health_dot, False, False, 0)
         title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.title_lab = _label("ChefBar", "chefbar-title")
-        self.subtitle_lab = _label("sync…", "chefbar-subtitle")
+        self.subtitle_lab = _label("Nog niet ververst", "chefbar-subtitle")
         title_col.pack_start(self.title_lab, False, False, 0)
         title_col.pack_start(self.subtitle_lab, False, False, 0)
         title_row.pack_start(title_col, True, True, 0)
@@ -165,16 +183,19 @@ class ChefBarPanel:
         # Sections containers (rebuilt on refresh)
         self.providers_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.agents_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.events_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.fleet_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self.body.pack_start(_label("// PROVIDERS", "chefbar-section-label"), False, False, 0)
+        self.body.pack_start(_label("Accounts", "chefbar-section-label"), False, False, 0)
         self.body.pack_start(self.providers_box, False, False, 0)
-        self.body.pack_start(_label("// AGENTS", "chefbar-section-label"), False, False, 0)
+        self.body.pack_start(_label("Agents", "chefbar-section-label"), False, False, 0)
         self.body.pack_start(self.agents_box, False, False, 0)
-        self.body.pack_start(_label("// FLEET", "chefbar-section-label"), False, False, 0)
+        self.body.pack_start(_label("Recent", "chefbar-section-label"), False, False, 0)
+        self.body.pack_start(self.events_box, False, False, 0)
+        self.body.pack_start(_label("Verbinding", "chefbar-section-label"), False, False, 0)
         self.body.pack_start(self.fleet_box, False, False, 0)
 
         # Quick actions
-        outer.pack_start(_label("// ACTIES", "chefbar-section-label"), False, False, 0)
+        outer.pack_start(_label("Direct doen", "chefbar-section-label"), False, False, 0)
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         actions.get_style_context().add_class("chefbar-actions")
         actions.set_homogeneous(True)
@@ -297,7 +318,7 @@ class ChefBarPanel:
         if self._refreshing and not force:
             return
         self._refreshing = True
-        self.footer_lab.set_text("verversen…")
+        self.footer_lab.set_text("Even ophalen")
 
         def worker() -> None:
             snap = api.fetch_snapshot()
@@ -370,6 +391,25 @@ class ChefBarPanel:
             )
         for agent in snap.agents:
             self.agents_box.pack_start(self._agent_card(agent), False, False, 0)
+
+        self._clear(self.events_box)
+        if not snap.events:
+            self.events_box.pack_start(
+                self._card_text("Nog geen recente updates", "Agentgebeurtenissen verschijnen hier"),
+                False,
+                False,
+                0,
+            )
+        for event in snap.events[:5]:
+            agent = str(event.get("agent") or "Agent")
+            summary = str(event.get("summary") or event.get("kind") or "update")
+            workspace = str(event.get("workspace") or "")
+            self.events_box.pack_start(
+                self._card_text(f"{agent} · {summary[:64]}", workspace or "recente update"),
+                False,
+                False,
+                0,
+            )
 
         self._clear(self.fleet_box)
         fleet = snap.fleet
@@ -477,19 +517,30 @@ class ChefBarPanel:
             b = Gtk.Button(label=label)
             b.set_relief(Gtk.ReliefStyle.NONE)
             b.set_halign(Gtk.Align.START)
-            b.connect("clicked", self._do_switch, acc, pop)
+            b.connect("clicked", self._do_switch, acc, row, pop)
             vbox.pack_start(b, False, False, 0)
         pop.add(vbox)
         vbox.show_all()
         pop.popup()
 
-    def _do_switch(self, _btn, acc: dict, pop: Gtk.Popover) -> None:
+    def _do_switch(
+        self,
+        _btn,
+        acc: dict,
+        row: api.ProviderRow,
+        pop: Gtk.Popover,
+    ) -> None:
         pop.popdown()
         acc_id = acc.get("id")
         label = acc.get("label") or acc_id
 
         def worker() -> None:
-            result = api.switch_account(str(acc_id))
+            result = api.switch_account(
+                str(acc_id),
+                row.source,
+                self.snapshot.revision,
+                driver=row.driver,
+            )
             ok = result is not None
             GLib.idle_add(self._after_switch, label, ok)
 

@@ -1,3 +1,3 @@
-"""ChefBar 2.0 — ChefGroep OS mission-control tray panel."""
+"""ChefBar 3.0 — Raycast-stijl ChefGroep agent bar."""
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
