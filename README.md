@@ -1,77 +1,53 @@
-# ChefBar 2.0
+# ChefBar 3.0
 
-Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland), in de
-"Signaal, warm"-designtaal (`.ulpi/design/DESIGN.md`).
+Raycast-stijl command palette + tray voor ChefGroep OS (GNOME Shell / Wayland),
+in de "Signaal, warm"-designtaal (`.ulpi/design/DESIGN.md`).
 
-## Architectuurkeuze
+## Stackbeslissing
 
 **GTK3 + AyatanaAppIndicator3 in één proces**, met een rijk gestyled
-`Gtk.Window`-panel i.p.v. een plat menu.
+`Gtk.Window` als command-bar en panel.
 
 | Optie | Keuze |
 |-------|--------|
 | Tray | Ayatana AppIndicator (bewezen op deze host + AppIndicator-extensie) |
-| Panel | GTK3 window + CSS provider (statusrijen, dots, usage-bars) |
-| GTK4 / libadwaita | **Niet** in-process — `gi.require_version` kan GTK3 en GTK4 niet mixen; een los GTK4-proces zou IPC + koude start kosten en het &lt;300 ms-budget schaden |
+| Palette | GTK3 window + CSS provider, fuzzy action registry |
+| Panel | Compacte status + accounts + agents + recente feed |
+| GTK4 / libadwaita | **Niet** in-process — `gi.require_version` kan GTK3 en GTK4 niet mixen |
 
-Klik op het tray-icoon opent het panel (menu-show wordt gehijackt). Afsluiten
-zit in de panel-footer; middle-click opent Thuis via secondary-activate.
+De bestaande tray-integratie, IPC-hotkey (`Super+Space`) en systemd-unit blijven.
+Een parallelle Electron/Tauri-app zou koude start en dubbele indicators kosten.
 
-## Panel-secties
+## Wat de redesign doet
 
-1. **Kop** — OS-health (`X/14 ok` uit `watchdog-state.json`) + dagscore uit laatste `chef-eval` rapport
-2. **Providers** — actief account per provider + OCX usage-bar; **wissel** → account-popover → `POST /api/accounts/<id>/switch`
-3. **Agents** — lopende/laatste events uit `/api/agents`
-4. **Fleet** — online nodes; klik → dashboard `#fleet`
-5. **Acties** — Dashboard, Desktop `:3000`, HUD (`chef-hud`), Ververs, Agent-taak → `POST /api/commander/tasks`
+1. **Command palette core** — één input, fuzzy ranking (`palette.py`), pijltjes/Enter/Escape, mono shortcuts.
+2. **Vault-API als control plane** op `127.0.0.1:8321`:
+   - accounts: `GET /api/accounts/overview` + `POST /api/coding/accounts/switch` (Idempotency-Key + expectedRevision)
+   - commander: create / list / cancel
+   - clipboard: list / add / delete-row
+   - desktop: status / start / stop
+   - share-sync: status / pull / push
+   - status / fleet / agents + `GET /api/agents/events` als recente feed
+3. **Agent-interactief** — watcher-suggesties, recente events, snelle "stuur taak naar Commander".
+4. **Signaal tokens** — Archivo display, Source Sans 3 interface, IBM Plex Mono data; radius 0/6/10; lichte basis + donker via systeemvoorkeur.
 
-Data: één parallel fetch-cyclus (`/status`, `/accounts/status`, `/agents`, `/fleet`, `/usage`). Cache voor snelle open; auto-refresh 30 s alleen terwijl het panel open is. Tray-health refresht op de achtergrond (60 s).
+CRM/deals blijft bewust buiten deze app.
 
-Toetsenbord: `Escape` sluit panel en bar; `Ctrl+R` / `F5` ververst het panel;
-in de bar navigeren `↑`/`↓`/`Tab` en start `Enter` de geselecteerde actie.
+## Tray
 
-## Tray: de statuslijn-glyph
-
-Icoonstates volgen `.ulpi/design/chefbar-tray.md`: een gestileerde verticale
-CG-statuslijn, status via vorm + badge (nooit alleen kleur). De PNG's in
-`chefbar/icons/` (`tray-<state>[-32|-48].png` plus `ok/warn/down`) worden
-deterministisch gegenereerd door `build_icons.py` (pure stdlib, geen Pillow):
+Icoonstates volgen `.ulpi/design/chefbar-tray.md`. Regenereer PNG's met:
 
 ```bash
-python3 build_icons.py          # regenereer alle iconen
-python3 build_icons.py --check  # verifieer dat de repo-assets actueel zijn
+python3 build_icons.py
+python3 build_icons.py --check
 ```
-
-| State | Betekenis | Tooltip |
-|-------|-----------|---------|
-| `stil` | lijn, outline | ChefGroep · nog niks gebeurd vandaag |
-| `bezig` | lijn met gevuld segment | ChefGroep · {n} aan het werk |
-| `hulp` | brand-dot (attention) | ChefGroep · even jou nodig |
-| `fout` | !-badge (attention) | ChefGroep · {dienst} hapert |
-| `offline` | gestreepte lijn | ChefGroep · alles offline |
-
-Het tray-menu is de compacte statuslijn: max 3 live eventregels (klik →
-`joep-ops focus`), Open Thuis / Open Ploeg / panel, `Account: <naam>`-submenu,
-Desktop starten, Notificaties pauzeren (via `joep-notify pause`),
-Meelopen vanaf login, Afsluiten. Meldingen lopen via `joep-notify`
-(bron/status → icoon + urgency; pauze en GNOME-niet-storen gerespecteerd).
 
 ## Vereisten
 
 - `gir1.2-ayatanaappindicator3-0.1` + AppIndicator GNOME-extension (Wayland)
-- `CHEF_VAULT_API_TOKEN` in `docker/.env` (of `CHEFBAR_ENV_FILE` / env)
+- Optioneel `CHEF_VAULT_API_TOKEN` (verplicht voor accountswitch)
 - Vault-API op `:8321` (override: `CHEFBAR_VAULT_API`)
-- joep-ops op `:10101` (override: `CHEFBAR_OPS_API`, default `http://127.0.0.1:10101`)
-
-## Omgeving (Ops)
-
-| Env | Default | Rol |
-|-----|---------|-----|
-| `CHEFBAR_OPS_API` | `http://127.0.0.1:10101` | Basis-URL van joep-ops (snapshot + focus) |
-| `CHEFBAR_VAULT_API` | `http://127.0.0.1:8321/api` | Vault API |
-| `CHEFBAR_DASHBOARD` | `http://127.0.0.1:8080` | Dashboard-link |
-
-Desktop (Tauri) gebruikt dezelfde canonieke poort maar de env-naam **`JOEP_OPS_BASE`**. Dat verschil is bewust surface-specifiek; zie `config/ops-url.json` (`envNames`) en `apps/desktop/README.md`.
+- joep-ops op `:10101` (override: `CHEFBAR_OPS_API`)
 
 ## Installatie
 
@@ -79,13 +55,16 @@ Desktop (Tauri) gebruikt dezelfde canonieke poort maar de env-naam **`JOEP_OPS_B
 ./install.sh
 ```
 
-Installeert naar `~/.local/share/chefbar/`, wrapper `~/.local/bin/chefbar`,
-systemd user unit `chefbar.service`.
-
 ```bash
-chefbar --show-panel   # testmodus zonder tray
-chefbar --bar          # open de command-bar (Super+Space)
+chefbar --show-panel   # panel zonder tray
+chefbar --bar          # command palette (Super+Space)
 chefbar --version
 ```
 
-Log: `~/.local/share/chefbar/chefbar.log`.
+## Tests
+
+```bash
+cd apps/chefbar
+PYTHONPATH=. python3 -m unittest discover -s tests -v
+python3 -m py_compile chefbar/*.py
+```

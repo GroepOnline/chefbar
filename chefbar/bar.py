@@ -21,6 +21,7 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from . import api, ops
+from .palette import Action, rank_actions
 from .panel import load_css, notify, open_url
 
 log = logging.getLogger("chefbar.bar")
@@ -59,23 +60,6 @@ STAMP_CLASS = {
     "LIMIET": "hulp",
     "TAAK": "stil",
 }
-
-
-@dataclass
-class Action:
-    title: str
-    meta: str
-    stamp: str
-    keywords: str
-    run: Callable[[str], None]
-    needs_text: bool = False
-    pinned: bool = False
-
-    def matches(self, query: str) -> bool:
-        if not query:
-            return True
-        hay = f"{self.title} {self.meta} {self.keywords}".lower()
-        return all(tok in hay for tok in query.lower().split())
 
 
 @dataclass
@@ -315,14 +299,122 @@ class CommandBar:
                         meta=f"{row.label} · account wisselen",
                         stamp="STIL",
                         keywords=f"account switch wissel {row.label} {label}",
-                        run=lambda _q, aid=acc.get("id"), lab=label: self._do_switch(
-                            str(aid), str(lab)
+                        run=lambda _q, aid=acc.get("id"), lab=label, r=row: self._do_switch(
+                            str(aid), str(lab), r.source, r.driver
                         ),
                     )
                 )
 
+        for task in vault.tasks:
+            task_id = str(task.get("id") or "")
+            status = str(task.get("status") or "queued")
+            prompt = str(task.get("prompt") or "Taak zonder omschrijving")
+            if status in ("queued", "running"):
+                actions.append(
+                    Action(
+                        title=f"Stop taak · {prompt[:52]}",
+                        meta=f"{task_id} · {status}",
+                        stamp="HULP",
+                        keywords=f"commander taak stop annuleer cancel {task_id}",
+                        destructive=True,
+                        run=lambda _q, tid=task_id: self._do_api(
+                            lambda: api.cancel_commander_task(tid),
+                            "Taak gestopt",
+                        ),
+                    )
+                )
+
+        for row, item in enumerate(vault.clipboard[:6]):
+            text = str(item.get("text") or "").replace("\n", " ")
+            actions.append(
+                Action(
+                    title=f"Kopieer · {text[:56]}",
+                    meta=f"clipboard-rij {row}",
+                    stamp="STIL",
+                    keywords=f"clipboard klembord kopieer plak {text}",
+                    run=lambda _q, value=str(item.get("text") or ""): self._copy_text(value),
+                )
+            )
+            actions.append(
+                Action(
+                    title=f"Verwijder clipboard-rij {row}",
+                    meta=text[:64],
+                    stamp="HULP",
+                    keywords=f"clipboard klembord verwijder delete {row}",
+                    destructive=True,
+                    run=lambda _q, index=row: self._do_api(
+                        lambda: api.clipboard_delete(index),
+                        "Clipboard-rij verwijderd",
+                    ),
+                )
+            )
+
+        for event in vault.events[:5]:
+            agent = str(event.get("agent") or "Agent")
+            workspace = str(event.get("workspace") or "")
+            summary = str(event.get("summary") or event.get("kind") or "update")
+            actions.append(
+                Action(
+                    title=f"{agent} · {summary[:54]}",
+                    meta=f"{workspace} · recente agentupdate".strip(" ·"),
+                    stamp="KLAAR" if event.get("kind") == "done" else "BEZIG",
+                    keywords=f"recent event agent feed {agent} {workspace} {summary}",
+                    run=lambda _q: self._do_open(f"{DASHBOARD.rstrip('/')}/#agents"),
+                )
+            )
+
+        desktop_running = str(vault.desktop.get("state") or "") == "running"
         actions.extend(
             [
+                Action(
+                    title="Stuur taak naar Commander",
+                    meta="typ je opdracht en druk op Enter",
+                    stamp="TAAK",
+                    keywords="commander agent opdracht taak start",
+                    needs_text=True,
+                    run=lambda q: self._do_task(q, str(api.HOME)),
+                ),
+                Action(
+                    title="Voeg toe aan clipboard",
+                    meta="typ tekst en kies deze actie",
+                    stamp="TAAK",
+                    keywords="clipboard klembord toevoegen add tekst",
+                    needs_text=True,
+                    run=lambda q: self._do_api(
+                        lambda: api.clipboard_add(q),
+                        "Toegevoegd aan clipboard",
+                    ),
+                ),
+                Action(
+                    title="Stop desktop" if desktop_running else "Start desktop",
+                    meta="webtop op poort 3000",
+                    stamp="BEZIG" if desktop_running else "STIL",
+                    keywords="desktop webtop start stop 3000",
+                    run=lambda _q, verb="stop" if desktop_running else "start": self._do_api(
+                        lambda: api.desktop_action(verb),
+                        "Desktop gestopt" if verb == "stop" else "Desktop gestart",
+                    ),
+                ),
+                Action(
+                    title="Haal gedeelde bestanden op",
+                    meta=f"{vault.share_sync.get('pendingFiles', 0)} wijzigingen wachten",
+                    stamp="STIL",
+                    keywords="share sync pull ophalen bestanden",
+                    run=lambda _q: self._do_api(
+                        lambda: api.share_sync_action("pull"),
+                        "Gedeelde bestanden opgehaald",
+                    ),
+                ),
+                Action(
+                    title="Deel lokale bestanden",
+                    meta="push naar de gedeelde map",
+                    stamp="STIL",
+                    keywords="share sync push delen bestanden",
+                    run=lambda _q: self._do_api(
+                        lambda: api.share_sync_action("push"),
+                        "Lokale bestanden gedeeld",
+                    ),
+                ),
                 Action(
                     title="Open ops",
                     meta="joep-ops · herdr agents en pulse",
@@ -362,12 +454,12 @@ class CommandBar:
 
     def _refilter(self) -> None:
         query = self._query()
-        matched = [a for a in self._actions if a.matches(query)]
+        matched = rank_actions(self._actions, query, MAX_ROWS)
 
         # Vrije tekst: geen match of duidelijk een zin → agent starten met prompt.
         if query and (not matched or " " in query):
             free = Action(
-                title=f"Start agent met: \u201c{query}\u201d",
+                title=f'Start agent met: "{query}"',
                 meta="cursor-agent thuis · via commander",
                 stamp="TAAK",
                 keywords="",
@@ -412,6 +504,8 @@ class CommandBar:
         box.get_style_context().add_class("chefbar-bar-row")
         if selected:
             box.get_style_context().add_class("selected")
+        if action.destructive:
+            box.get_style_context().add_class("destructive")
 
         stamp = Gtk.Label(label=action.stamp)
         ctx = stamp.get_style_context()
@@ -430,6 +524,9 @@ class CommandBar:
             meta.set_ellipsize(Pango.EllipsizeMode.END)
             col.pack_start(meta, False, False, 0)
         box.pack_start(col, True, True, 0)
+        shortcut = Gtk.Label(label=action.shortcut)
+        shortcut.get_style_context().add_class("chefbar-shortcut")
+        box.pack_end(shortcut, False, False, 0)
 
         ebox.add(box)
         ebox.connect("button-press-event", lambda *_a, a=action: self._run_action(a))
@@ -487,7 +584,7 @@ class CommandBar:
             if row.provider == "cursor" and row.active_label:
                 parts.append(f"Cursor: {row.active_label}")
                 break
-        self.status_lab.set_text("  ·  ".join(parts) if parts else "sync…")
+        self.status_lab.set_text("  ·  ".join(parts) if parts else "Nog niet ververst")
 
     # -- selectie ----------------------------------------------------------------
 
@@ -557,9 +654,36 @@ class CommandBar:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _do_switch(self, account_id: str, label: str) -> None:
+    def _do_api(self, fn: Callable[[], dict | None], success: str) -> None:
         def worker() -> None:
-            ok = api.switch_account(account_id) is not None
+            result = fn()
+            if result is None:
+                notify("Dat lukte niet", "Vault-API gaf geen bruikbaar antwoord", status="error")
+            else:
+                notify(success, "", status="ok")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _copy_text(self, text: str) -> None:
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(text, -1)
+        clipboard.store()
+        notify("Gekopieerd", text[:60], status="ok")
+
+    def _do_switch(
+        self,
+        account_id: str,
+        label: str,
+        source: str,
+        driver: str | None,
+    ) -> None:
+        def worker() -> None:
+            ok = api.switch_account(
+                account_id,
+                source,
+                self.data.vault.revision,
+                driver=driver,
+            ) is not None
             if ok:
                 notify(f"Je werkt nu als {label}.", "", status="ok")
             else:

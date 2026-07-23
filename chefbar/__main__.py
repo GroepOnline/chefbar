@@ -28,7 +28,7 @@ def _setup_logging() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _setup_logging()
-    parser = argparse.ArgumentParser(description="ChefBar 2.0 — ChefGroep OS tray panel")
+    parser = argparse.ArgumentParser(description="ChefBar 3.0 — Raycast-stijl ChefGroep agent bar")
     parser.add_argument(
         "--show-panel",
         action="store_true",
