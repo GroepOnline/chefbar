@@ -1,7 +1,7 @@
 # ChefBar 3.0
 
-Raycast-stijl command palette + tray voor ChefGroep OS (GNOME Shell / Wayland),
-in de "Signaal, warm"-designtaal (`.ulpi/design/DESIGN.md`).
+Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland), in de
+"Signaal · Huly"-designtaal (`.ulpi/design/DESIGN.md`).
 
 ## Stackbeslissing
 
@@ -29,7 +29,7 @@ Een parallelle Electron/Tauri-app zou koude start en dubbele indicators kosten.
    - share-sync: status / pull / push
    - status / fleet / agents + `GET /api/agents/events` als recente feed
 3. **Agent-interactief** — watcher-suggesties, recente events, snelle "stuur taak naar Commander".
-4. **Signaal tokens** — Archivo display, Source Sans 3 interface, IBM Plex Mono data; radius 0/6/10; lichte basis + donker via systeemvoorkeur.
+4. **Signaal · Huly tokens** — Inter interface, IBM Plex Mono display/data; radius 12/8/14; void OLED donker als standaard.
 
 CRM/deals blijft bewust buiten deze app.
 
