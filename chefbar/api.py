@@ -16,12 +16,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import auth
+from .endpoints import PROFILE
+from . import security
+
 log = logging.getLogger("chefbar.api")
 
 HOME = Path.home()
 DEFAULT_ENV = HOME / "Documents/Github/OnlineChefGroep/chefgroep-vault/docker/.env"
-VAULT_API = os.environ.get("CHEFBAR_VAULT_API", "http://127.0.0.1:8321/api").rstrip("/")
+VAULT_API = PROFILE.vault_api.rstrip("/")
 ENV_FILE = Path(os.environ.get("CHEFBAR_ENV_FILE", str(DEFAULT_ENV)))
+_POLICY = security.POLICY.with_profile_hosts(*PROFILE.all_urls())
 WATCHDOG_STATE = Path(
     os.environ.get(
         "CHEFBAR_WATCHDOG_STATE",
@@ -142,18 +147,7 @@ class Snapshot:
 
 
 def read_api_token() -> str | None:
-    env_token = os.environ.get("CHEF_VAULT_API_TOKEN") or os.environ.get(
-        "CHEFBAR_VAULT_TOKEN"
-    )
-    if env_token:
-        return env_token.strip()
-    try:
-        for line in ENV_FILE.read_text().splitlines():
-            if line.startswith("CHEF_VAULT_API_TOKEN="):
-                return line.split("=", 1)[1].strip().strip("'\"")
-    except OSError:
-        pass
-    return None
+    return auth._read_bearer()
 
 
 def api_request(
@@ -163,36 +157,67 @@ def api_request(
     timeout: float = 5.0,
     headers: dict[str, str] | None = None,
 ) -> dict | list | None:
-    token = read_api_token()
     url_path = path if path.startswith("/") else f"/{path}"
     data = None
-    request_headers = {"Accept": "application/json"}
-    if token:
-        request_headers["Authorization"] = f"Bearer {token}"
+    request_headers = auth.get_headers(json_body=body is not None)
     if headers:
         request_headers.update(headers)
     if body is not None:
         data = json.dumps(body).encode()
-        request_headers["Content-Type"] = "application/json"
+    try:
+        url = security.safe_join(VAULT_API, url_path, policy=_POLICY)
+    except ValueError as exc:
+        log.warning("API URL geweigerd: %s", exc)
+        return None
     req = urllib.request.Request(
-        f"{VAULT_API}{url_path}",
+        url,
         data=data,
         method=method,
         headers=request_headers,
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with security.safe_urlopen(req, timeout=timeout, policy=_POLICY) as resp:
             raw = resp.read().decode()
             if not raw:
                 return {}
             return json.loads(raw)
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
+        detail = exc.read().decode(errors="replace")[:200]
         log.warning("API %s %s antwoordde %s: %s", method, url_path, exc.code, detail)
         return None
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, ValueError) as exc:
-        log.warning("API %s %s faalde: %s", method, url_path, exc)
+        log.warning("API %s %s faalde (%s): %s", method, url_path, PROFILE.label("vaultApi"), exc)
         return None
+
+
+def fetch_connector_events(connector_id: str = "ops", limit: int = 50) -> list[dict[str, Any]]:
+    """Vault-first connector feed (share/ops/log/session). Empty if unsupported."""
+    data = api_request(f"/connectors/{connector_id}/events?limit={int(limit)}")
+    if isinstance(data, dict) and isinstance(data.get("events"), list):
+        return [e for e in data["events"] if isinstance(e, dict)]
+    if isinstance(data, list):
+        return [e for e in data if isinstance(e, dict)]
+    return []
+
+
+def fetch_opencodex_status() -> dict[str, Any] | None:
+    data = api_request("/opencodex/status")
+    if isinstance(data, dict):
+        return data
+    data = api_request("/opencodex")
+    return data if isinstance(data, dict) else None
+
+
+def fetch_sessions() -> list[dict[str, Any]]:
+    data = api_request("/connectors/session/events?limit=20")
+    if isinstance(data, dict) and isinstance(data.get("events"), list):
+        return [e for e in data["events"] if isinstance(e, dict)]
+    data = api_request("/sessions")
+    if isinstance(data, dict) and isinstance(data.get("sessions"), list):
+        return [e for e in data["sessions"] if isinstance(e, dict)]
+    if isinstance(data, list):
+        return [e for e in data if isinstance(e, dict)]
+    return []
 
 
 def switch_account(
@@ -573,6 +598,9 @@ def fetch_snapshot() -> Snapshot:
     snap.clipboard = list(clipboard.get("items") or []) if isinstance(clipboard, dict) else []
     agent_events = results.get("agent_events")
     snap.events = list(agent_events.get("events") or []) if isinstance(agent_events, dict) else []
+    connector_ops = fetch_connector_events("ops", limit=8)
+    if connector_ops:
+        snap.events = connector_ops + snap.events
     snap.desktop = results.get("desktop") if isinstance(results.get("desktop"), dict) else {}
     snap.share_sync = (
         results.get("share_sync") if isinstance(results.get("share_sync"), dict) else {}

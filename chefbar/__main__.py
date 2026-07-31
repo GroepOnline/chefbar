@@ -40,17 +40,32 @@ def main(argv: list[str] | None = None) -> int:
         help="Open de command-bar (via de lopende tray, anders standalone)",
     )
     parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Controleer PROFILE HTTPS-doelen (DNS/TLS/auth/allowlist)",
+    )
+    parser.add_argument(
         "--version",
         action="store_true",
         help="Print versie en exit",
     )
     args = parser.parse_args(argv)
 
+    if args.doctor:
+        from .doctor import run_doctor
+
+        return run_doctor()
+
     if args.version:
         from . import __version__
 
         print(f"chefbar {__version__}")
         return 0
+
+    if args.doctor:
+        from .doctor import run_doctor
+
+        return run_doctor()
 
     if args.bar:
         # Snelle route: vraag de lopende tray de bar te openen (geen GTK nodig).

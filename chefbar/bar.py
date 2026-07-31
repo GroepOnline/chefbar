@@ -20,21 +20,24 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from . import api, ops
+from . import api, motion, ops, sessions
+from .endpoints import PROFILE
 from .palette import Action, rank_actions
 from .panel import load_css, notify, open_url
 
 log = logging.getLogger("chefbar.bar")
 
-DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
-DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
-OPS_URL = os.environ.get("CHEFBAR_OPS_API", "http://127.0.0.1:10101")
-BAR_WIDTH = int(os.environ.get("CHEFBAR_BAR_WIDTH", "640"))
-MAX_ROWS = 8
+DASHBOARD = PROFILE.dashboard
+DESKTOP_URL = PROFILE.desktop
+OPS_URL = PROFILE.ops_api
+OPS_LABEL = PROFILE.label("opsApi")
+
+# SSOT (config/ops-url.json): canoniek Joep Ops-adres, fallback voor OPS_PORT_LABEL.
+OPS_SSOT_BASE = "http://127.0.0.1:10101"
 
 
 def _ops_port_label(ops_url: str = OPS_URL) -> str:
-    """Leid poort af uit CHEFBAR_OPS_API/OPS_URL; fallback 10101 bij parse-fout."""
+    """Leid poort af uit OPS_URL; SSOT-fallback bij parse-fout."""
     try:
         parsed = urlparse(ops_url.strip())
         if parsed.port is not None:
@@ -45,10 +48,12 @@ def _ops_port_label(ops_url: str = OPS_URL) -> str:
             return "80"
     except ValueError:
         pass
-    return "10101"
+    return OPS_SSOT_BASE.rsplit(":", 1)[-1]
 
 
 OPS_PORT_LABEL = _ops_port_label()
+BAR_WIDTH = int(os.environ.get("CHEFBAR_BAR_WIDTH", "640"))
+MAX_ROWS = 8
 
 
 STAMP_CLASS = {
@@ -155,23 +160,53 @@ class CommandBar:
         if self.watcher is not None:
             self.data.herdr = self.watcher.ops_snapshot
         if self.get_vault is not None:
-            self.data.vault = self.get_vault()
+            # Fetch vault data off the UI thread; render with what we have and
+            # refresh the catalog when the snapshot arrives (remote profiles
+            # can take up to the 5s API timeout).
+            def _fetch() -> None:
+                try:
+                    vault = self.get_vault()
+                except Exception:
+                    vault = None
+                if vault is not None:
+                    GLib.idle_add(self._apply_vault, vault)
+
+            threading.Thread(target=_fetch, daemon=True).start()
         self.entry.set_text("")
         self._rebuild_catalog()
         self._render_suggestions()
         self._refilter()
         self._render_status()
+        if motion.motion_enabled():
+            self.window.set_opacity(0.0)
         self._position()
+        self._open = True
+
+    def _apply_vault(self, vault: api.Snapshot) -> None:
+        self.data.vault = vault
+        if self._open:
+            self._rebuild_catalog()
+            self._refilter()
+            self._render_status()
+        motion.fade_in(self.window, duration_ms=motion.PANEL_MS)
         self.window.present()
         self.entry.grab_focus()
-        self._open = True
         self._refresh_async()
 
     def hide(self) -> None:
-        self.window.hide()
+        if not self._open:
+            return
         self._open = False
-        if self.on_hide:
-            self.on_hide()
+
+        def _after() -> None:
+            if self.on_hide:
+                self.on_hide()
+
+        motion.fade_out(
+            self.window,
+            duration_ms=motion.HOVER_MS,
+            on_hidden=_after,
+        )
 
     def _position(self) -> None:
         display = self.window.get_display()
@@ -363,6 +398,51 @@ class CommandBar:
                 )
             )
 
+        for session in sessions.load_ranked_sessions(vault):
+            action = session.primary_action
+            if action and action[1] == "kater" and not PROFILE.kater_workspace:
+                action = None
+            stamp = "HULP" if session.needs_attention else "BEZIG"
+            title = session.title
+            meta = session.summary or session.source
+            if action:
+                label, kind = action
+                actions.append(
+                    Action(
+                        title=f"{label} · {title[:48]}",
+                        meta=meta,
+                        stamp=stamp,
+                        keywords=f"sessie session {session.source} {session.id} {title}",
+                        run=lambda _q, s=session, k=kind: self._do_session_action(s, k),
+                    )
+                )
+
+        ocx = api.fetch_opencodex_status()
+        if ocx and not ocx.get("error"):
+            active = ocx.get("activeAccount") or {}
+            email = active.get("email") or active.get("id") or "OpenCodex"
+            actions.append(
+                Action(
+                    title=f"OpenCodex · {email}",
+                    meta="dashboard en providerstatus",
+                    stamp="STIL",
+                    keywords="opencodex ocx codex dashboard",
+                    run=lambda _q: self._do_open_ocx(),
+                )
+            )
+            actions.append(
+                Action(
+                    title="Ververs OpenCodex status",
+                    meta="via vault-api",
+                    stamp="STIL",
+                    keywords="opencodex refresh ocx",
+                    run=lambda _q: self._do_api(
+                        lambda: api.api_request("/opencodex/refresh", method="POST"),
+                        "OpenCodex ververst",
+                    ),
+                )
+            )
+
         desktop_running = str(vault.desktop.get("state") or "") == "running"
         actions.extend(
             [
@@ -387,9 +467,9 @@ class CommandBar:
                 ),
                 Action(
                     title="Stop desktop" if desktop_running else "Start desktop",
-                    meta="webtop op poort 3000",
+                    meta="webtop · remote desktop",
                     stamp="BEZIG" if desktop_running else "STIL",
-                    keywords="desktop webtop start stop 3000",
+                    keywords="desktop webtop start stop",
                     run=lambda _q, verb="stop" if desktop_running else "start": self._do_api(
                         lambda: api.desktop_action(verb),
                         "Desktop gestopt" if verb == "stop" else "Desktop gestart",
@@ -417,23 +497,23 @@ class CommandBar:
                 ),
                 Action(
                     title="Open ops",
-                    meta="joep-ops · herdr agents en pulse",
+                    meta=f"joep-ops · {OPS_LABEL}",
                     stamp="STIL",
-                    keywords=f"open ops joep-ops {OPS_PORT_LABEL} herdr overzicht",
+                    keywords=f"open ops joep-ops {OPS_LABEL} herdr overzicht",
                     run=lambda _q: self._do_open(OPS_URL),
                 ),
                 Action(
                     title="Open dashboard (Thuis)",
                     meta="vault dashboard · alles in één oogopslag",
                     stamp="STIL",
-                    keywords="open dashboard thuis vault 8080",
+                    keywords="open dashboard thuis vault",
                     run=lambda _q: self._do_open(DASHBOARD),
                 ),
                 Action(
                     title="Open desktop",
-                    meta="webtop op :3000",
+                    meta="webtop · remote desktop",
                     stamp="STIL",
-                    keywords="open desktop webtop 3000",
+                    keywords="open desktop webtop",
                     run=lambda _q: self._do_open(DESKTOP_URL),
                 ),
                 Action(
@@ -693,6 +773,35 @@ class CommandBar:
 
     def _do_open(self, url: str) -> None:
         open_url(url)
+
+    def _do_open_ocx(self) -> None:
+        url = PROFILE.opencodex_dashboard
+        if url:
+            self._do_open(url)
+            return
+        self._do_open(f"{DASHBOARD.rstrip('/')}/#opencodex")
+
+    def _do_session_action(self, session: sessions.Session, kind: str) -> None:
+        if kind == "kater":
+            base = PROFILE.kater_workspace
+            kid = session.attach.kater_session_id
+            if base and kid:
+                self._do_open(f"{base.rstrip('/')}/{kid}")
+                return
+            return
+        if kind == "focus" and session.attach.focus:
+            self._do_bg(lambda: ops.focus_target(session.attach.focus or ""), None)
+            return
+        if kind == "workspace" and session.attach.workspace_url:
+            self._do_open(session.attach.workspace_url)
+            return
+        if kind == "browser" and session.attach.browser:
+            self._do_open(session.attach.browser)
+            return
+        if kind == "evidence" and session.attach.evidence_url:
+            self._do_open(session.attach.evidence_url)
+            return
+        notify("Sessie openen lukte niet", session.title, status="error")
 
 
 def run_bar_only() -> None:

@@ -20,12 +20,34 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from . import api
+from .endpoints import PROFILE
+from . import security
 
 log = logging.getLogger("chefbar.ops")
 
 OPS_API = os.environ.get("CHEFBAR_OPS_API", "http://127.0.0.1:10101").rstrip("/")
 WATCH_INTERVAL = int(os.environ.get("CHEFBAR_WATCH_REFRESH", "20"))
 SUGGESTION_TTL = 15 * 60  # seconden dat een suggestie relevant blijft
+_POLICY = security.POLICY.with_profile_hosts(*PROFILE.all_urls())
+
+
+def _ops_get(path: str, timeout: float = 4.0) -> dict | None:
+    try:
+        url = security.safe_join(OPS_API, path, policy=_POLICY)
+        req = urllib.request.Request(url, headers=api.auth.get_headers())
+        with security.safe_urlopen(req, timeout=timeout, policy=_POLICY) as resp:
+            return json.loads(resp.read().decode())
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError, OSError, ValueError) as exc:
+        log.debug("ops GET %s faalde (%s): %s", path, PROFILE.label("opsApi"), exc)
+        return None
+
+
+def fetch_ops_events_vault_first(limit: int = 40) -> list[dict[str, Any]]:
+    """Prefer vault connector feed; fall back to empty (ops snapshot remains separate)."""
+    events = api.fetch_connector_events("ops", limit=limit)
+    if events:
+        return events
+    return api.fetch_connector_events("session", limit=limit)
 
 
 @dataclass
@@ -70,15 +92,6 @@ class Suggestion:
     @property
     def fresh(self) -> bool:
         return (time.time() - self.created) < SUGGESTION_TTL
-
-
-def _ops_get(path: str, timeout: float = 4.0) -> dict | None:
-    try:
-        with urllib.request.urlopen(f"{OPS_API}{path}", timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError) as exc:
-        log.debug("ops GET %s faalde: %s", path, exc)
-        return None
 
 
 def fetch_ops_snapshot() -> OpsSnapshot:
@@ -127,19 +140,26 @@ def focus_target(target: str) -> bool:
     """Focus een herdr agent/terminal; eerst via joep-ops, dan CLI."""
     try:
         body = json.dumps({"target": target}).encode()
+        url = security.safe_join(OPS_API, "/api/focus", policy=_POLICY)
         req = urllib.request.Request(
-            f"{OPS_API}/api/focus",
+            url,
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=api.auth.get_headers(json_body=True),
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with security.safe_urlopen(req, timeout=6, policy=_POLICY) as resp:
             payload = json.loads(resp.read().decode() or "{}")
             if payload.get("ok"):
                 return True
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError, OSError):
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError, OSError, ValueError):
         pass
     return _run_herdr(["agent", "focus", target])
+
+
+def _open_dashboard() -> None:
+    from .panel import open_url
+
+    open_url(PROFILE.dashboard)
 
 
 def send_prompt(agent: HerdrAgent, text: str) -> bool:
@@ -292,15 +312,11 @@ class Watcher:
             self._push(
                 Suggestion(
                     key="vault:down",
-                    title="Vault-API reageert niet (poort 8321)",
+                    title=f"Vault-API reageert niet ({PROFILE.label('vaultApi')})",
                     meta="Kijk op het dashboard wat er aan de hand is",
                     stamp="FOUT",
                     action_label="Dashboard",
-                    run=lambda: subprocess.Popen(
-                        ["xdg-open", os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    ),
+                    run=_open_dashboard,
                 ),
                 notify_status="error",
             )
@@ -337,11 +353,7 @@ class Watcher:
                     meta="Kijk even op het dashboard wat er stilstaat",
                     stamp="FOUT",
                     action_label="Dashboard",
-                    run=lambda: subprocess.Popen(
-                        ["xdg-open", os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    ),
+                    run=_open_dashboard,
                 ),
                 notify_status="error",
             )

@@ -1,0 +1,9 @@
+{
+  "name": "chefgroep-online",
+  "vaultApi": "https://vault-api.chefgroep.online/api",
+  "opsApi": "https://ops.chefgroep.online",
+  "dashboard": "https://vault.chefgroep.online",
+  "desktop": "https://desktop.chefgroep.online",
+  "opencodexDashboard": "https://opencodex.chefgroep.online",
+  "katerWorkspace": "https://kater.chefgroep.online/agents/"
+}

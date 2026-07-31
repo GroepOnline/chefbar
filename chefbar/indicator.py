@@ -17,14 +17,15 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 from . import api, ipc, ops
 from .bar import CommandBar
+from .endpoints import PROFILE
 from .panel import ChefBarPanel, open_url
 
 log = logging.getLogger("chefbar.indicator")
 
 ICONS_DIR = Path(__file__).resolve().parent / "icons"
 BACKGROUND_REFRESH = int(os.environ.get("CHEFBAR_REFRESH", "60"))
-DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
-DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
+DASHBOARD = PROFILE.dashboard
+DESKTOP_URL = PROFILE.desktop
 
 TRAY_STATES = ("stil", "bezig", "hulp", "fout", "offline")
 

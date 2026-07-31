@@ -1,0 +1,10 @@
+{
+  "name": "control-shadow-tailnet-optional",
+  "notes": "Optional lab/bypass only — not required for product. Prefer endpoints.example.json (*.chefgroep.online + Cloudflare Access).",
+  "vaultApi": "https://chef-control-01.example.ts.net/api",
+  "opsApi": "http://100.64.0.10:10101",
+  "dashboard": "https://chef-control-01.example.ts.net/",
+  "desktop": "http://100.64.0.20:3000",
+  "opencodexDashboard": "https://chef-control-01.example.ts.net/opencodex/",
+  "katerWorkspace": "https://kater.example.ts.net/agents/"
+}
