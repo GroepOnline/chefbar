@@ -14,7 +14,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
-from . import api
+from . import api, security
+from .endpoints import PROFILE
 
 log = logging.getLogger("chefbar.panel")
 
@@ -22,8 +23,13 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 STYLES_PATH = PACKAGE_DIR / "styles.css"
 DARK_STYLES_PATH = PACKAGE_DIR / "styles-dark.css"
 
-DASHBOARD = os.environ.get("CHEFBAR_DASHBOARD", "http://127.0.0.1:8080")
-DESKTOP_URL = os.environ.get("CHEFBAR_DESKTOP", "http://127.0.0.1:3000")
+# GTK3 negeert `@media (prefers-reduced-motion: reduce)`; het contract loopt via
+# de GTK-instelling gtk-enable-animations.
+REDUCED_MOTION_CSS = b"* { transition-duration: 1ms; animation-duration: 1ms; }"
+
+_POLICY = security.POLICY.with_profile_hosts(*PROFILE.all_urls())
+DASHBOARD = PROFILE.dashboard
+DESKTOP_URL = PROFILE.desktop
 PANEL_REFRESH = int(os.environ.get("CHEFBAR_PANEL_REFRESH", "30"))
 PANEL_WIDTH = int(os.environ.get("CHEFBAR_PANEL_WIDTH", "380"))
 
@@ -57,6 +63,17 @@ def load_css() -> None:
             )
         except GLib.Error as exc:
             log.warning("Donker thema laden faalde: %s", exc)
+    if settings and not settings.get_property("gtk-enable-animations"):
+        motion_provider = Gtk.CssProvider()
+        try:
+            motion_provider.load_from_data(REDUCED_MOTION_CSS)
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(),
+                motion_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
+            )
+        except GLib.Error as exc:
+            log.warning("Reduced motion laden faalde: %s", exc)
 
 
 def notify(title: str, body: str, status: str = "info") -> None:
@@ -73,7 +90,10 @@ def notify(title: str, body: str, status: str = "info") -> None:
 
 
 def open_url(url: str) -> None:
-    subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        security.open_browser_url(url, policy=_POLICY)
+    except (OSError, ValueError) as exc:
+        log.warning("URL openen geweigerd: %s (%s)", url, exc)
 
 
 def _dot(level: str = "ok", pulse: bool = False) -> Gtk.Label:

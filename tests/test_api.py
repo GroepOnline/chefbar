@@ -22,16 +22,16 @@ class FakeResponse:
 
 
 class ApiTests(unittest.TestCase):
-    @patch.object(api, "read_api_token", return_value=None)
-    @patch.object(api.urllib.request, "urlopen")
+    @patch.object(api.auth, "_read_bearer", return_value=None)
+    @patch.object(api.security, "safe_urlopen")
     def test_get_works_when_optional_token_is_unset(self, urlopen, _token) -> None:
         urlopen.return_value = FakeResponse({"ok": True})
         self.assertEqual(api.api_request("/status"), {"ok": True})
         request = urlopen.call_args.args[0]
         self.assertIsNone(request.get_header("Authorization"))
 
-    @patch.object(api, "read_api_token", return_value="secret")
-    @patch.object(api.urllib.request, "urlopen")
+    @patch.object(api.auth, "_read_bearer", return_value="secret")
+    @patch.object(api.security, "safe_urlopen")
     @patch.object(api.uuid, "uuid4", return_value="fixed-id")
     def test_switch_uses_canonical_endpoint_and_revision(
         self, _uuid, urlopen, _token
