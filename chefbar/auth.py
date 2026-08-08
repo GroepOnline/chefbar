@@ -30,7 +30,7 @@ def _read_bearer() -> str | None:
     legacy = Path(
         os.environ.get(
             "CHEFBAR_ENV_FILE",
-            str(Path.home() / "Documents/Github/OnlineChefGroep/chefgroep-vault/docker/.env"),
+            str(Path.home() / "Documents/Github/GroepOnline/chefgroep-vault/docker/.env"),
         )
     )
     try:

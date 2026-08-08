@@ -23,7 +23,7 @@ from . import security
 log = logging.getLogger("chefbar.api")
 
 HOME = Path.home()
-DEFAULT_ENV = HOME / "Documents/Github/OnlineChefGroep/chefgroep-vault/docker/.env"
+DEFAULT_ENV = HOME / "Documents/Github/GroepOnline/chefgroep-vault/docker/.env"
 VAULT_API = PROFILE.vault_api.rstrip("/")
 ENV_FILE = Path(os.environ.get("CHEFBAR_ENV_FILE", str(DEFAULT_ENV)))
 _POLICY = security.POLICY.with_profile_hosts(*PROFILE.all_urls())
