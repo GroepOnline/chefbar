@@ -1,20 +1,23 @@
 [Unit]
-Description=ChefBar 3.0 — Raycast-stijl ChefGroep agent bar
+Description=ChefBar 3.0, ChefGroep agent bar (Rust binary)
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
+# User-unit voor de ingelogde GUI-gebruiker (bijv. joep). User= is bewust
+# niet gezet: systemd weigert User= in user-units (exit 216/GROUP).
 Type=simple
 ExecStart=%h/.local/bin/chefbar
-Restart=on-failure
+Restart=always
 RestartSec=5
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-Environment=CHEFBAR_VAULT_API=http://127.0.0.1:8321/api
-Environment=CHEFBAR_OPS_API=http://127.0.0.1:10101
-Environment=CHEFBAR_DASHBOARD=http://127.0.0.1:8080
-Environment=CHEFBAR_DESKTOP=http://127.0.0.1:3000
-Environment=CHEFBAR_PANEL_REFRESH=30
-Environment=CHEFBAR_REFRESH=60
+# Endpoint-profiel is de SSOT voor vault/ops/dashboard/desktop; env-warden
+# winnen per veld (zie src/config.rs).
+Environment=CHEFBAR_ENDPOINT_PROFILE=%h/.config/chefbar/endpoints.json
+# IPC-socket van de app zit op $XDG_RUNTIME_DIR/chefbar.sock; RuntimeDirectory
+# maakt de per-user runtime-map $XDG_RUNTIME_DIR/chefbar.
+RuntimeDirectory=chefbar
+RuntimeDirectoryMode=0755
 
 [Install]
 WantedBy=graphical-session.target
