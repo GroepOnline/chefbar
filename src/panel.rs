@@ -131,11 +131,13 @@ impl Panel {
         let title = gtk::Label::new(Some("ChefBar"));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
+        title.set_ellipsize(pango::EllipsizeMode::End);
         title.style_context().add_class("chefbar-title");
         title_block.pack_start(&title, false, false, 0);
         let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} devin-skin"));
         title_sub.set_halign(gtk::Align::Start);
         title_sub.set_xalign(0.0);
+        title_sub.set_ellipsize(pango::EllipsizeMode::End);
         title_sub.style_context().add_class("chefbar-title-sub");
         title_block.pack_start(&title_sub, false, false, 0);
         header.pack_start(&title_block, false, false, 0);
@@ -199,7 +201,31 @@ impl Panel {
             glib::Propagation::Proceed
         });
 
-        // ---- Content (scrolled) ----
+        // ---- Zoek-input (filtert de hele surface) ----
+        let search_wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        search_wrap.style_context().add_class("chefbar-search-wrap");
+        let search = gtk::SearchEntry::new();
+        search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies…"));
+        search.style_context().add_class("chefbar-search");
+        search_wrap.pack_start(&search, false, false, 0);
+        root.pack_start(&search_wrap, false, false, 0);
+
+        // "/" → focus search (Devin/Raycast-geest).
+        {
+            let search_focus = search.clone();
+            window.connect_key_press_event(move |_, event| {
+                if event.keyval() == gdk::keys::constants::slash {
+                    // When search already has focus, let the keystroke type normally.
+                    if !search_focus.has_focus() {
+                        search_focus.grab_focus();
+                        return glib::Propagation::Stop;
+                    }
+                }
+                glib::Propagation::Proceed
+            });
+        }
+
+        // ---- Content ----
         let scroller = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         scroller.set_min_content_height(480);
@@ -355,6 +381,9 @@ fn render_into(
         (snap, ops)
     };
     let profile = crate::config::global_profile().clone();
+    // Cache eenmalig (vermijd dubbele alloc + Url::parse per render).
+    let vault_label = profile.label("vaultApi");
+    let fetched = snap.fetched_label();
     let sessions = crate::sessions::load_ranked_sessions(&snap.events);
     let (state, line) = snap.tray_state();
     let q = query.to_lowercase();
@@ -435,6 +464,8 @@ fn render_into(
     badge_row.set_margin_start(20);
     badge_row.set_margin_end(20);
     let badge = gtk::Label::new(Some(&line));
+    badge.set_xalign(0.0);
+    badge.set_ellipsize(pango::EllipsizeMode::End);
     let badge_class = match state.as_str() {
         "offline" | "fout" => "error",
         "hulp" => "warn",
@@ -446,10 +477,12 @@ fn render_into(
     badge_row.pack_start(&badge, false, false, 0);
     let updated = gtk::Label::new(Some(&format!(
         "{} · {}",
-        profile.label("vaultApi"),
-        snap.fetched_label()
+        vault_label,
+        fetched
     )));
     updated.set_halign(gtk::Align::End);
+    updated.set_xalign(1.0);
+    updated.set_ellipsize(pango::EllipsizeMode::End);
     updated.style_context().add_class("chefbar-card-meta");
     badge_row.pack_end(&updated, false, false, 0);
     content.pack_start(&badge_row, false, false, 0);
@@ -462,6 +495,7 @@ fn render_into(
         let empty = gtk::Label::new(Some("Geen acties voor deze zoekterm"));
         empty.set_halign(gtk::Align::Start);
         empty.set_xalign(0.0);
+        empty.set_ellipsize(pango::EllipsizeMode::End);
         empty.style_context().add_class("chefbar-card-meta");
         group.pack_start(&empty, false, false, 0);
     } else if actions_visible.is_empty() {
@@ -566,10 +600,13 @@ fn render_into(
         let name = gtk::Label::new(Some(&row.label));
         name.set_halign(gtk::Align::Start);
         name.set_xalign(0.0);
+        name.set_ellipsize(pango::EllipsizeMode::End);
         name.style_context().add_class("chefbar-card-title");
         top.pack_start(&name, true, true, 0);
         let active = gtk::Label::new(Some(&row.usage_text));
         active.set_halign(gtk::Align::End);
+        active.set_xalign(1.0);
+        active.set_ellipsize(pango::EllipsizeMode::End);
         active.style_context().add_class("chefbar-card-meta");
         top.pack_end(&active, false, false, 0);
         card.pack_start(&top, false, false, 0);
@@ -593,6 +630,8 @@ fn render_into(
                 row.tokens.unwrap_or(0) / 1_000_000
             )));
             nums.set_halign(gtk::Align::End);
+            nums.set_xalign(1.0);
+            nums.set_ellipsize(pango::EllipsizeMode::End);
             nums.style_context().add_class("chefbar-card-meta");
             bottom.pack_end(&nums, false, false, 0);
             card.pack_start(&bottom, false, false, 0);
@@ -604,6 +643,7 @@ fn render_into(
         let empty = gtk::Label::new(Some("Geen provider-data"));
         empty.set_halign(gtk::Align::Start);
         empty.set_xalign(0.0);
+        empty.set_ellipsize(pango::EllipsizeMode::End);
         empty.style_context().add_class("chefbar-card-meta");
         empty.set_margin_start(16);
         empty.set_margin_top(8);
@@ -647,7 +687,10 @@ fn render_into(
             let summary = gtk::Label::new(Some(&agent.summary));
             summary.set_halign(gtk::Align::Start);
             summary.set_xalign(0.0);
+            summary.set_line_wrap(true);
+            summary.set_lines(2);
             summary.set_ellipsize(pango::EllipsizeMode::End);
+            summary.set_max_width_chars(64);
             summary.style_context().add_class("chefbar-card-meta");
             text.pack_start(&summary, false, false, 0);
         }
@@ -660,6 +703,7 @@ fn render_into(
         let empty = gtk::Label::new(Some("Geen agents actief"));
         empty.set_halign(gtk::Align::Start);
         empty.set_xalign(0.0);
+        empty.set_ellipsize(pango::EllipsizeMode::End);
         empty.style_context().add_class("chefbar-card-meta");
         empty.set_margin_start(16);
         empty.set_margin_top(8);
@@ -685,7 +729,10 @@ fn render_into(
                 let meta = gtk::Label::new(Some(&session.summary));
                 meta.set_halign(gtk::Align::Start);
                 meta.set_xalign(0.0);
+                meta.set_line_wrap(true);
+                meta.set_lines(2);
                 meta.set_ellipsize(pango::EllipsizeMode::End);
+                meta.set_max_width_chars(64);
                 meta.style_context().add_class("chefbar-card-meta");
                 row.pack_start(&meta, false, false, 0);
             }
@@ -702,9 +749,11 @@ fn render_into(
         "ChefBar v{} · profiel {} · {}",
         crate::VERSION,
         profile.name,
-        snap.fetched_label()
+        fetched
     )));
     footer_label.set_halign(gtk::Align::Start);
+    footer_label.set_xalign(0.0);
+    footer_label.set_ellipsize(pango::EllipsizeMode::End);
     footer.pack_start(&footer_label, true, true, 0);
     let quit_btn = gtk::Button::with_label("Verbergen");
     quit_btn.style_context().add_class("chefbar-gbtn");
@@ -728,12 +777,14 @@ fn section_title(content: &gtk::Box, title: &str, sub: &str) {
     let label = gtk::Label::new(Some(title));
     label.set_halign(gtk::Align::Start);
     label.set_xalign(0.0);
+    label.set_ellipsize(pango::EllipsizeMode::End);
     label.style_context().add_class("chefbar-section-title");
     content.pack_start(&label, false, false, 0);
     if !sub.is_empty() {
         let sub_label = gtk::Label::new(Some(sub));
         sub_label.set_halign(gtk::Align::Start);
         sub_label.set_xalign(0.0);
+        sub_label.set_ellipsize(pango::EllipsizeMode::End);
         sub_label.style_context().add_class("chefbar-section-sub");
         content.pack_start(&sub_label, false, false, 0);
     }
@@ -775,11 +826,14 @@ fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
     let label = gtk::Label::new(Some(text));
     label.set_halign(gtk::Align::Start);
     label.set_xalign(0.0);
+    label.set_ellipsize(pango::EllipsizeMode::End);
     label.style_context().add_class("chefbar-card-title");
     row.pack_start(&label, true, true, 0);
     if let Some(meta) = meta {
         let meta_label = gtk::Label::new(Some(meta));
         meta_label.set_halign(gtk::Align::End);
+        meta_label.set_xalign(1.0);
+        meta_label.set_ellipsize(pango::EllipsizeMode::End);
         meta_label.style_context().add_class("chefbar-card-meta");
         row.pack_end(&meta_label, false, false, 0);
     }
@@ -805,6 +859,7 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
     let title = gtk::Label::new(Some(&action.title));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
+    title.set_ellipsize(pango::EllipsizeMode::End);
     title.style_context().add_class("chefbar-card-title");
     box_.pack_start(&title, false, false, 0);
 
