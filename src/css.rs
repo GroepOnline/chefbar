@@ -81,10 +81,6 @@ pub fn styles_css(theme: &str) -> String {
   font-family: "General Sans", "Inter", "Cantarell", sans-serif;
   font-size: 13.5px;
 }}
-.chefbar-app * {{
-  outline-style: none;
-  background-clip: padding-box;
-}}
 
 /* Header — custom titlebar (undecorated window) */
 .chefbar-header {{
@@ -149,7 +145,7 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 13px;
   padding: 8px 11px;
 }}
-.chefbar-search:focus, .chefbar-search:focus-within,
+.chefbar-search:focus,
 .chefbar-search entry:focus {{
   border-color: {accent};
   box-shadow: 0 0 0 3px {accent_soft};
