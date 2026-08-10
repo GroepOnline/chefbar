@@ -20,7 +20,10 @@ pub enum UiCommand {
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.
-pub fn start_command_bridge(rx: std::sync::mpsc::Receiver<UiCommand>, dispatcher: Arc<dyn Fn(UiCommand)>) {
+pub fn start_command_bridge(
+    rx: std::sync::mpsc::Receiver<UiCommand>,
+    dispatcher: Arc<dyn Fn(UiCommand)>,
+) {
     glib::timeout_add_local(std::time::Duration::from_millis(60), move || {
         while let Ok(cmd) = rx.try_recv() {
             dispatcher(cmd);
@@ -60,7 +63,11 @@ impl ksni::Tray for ChefTray {
         vec![self.icon.clone()]
     }
     fn tool_tip(&self) -> ksni::ToolTip {
-        let (state, line) = self.shared.read().map(|s| s.tray_state()).unwrap_or_default();
+        let (state, line) = self
+            .shared
+            .read()
+            .map(|s| s.tray_state())
+            .unwrap_or_default();
         let _ = state;
         ksni::ToolTip {
             title: "ChefBar".into(),

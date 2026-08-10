@@ -4,8 +4,8 @@
 //! Alleen opacity-fades: geen bounce, pulse-loops of scroll-theater.
 //! Respecteert gtk-enable-animations (reduced-motion proxy).
 
-use gtk::prelude::*;
 use glib::ControlFlow;
+use gtk::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -32,7 +32,12 @@ fn begin(window: &gtk::Window) -> u32 {
 }
 
 fn is_current(window: &gtk::Window, generation: u32) -> bool {
-    GENERATIONS.lock().unwrap().get(&window_key(window)).copied() == Some(generation)
+    GENERATIONS
+        .lock()
+        .unwrap()
+        .get(&window_key(window))
+        .copied()
+        == Some(generation)
 }
 
 pub fn motion_enabled() -> bool {
@@ -54,20 +59,23 @@ pub fn fade_in(window: &gtk::Window, duration_ms: u32) {
     let step_ms = std::cmp::max(1, duration_ms / FADE_STEPS);
     let window = window.clone();
     let mut step = 0u32;
-    glib::timeout_add_local(std::time::Duration::from_millis(step_ms as u64), move || {
-        if !is_current(&window, generation) {
-            return ControlFlow::Break;
-        }
-        step += 1;
-        let frac = (step as f64 / FADE_STEPS as f64).min(1.0);
-        window.set_opacity(frac);
-        if frac >= 1.0 {
-            window.set_opacity(1.0);
-            ControlFlow::Break
-        } else {
-            ControlFlow::Continue
-        }
-    });
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(step_ms as u64),
+        move || {
+            if !is_current(&window, generation) {
+                return ControlFlow::Break;
+            }
+            step += 1;
+            let frac = (step as f64 / FADE_STEPS as f64).min(1.0);
+            window.set_opacity(frac);
+            if frac >= 1.0 {
+                window.set_opacity(1.0);
+                ControlFlow::Break
+            } else {
+                ControlFlow::Continue
+            }
+        },
+    );
 }
 
 /// Verberg window na een korte opacity-ramp (of instant).
@@ -86,20 +94,23 @@ pub fn fade_out(window: &gtk::Window, duration_ms: u32) {
     }
     let step_ms = std::cmp::max(1, duration_ms / FADE_STEPS);
     let mut step = 0u32;
-    glib::timeout_add_local(std::time::Duration::from_millis(step_ms as u64), move || {
-        if !is_current(&window_clone, generation) {
-            return ControlFlow::Break;
-        }
-        step += 1;
-        let frac = (1.0 - step as f64 / FADE_STEPS as f64).max(0.0);
-        window_clone.set_opacity(frac);
-        if frac <= 0.0 {
-            finish(&window_clone);
-            ControlFlow::Break
-        } else {
-            ControlFlow::Continue
-        }
-    });
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(step_ms as u64),
+        move || {
+            if !is_current(&window_clone, generation) {
+                return ControlFlow::Break;
+            }
+            step += 1;
+            let frac = (1.0 - step as f64 / FADE_STEPS as f64).max(0.0);
+            window_clone.set_opacity(frac);
+            if frac <= 0.0 {
+                finish(&window_clone);
+                ControlFlow::Break
+            } else {
+                ControlFlow::Continue
+            }
+        },
+    );
 }
 
 /// Bereken de zichtbare rij-breedte aan de hand van een fractie (0..1) en de

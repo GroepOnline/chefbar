@@ -71,7 +71,10 @@ pub fn spawn_actor(shared: Shared, vault: Client, ops: Client) -> ActorHandle {
     *REFRESH_TX.lock().unwrap() = Some(tx.clone());
     let poller = Poller { shared, vault, ops };
     let handle = std::thread::spawn(move || poller.run(rx));
-    ActorHandle { tx, thread: Some(handle) }
+    ActorHandle {
+        tx,
+        thread: Some(handle),
+    }
 }
 
 pub struct ActorHandle {
@@ -280,7 +283,9 @@ impl Poller {
         {
             let actual = self.shared.snapshot.read().unwrap().revision;
             let loaded = self.shared.revision.load(Ordering::Relaxed);
-            self.shared.revision.store(actual.max(loaded), Ordering::Relaxed);
+            self.shared
+                .revision
+                .store(actual.max(loaded), Ordering::Relaxed);
         }
     }
 
@@ -302,7 +307,12 @@ impl Poller {
         let client = self.vault.clone();
         let started = Instant::now();
         for (key, path) in paths {
-            let (key, path, tx, client) = (key.to_string(), path.to_string(), tx.clone(), client.clone());
+            let (key, path, tx, client) = (
+                key.to_string(),
+                path.to_string(),
+                tx.clone(),
+                client.clone(),
+            );
             std::thread::spawn(move || {
                 let result = client.get_json(&path);
                 let _ = tx.send((key, result));

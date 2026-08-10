@@ -9,7 +9,7 @@
 
 use crate::actions::{build_actions, Executor, RunSpec};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
-use crate::palette::{Action, rank_actions};
+use crate::palette::{rank_actions, Action};
 use crate::state::Shared;
 use gtk::prelude::*;
 
@@ -295,7 +295,7 @@ fn prompt_for(
     query: &str,
 ) {
     let dialog = gtk::Window::new(gtk::WindowType::Popup);
-    
+
     dialog.set_decorated(false);
     dialog.set_keep_above(true);
 

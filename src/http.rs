@@ -32,7 +32,11 @@ impl Client {
     }
 
     fn url(&self, path: &str) -> Result<String, String> {
-        let url_path = if path.starts_with('/') { path.to_string() } else { format!("/{path}") };
+        let url_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{path}")
+        };
         self.policy.safe_join(&self.base, &url_path)
     }
 
@@ -53,7 +57,11 @@ impl Client {
         run(request.call())
     }
 
-    pub fn post_json(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, ApiError> {
+    pub fn post_json(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, ApiError> {
         self.post_json_headers(path, body, &[])
     }
 

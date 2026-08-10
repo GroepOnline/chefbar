@@ -19,7 +19,9 @@ pub enum RunSpec {
         terminal_id: String,
         pane_id: Option<String>,
     },
-    CreateTask { cwd: String },
+    CreateTask {
+        cwd: String,
+    },
     SwitchAccount {
         account_id: String,
         source: String,
@@ -111,7 +113,10 @@ pub fn build_actions(
         actions.push(task_action(
             format!("Stuur naar {} · {}", agent.name, agent.workspace),
             "typ je opdracht en kies deze regel",
-            format!("stuur send prompt opdracht {} {}", agent.name, agent.workspace),
+            format!(
+                "stuur send prompt opdracht {} {}",
+                agent.name, agent.workspace
+            ),
             RunSpec::SendPrompt {
                 terminal_id: agent.terminal_id.clone(),
                 pane_id: if agent.pane_id.is_empty() {
@@ -258,23 +263,26 @@ pub fn build_actions(
 
     for session in sessions {
         if let Some((label, spec)) = session_open_spec(&session, profile) {
-            let stamp = if session.needs_attention() { "HULP" } else { "BEZIG" };
+            let stamp = if session.needs_attention() {
+                "HULP"
+            } else {
+                "BEZIG"
+            };
             let title: String = session.title.chars().take(48).collect();
             actions.push(action(
                 format!("{label} · {title}"),
                 session.summary.clone(),
                 stamp,
-                format!("sessie session {} {} {}", session.source, session.id, session.title),
+                format!(
+                    "sessie session {} {} {}",
+                    session.source, session.id, session.title
+                ),
                 spec,
             ));
         }
     }
 
-    let desktop_running = snap
-        .desktop
-        .get("state")
-        .and_then(|v| v.as_str())
-        == Some("running");
+    let desktop_running = snap.desktop.get("state").and_then(|v| v.as_str()) == Some("running");
     let pending = snap
         .share_sync
         .get("pendingFiles")
@@ -427,10 +435,12 @@ impl Executor {
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
             RunSpec::Refresh => self.request_refresh(),
             RunSpec::OpenOcx => {
-                let url =
-                    self.profile.opencodex_dashboard.clone().unwrap_or_else(|| {
-                        format!("{}/#opencodex", self.profile.dashboard.trim_end_matches('/'))
-                    });
+                let url = self.profile.opencodex_dashboard.clone().unwrap_or_else(|| {
+                    format!(
+                        "{}/#opencodex",
+                        self.profile.dashboard.trim_end_matches('/')
+                    )
+                });
                 crate::notify::open_url(&url);
             }
             RunSpec::FocusAgent(terminal_id) => {
@@ -498,8 +508,7 @@ impl Executor {
                         "Idempotency-Key".to_string(),
                         format!("chefbar-{}", std::process::id()),
                     )];
-                    match vault.post_json_headers("/coding/accounts/switch", &body, &headers)
-                    {
+                    match vault.post_json_headers("/coding/accounts/switch", &body, &headers) {
                         Ok(_) => crate::notify::notify("Account gewisseld", "", "ok"),
                         Err(_) => crate::notify::notify("Wisselen lukte niet", "", "error"),
                     }
@@ -516,19 +525,22 @@ impl Executor {
             RunSpec::ClipboardAdd => {
                 let text = query.to_string();
                 let vault = self.vault.clone();
-                self.spawn_bg(move || match vault.post_json("/clipboard", &json!({"text": text}))
-                {
-                    Ok(_) => crate::notify::notify("Toegevoegd aan clipboard", "", "ok"),
-                    Err(_) => crate::notify::notify("Toevoegen lukte niet", "", "error"),
+                self.spawn_bg(move || {
+                    match vault.post_json("/clipboard", &json!({"text": text})) {
+                        Ok(_) => crate::notify::notify("Toegevoegd aan clipboard", "", "ok"),
+                        Err(_) => crate::notify::notify("Toevoegen lukte niet", "", "error"),
+                    }
                 });
             }
             RunSpec::ClipboardDelete(row) => {
                 let row = *row;
                 let vault = self.vault.clone();
-                self.spawn_bg(move || match vault.delete_json(&format!("/clipboard/{row}")) {
-                    Ok(_) => crate::notify::notify("Clipboard-rij verwijderd", "", "ok"),
-                    Err(_) => crate::notify::notify("Verwijderen lukte niet", "", "error"),
-                });
+                self.spawn_bg(
+                    move || match vault.delete_json(&format!("/clipboard/{row}")) {
+                        Ok(_) => crate::notify::notify("Clipboard-rij verwijderd", "", "ok"),
+                        Err(_) => crate::notify::notify("Verwijderen lukte niet", "", "error"),
+                    },
+                );
             }
             RunSpec::DesktopAction(verb) => {
                 let verb = verb.clone();

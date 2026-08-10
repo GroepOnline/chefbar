@@ -7,7 +7,7 @@
 
 use crate::actions::{build_actions, Executor};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
-use crate::palette::{Action, rank_actions};
+use crate::palette::{rank_actions, Action};
 use crate::state::{Shared, VAULT_POLL_MS};
 use glib::ControlFlow;
 use gtk::prelude::*;
@@ -90,7 +90,13 @@ impl Panel {
 
     /// Herbouw de hele inhoud uit de gedeelde snapshot, gefilterd op `query`.
     pub fn render(&self, query: &str) {
-        render_into(&self.content, &self.shared, &self.executor, &self.window, query);
+        render_into(
+            &self.content,
+            &self.shared,
+            &self.executor,
+            &self.window,
+            query,
+        );
     }
 
     /// Start de periodieke render-loop (één glib-timer, geen eigen polls).
@@ -273,9 +279,7 @@ fn render_into(
         dot.set_valign(gtk::Align::Center);
         let (cls, stamp) = match agent.status.as_str() {
             "running" => ("info", "BEZIG"),
-            "blocked" | "waiting" | "needs_input" | "input" | "attention" => {
-                ("warn", "HULP")
-            }
+            "blocked" | "waiting" | "needs_input" | "input" | "attention" => ("warn", "HULP"),
             "failed" | "error" | "crashed" => ("down", "FOUT"),
             _ => ("ok", "STIL"),
         };
@@ -299,7 +303,9 @@ fn render_into(
         }
         card.pack_start(&text, true, true, 0);
         let stamp_label = gtk::Label::new(Some(stamp));
-        stamp_label.style_context().add_class("chefbar-bar-row-stamp");
+        stamp_label
+            .style_context()
+            .add_class("chefbar-bar-row-stamp");
         card.pack_end(&stamp_label, false, false, 0);
         agents_box.pack_start(&card, false, false, 0);
     }
@@ -313,10 +319,7 @@ fn render_into(
         for session in attention.iter().take(4) {
             let card = gtk::Box::new(gtk::Orientation::Vertical, 2);
             card.style_context().add_class("chefbar-card");
-            let title = gtk::Label::new(Some(&format!(
-                "{} · {}",
-                session.source, session.title
-            )));
+            let title = gtk::Label::new(Some(&format!("{} · {}", session.source, session.title)));
             title.set_halign(gtk::Align::Start);
             title.set_xalign(0.0);
             title.set_ellipsize(pango::EllipsizeMode::End);

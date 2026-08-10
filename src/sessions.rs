@@ -76,9 +76,7 @@ impl Session {
         }
         let title = get("title").unwrap_or(&id).to_string();
         let summary = get("summary").unwrap_or("").to_string();
-        let updated_at = get("updatedAt")
-            .or_else(|| get("ts"))
-            .map(String::from);
+        let updated_at = get("updatedAt").or_else(|| get("ts")).map(String::from);
         let attach = AttachPoints::from_value(payload.get("attach"));
         Some(Self {
             id,
@@ -92,10 +90,7 @@ impl Session {
     }
 
     pub fn needs_attention(&self) -> bool {
-        matches!(
-            self.state.as_str(),
-            "waiting" | "blocked" | "failed"
-        )
+        matches!(self.state.as_str(), "waiting" | "blocked" | "failed")
     }
 
     pub fn primary_action(&self) -> SessionActionKind {

@@ -11,7 +11,11 @@ use clap::Parser;
 use gtk::prelude::*;
 
 #[derive(Parser, Debug)]
-#[command(name = "chefbar", about = "ChefGroep assistent-app (Rust native)")]
+#[command(
+    name = "chefbar",
+    version,
+    about = "ChefGroep assistent-app (Rust native)"
+)]
 struct Cli {
     /// Endpoint-profiel (JSON-pad of via CHEFBAR_ENDPOINT_PROFILE).
     #[arg(long)]
@@ -81,7 +85,13 @@ fn main() {
     run_app(&cli);
 }
 
-fn build_runtime(cli: &Cli) -> (chefbar::http::Client, chefbar::http::Client, chefbar::state::Shared) {
+fn build_runtime(
+    cli: &Cli,
+) -> (
+    chefbar::http::Client,
+    chefbar::http::Client,
+    chefbar::state::Shared,
+) {
     let profile = load_profile(cli.profile.as_deref());
     set_global_profile(profile.clone());
 

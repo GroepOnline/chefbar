@@ -40,11 +40,10 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
     }
     let words: Vec<&str> = haystack.split_whitespace().collect();
     let tokens: Vec<&str> = needle.split_whitespace().collect();
-    if tokens.iter().all(|token| {
-        words
-            .iter()
-            .any(|word| word.starts_with(token))
-    }) {
+    if tokens
+        .iter()
+        .all(|token| words.iter().any(|word| word.starts_with(token)))
+    {
         return Some(700);
     }
     let mut position: i64 = -1;
@@ -74,10 +73,13 @@ pub fn rank_actions(actions: &[Action], query: &str, limit: usize) -> Vec<Action
         }
     }
     ranked.sort_by(|a, b| {
-        b.0.cmp(&a.0)
-            .then_with(|| a.1.cmp(&b.1)) // stabiel, originele volgorde als tiebreak
+        b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)) // stabiel, originele volgorde als tiebreak
     });
-    ranked.into_iter().take(limit).map(|(_, _, a)| a.clone()).collect()
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, a)| a.clone())
+        .collect()
 }
 
 #[cfg(test)]
@@ -102,8 +104,16 @@ mod tests {
 
     #[test]
     fn exact_phrase_wins() {
-        let a = action("Focus cursor agent", "herdr workspace", "focus herdr spring");
-        let b = action("Open dashboard (Thuis)", "vault dashboard", "open dashboard thuis");
+        let a = action(
+            "Focus cursor agent",
+            "herdr workspace",
+            "focus herdr spring",
+        );
+        let b = action(
+            "Open dashboard (Thuis)",
+            "vault dashboard",
+            "open dashboard thuis",
+        );
         let score_a = fuzzy_score("focus", &a);
         let score_b = fuzzy_score("focus", &b);
         assert!(score_a.unwrap_or(0) > score_b.unwrap_or(0));

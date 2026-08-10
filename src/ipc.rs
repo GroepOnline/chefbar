@@ -40,7 +40,9 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     };
     use std::io::Write;
     let mut stream = stream;
-    stream.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    stream
+        .write_all(line.as_bytes())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

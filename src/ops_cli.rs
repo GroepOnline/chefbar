@@ -8,10 +8,7 @@ use serde_json::json;
 use std::process::Command;
 
 fn run_herdr(args: &[&str]) -> bool {
-    let output = Command::new("herdr")
-        .args(args)
-        .output()
-        .ok();
+    let output = Command::new("herdr").args(args).output().ok();
     match output {
         Some(output) => output.status.success(),
         None => false,

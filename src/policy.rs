@@ -92,11 +92,13 @@ impl EndpointPolicy {
     }
 
     fn is_loopback(&self, host: &str) -> bool {
-        matches!(host.to_lowercase().as_str(), "localhost" | "localhost.localdomain")
-            || host
-                .parse::<IpAddr>()
-                .map(|addr| addr.is_loopback())
-                .unwrap_or(false)
+        matches!(
+            host.to_lowercase().as_str(),
+            "localhost" | "localhost.localdomain"
+        ) || host
+            .parse::<IpAddr>()
+            .map(|addr| addr.is_loopback())
+            .unwrap_or(false)
     }
 
     pub fn allows(&self, url: &str) -> bool {
@@ -155,7 +157,9 @@ impl EndpointPolicy {
     pub fn safe_join(&self, base: &str, path: &str) -> Result<String, String> {
         self.require(base)?;
         if path.trim_start().starts_with("http://") || path.trim_start().starts_with("https://") {
-            return Err(format!("absolute URL-pad mag nooit de host vervangen: {path}"));
+            return Err(format!(
+                "absolute URL-pad mag nooit de host vervangen: {path}"
+            ));
         }
         let base_url = Url::parse(base).map_err(|e| e.to_string())?;
         let base_str = if base.ends_with('/') {
@@ -238,7 +242,10 @@ mod tests {
         let policy = EndpointPolicy::default();
         assert!(
             policy
-                .safe_join("https://vault-api.chefgroep.online/api", "https://evil.example/x")
+                .safe_join(
+                    "https://vault-api.chefgroep.online/api",
+                    "https://evil.example/x"
+                )
                 .is_err(),
             "absolute URL-pad mag nooit de host vervangen"
         );

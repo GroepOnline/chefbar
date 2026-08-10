@@ -9,23 +9,68 @@ pub const THEME_LIGHT: &str = "light";
 
 pub fn styles_css(theme: &str) -> String {
     // strak-skin tokens (dark default, light als expliciet gevraagd).
-    let (bg, surface, sunk, text, text_muted, text_faint, line, line_strong, accent, accent_ink,
-        _accent_soft, hover, green, _green_bg, red, amber, _amber_bg, _amber_line) =
-        if theme == THEME_LIGHT {
-            (
-                "#F4F6F9", "#FFFFFF", "#EBEEF3", "#131417", "#525860", "#8F96A1",
-                "#E2E6EC", "#C6CDD8", "#2563EB", "#1D4FD7", "rgba(37,99,235,0.09)",
-                "rgba(19,20,23,0.05)", "#1F883D", "rgba(31,136,61,0.10)", "#CF222E",
-                "#BF5B00", "rgba(191,91,0,0.06)", "rgba(191,91,0,0.35)",
-            )
-        } else {
-            (
-                "#0F1013", "#16181C", "#1E2126", "#ECEDF0", "#9BA1AB", "#676D78",
-                "#25282E", "#363A43", "#4F8DFF", "#7FA9FF", "rgba(79,141,255,0.12)",
-                "rgba(236,237,240,0.06)", "#3FB950", "rgba(63,185,80,0.12)", "#F85149",
-                "#D9A038", "rgba(217,160,56,0.08)", "rgba(217,160,56,0.40)",
-            )
-        };
+    let (
+        bg,
+        surface,
+        sunk,
+        text,
+        text_muted,
+        text_faint,
+        line,
+        line_strong,
+        accent,
+        accent_ink,
+        _accent_soft,
+        hover,
+        green,
+        _green_bg,
+        red,
+        amber,
+        _amber_bg,
+        _amber_line,
+    ) = if theme == THEME_LIGHT {
+        (
+            "#F4F6F9",
+            "#FFFFFF",
+            "#EBEEF3",
+            "#131417",
+            "#525860",
+            "#8F96A1",
+            "#E2E6EC",
+            "#C6CDD8",
+            "#2563EB",
+            "#1D4FD7",
+            "rgba(37,99,235,0.09)",
+            "rgba(19,20,23,0.05)",
+            "#1F883D",
+            "rgba(31,136,61,0.10)",
+            "#CF222E",
+            "#BF5B00",
+            "rgba(191,91,0,0.06)",
+            "rgba(191,91,0,0.35)",
+        )
+    } else {
+        (
+            "#0F1013",
+            "#16181C",
+            "#1E2126",
+            "#ECEDF0",
+            "#9BA1AB",
+            "#676D78",
+            "#25282E",
+            "#363A43",
+            "#4F8DFF",
+            "#7FA9FF",
+            "rgba(79,141,255,0.12)",
+            "rgba(236,237,240,0.06)",
+            "#3FB950",
+            "rgba(63,185,80,0.12)",
+            "#F85149",
+            "#D9A038",
+            "rgba(217,160,56,0.08)",
+            "rgba(217,160,56,0.40)",
+        )
+    };
 
     format!(
         r#"
@@ -266,9 +311,7 @@ pub fn styles_css(theme: &str) -> String {
 /// Welk thema actief is: donker tenzij de desktop expliciet om light vraagt.
 pub fn detect_theme(settings: &gtk::Settings) -> String {
     use gtk::prelude::*;
-    if settings
-        .property::<bool>("gtk-application-prefer-dark-theme")
-    {
+    if settings.property::<bool>("gtk-application-prefer-dark-theme") {
         THEME_DARK.into()
     } else {
         THEME_LIGHT.into()

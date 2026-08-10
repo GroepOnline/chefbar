@@ -293,9 +293,13 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             None
         };
         let refresh = provider.get("refresh");
-        let unavailable = provider.get("availability").and_then(|v| v.as_str()) == Some("unavailable")
+        let unavailable = provider.get("availability").and_then(|v| v.as_str())
+            == Some("unavailable")
             || provider.get("error").is_some();
-        let stale = provider.get("stale").and_then(|v| v.as_bool()).unwrap_or(false)
+        let stale = provider
+            .get("stale")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
             || refresh.and_then(|r| r.get("error")).is_some();
         let (level, text) = (|| {
             if unavailable {
@@ -311,7 +315,10 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             .and_then(|v| v.as_str())
             .map(String::from)
             .unwrap_or_else(|| provider_id.clone());
-        let active_label = active.and_then(|a| a.get("label")).and_then(|v| v.as_str()).map(String::from);
+        let active_label = active
+            .and_then(|a| a.get("label"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let usage_text = if text.is_empty() {
             active_label
                 .clone()
@@ -386,9 +393,18 @@ pub fn parse_ts(value: Option<&str>) -> i64 {
             .collect();
         let parts: Vec<&str> = cleaned.split(':').collect();
         let (h, m, s) = (
-            parts.first().and_then(|p| p.parse::<i64>().ok()).unwrap_or(0),
-            parts.get(1).and_then(|p| p.parse::<i64>().ok()).unwrap_or(0),
-            parts.get(2).and_then(|p| p.parse::<i64>().ok()).unwrap_or(0),
+            parts
+                .first()
+                .and_then(|p| p.parse::<i64>().ok())
+                .unwrap_or(0),
+            parts
+                .get(1)
+                .and_then(|p| p.parse::<i64>().ok())
+                .unwrap_or(0),
+            parts
+                .get(2)
+                .and_then(|p| p.parse::<i64>().ok())
+                .unwrap_or(0),
         );
         ts += h * 3600 + m * 60 + s;
     }
@@ -474,8 +490,14 @@ pub fn build_fleet(fleet_payload: Option<&Value>) -> FleetInfo {
     let Some(fleet_payload) = fleet_payload else {
         return info;
     };
-    info.stale = fleet_payload.get("stale").and_then(|v| v.as_bool()).unwrap_or(false);
-    info.host = fleet_payload.get("host").and_then(|v| v.as_str()).map(String::from);
+    info.stale = fleet_payload
+        .get("stale")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    info.host = fleet_payload
+        .get("host")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let mut nodes: Vec<&Value> = Vec::new();
     if let Some(self_node) = fleet_payload.get("self") {
         nodes.push(self_node);
@@ -527,8 +549,16 @@ pub fn build_ops_snapshot(data: Option<&Value>) -> OpsSnapshot {
                 .unwrap_or("unknown")
                 .to_lowercase();
             snap.agents.push(HerdrAgent {
-                terminal_id: a.get("terminal_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                name: a.get("agent").and_then(|v| v.as_str()).unwrap_or("agent").to_string(),
+                terminal_id: a
+                    .get("terminal_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: a
+                    .get("agent")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("agent")
+                    .to_string(),
                 status,
                 workspace: a
                     .get("terminal_title_stripped")
@@ -536,9 +566,21 @@ pub fn build_ops_snapshot(data: Option<&Value>) -> OpsSnapshot {
                     .and_then(|v| v.as_str())
                     .unwrap_or("?")
                     .to_string(),
-                workspace_id: a.get("workspace_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                cwd: a.get("cwd").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                pane_id: a.get("pane_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                workspace_id: a
+                    .get("workspace_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                cwd: a
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                pane_id: a
+                    .get("pane_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 focused: a.get("focused").and_then(|v| v.as_bool()).unwrap_or(false),
             });
         }
@@ -623,16 +665,20 @@ impl Snapshot {
         if let Some(agent) = failed {
             return ("fout".into(), format!("ChefGroep · {} hapert", agent.agent));
         }
-        if self
-            .agents
-            .iter()
-            .any(|a| matches!(a.status.as_str(), "blocked" | "waiting" | "needs_input" | "input" | "attention"))
-        {
+        if self.agents.iter().any(|a| {
+            matches!(
+                a.status.as_str(),
+                "blocked" | "waiting" | "needs_input" | "input" | "attention"
+            )
+        }) {
             return ("hulp".into(), "ChefGroep · even jou nodig".into());
         }
         let running = self.agents.iter().filter(|a| a.running).count();
         if running > 0 {
-            return ("bezig".into(), format!("ChefGroep · {running} aan het werk"));
+            return (
+                "bezig".into(),
+                format!("ChefGroep · {running} aan het werk"),
+            );
         }
         if self.health.level == "warn" {
             return ("hulp".into(), "ChefGroep · even jou nodig".into());
