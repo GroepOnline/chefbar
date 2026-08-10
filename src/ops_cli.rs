@@ -22,7 +22,7 @@ pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            false
+            run_herdr(&["agent", "focus", target])
         }
         Err(ApiError::Blocked(_)) | Err(ApiError::Http(_, _)) | Err(ApiError::Transport(_)) => {
             run_herdr(&["agent", "focus", target])
