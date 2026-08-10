@@ -125,9 +125,9 @@ fn run_app(cli: &Cli) {
     let settings = gtk::Settings::default().expect("GTK-settings");
     let theme = css::detect_theme(&settings);
     let provider = gtk::CssProvider::new();
-    provider
-        .load_from_data(css::styles_css(&theme).as_bytes())
-        .expect("ChefBar-CSS laden mislukt");
+    if let Err(err) = provider.load_from_data(css::styles_css(&theme).as_bytes()) {
+        eprintln!("[chefbar] CSS-load mislukt (fallback naar systeemthema): {err}");
+    }
     gtk::StyleContext::add_provider_for_screen(
         &gdk::Screen::default().expect("geen scherm"),
         &provider,
@@ -144,7 +144,6 @@ fn run_app(cli: &Cli) {
 
     let panel = chefbar::panel::Panel::new(shared.clone(), executor.clone());
     panel.start_refresh_loop();
-    let bar = chefbar::bar::ChefBar::new(shared.clone(), executor.clone());
 
     // Eén UI-commando-kanaal voor tray + ipc + refresh-loop. De dispatcher
     // draait op de UI-thread (glib-timeout), dus widgets zijn hier veilig.
@@ -152,7 +151,6 @@ fn run_app(cli: &Cli) {
     let dispatcher: std::sync::Arc<dyn Fn(chefbar::tray::UiCommand)> =
         std::sync::Arc::new(move |cmd| match cmd {
             chefbar::tray::UiCommand::TogglePanel => panel.toggle(),
-            chefbar::tray::UiCommand::ToggleBar => bar.toggle(),
             chefbar::tray::UiCommand::Refresh => chefbar::state::refresh_global(),
             chefbar::tray::UiCommand::Doctor => {
                 let report = chefbar::doctor::run_checks();

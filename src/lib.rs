@@ -6,7 +6,6 @@
 
 pub mod actions;
 pub mod auth;
-pub mod bar;
 pub mod config;
 pub mod css;
 pub mod doctor;

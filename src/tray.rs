@@ -13,7 +13,6 @@ use std::sync::{Arc, Mutex, RwLock};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiCommand {
     TogglePanel,
-    ToggleBar,
     Refresh,
     Doctor,
     Quit,
@@ -116,15 +115,9 @@ impl ksni::Tray for ChefTray {
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         vec![
             ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "ChefBar-dashboard".into(),
+                label: "Openen".into(),
                 icon_name: "utilities-system-monitor-symbolic".into(),
                 activate: Box::new(|tray: &mut Self| tray.send(UiCommand::TogglePanel)),
-                ..Default::default()
-            }),
-            ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Opdrachtbalk".into(),
-                icon_name: "system-search-symbolic".into(),
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ToggleBar)),
                 ..Default::default()
             }),
             ksni::MenuItem::Standard(StandardItem::<Self> {
