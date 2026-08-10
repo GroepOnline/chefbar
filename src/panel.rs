@@ -66,7 +66,7 @@ impl Panel {
             fade_out(&self.window, PANEL_MS);
         } else {
             self.render("");
-            self.window.show();
+            self.window.show_all();
             fade_in(&self.window, PANEL_MS);
         }
     }

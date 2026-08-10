@@ -64,6 +64,7 @@ impl ChefBar {
         self.rebuild_actions();
         self.position_near_pointer();
         self.entry.grab_focus();
+        self.window.show_all();
         fade_in(&self.window, PANEL_MS);
     }
 
