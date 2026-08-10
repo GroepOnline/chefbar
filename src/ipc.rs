@@ -7,6 +7,7 @@
 use crate::tray::UiCommand;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
@@ -54,6 +55,7 @@ pub fn spawn_listener(tx: Sender<UiCommand>) {
         let Ok(listener) = UnixListener::bind(&path) else {
             return;
         };
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
