@@ -62,6 +62,9 @@ fn main() {
     }
 
     if cli.doctor {
+        // Doctor must use the same explicitly selected profile as the runtime.
+        let profile = load_profile(cli.profile.as_deref());
+        set_global_profile(profile);
         let report = chefbar::doctor::run_checks();
         chefbar::doctor::print_report(&report);
         std::process::exit(if report.ok() { 0 } else { 1 });
