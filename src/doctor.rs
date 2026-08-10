@@ -51,22 +51,11 @@ pub fn run_checks() -> DoctorReport {
     }
 
     // 3. Secrets: token aanwezig? Alleen fingerprint, nooit de waarde.
-    match crate::auth::load_env_file() {
-        Ok(env) => {
-            let token = env
-                .get("CLOUDFLARE_ACCESS_TOKEN")
-                .or_else(|| env.get("BEARER_TOKEN"))
-                .or_else(|| env.get("VAULT_API_TOKEN"));
-            if let Some(token) = token {
-                let fp = crate::auth::fingerprint(token);
-                lines.push(format!("secrets  token aanwezig (sha256[:12]={fp})"));
-            } else {
-                failures.push("geen bearer-token in de env-file".into());
-            }
-        }
-        Err(_) => {
-            failures.push("env-file niet leesbaar (CHEFBAR_ENV_FILE)".into());
-        }
+    let (has_bearer, has_cf) = crate::auth::auth_status();
+    if has_bearer || has_cf {
+        lines.push(format!("secrets  credentials aanwezig (bearer={}, cloudflare={})", has_bearer, has_cf));
+    } else {
+        failures.push("geen bruikbare credentials gevonden".into());
     }
 
     // 4. Watchdog-state (lokaal bestand).
