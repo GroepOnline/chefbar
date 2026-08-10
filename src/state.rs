@@ -99,10 +99,15 @@ impl Poller {
     fn run(self, rx: Receiver<ActorCommand>) {
         let mut next_vault = Instant::now();
         let mut next_ops = Instant::now();
+        let mut next_local = Instant::now();
         self.poll_watchdog_into_shared();
         loop {
             // Begin met onmiddellijke eerste polls.
             let now = Instant::now();
+            if now >= next_local {
+                self.poll_watchdog_into_shared();
+                next_local = now + Duration::from_secs(5);
+            }
             if now >= next_vault {
                 self.poll_vault();
                 next_vault = Instant::now() + Duration::from_millis(VAULT_POLL_MS);
@@ -156,13 +161,13 @@ impl Poller {
         }
         if let Some(status) = results.get("status").cloned().flatten() {
             snap.raw["status"] = status.clone();
-            snap.revision = status
-                .get("revision")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(snap.revision);
             any_ok = true;
         }
         if let Some(providers) = results.get("accounts/overview").cloned().flatten() {
+            snap.revision = providers
+                .get("revision")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(snap.revision);
             snap.providers = build_providers(Some(&providers));
             snap.raw["providers"] = providers;
             any_ok = true;
