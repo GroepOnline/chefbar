@@ -506,7 +506,9 @@ impl Executor {
                     }
                     let headers = vec![(
                         "Idempotency-Key".to_string(),
-                        format!("chefbar-{}", std::process::id()),
+                        format!("chefbar-{}-{}", std::process::id(),
+                            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_nanos()).unwrap_or(0)),
                     )];
                     match vault.post_json_headers("/coding/accounts/switch", &body, &headers) {
                         Ok(_) => crate::notify::notify("Account gewisseld", "", "ok"),
