@@ -374,6 +374,32 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-dialog entry:focus {{
   border-color: {accent};
 }}
+
+/* Harnas-tabs (room) */
+.chefbar-harness-row {{
+  padding: 0;
+}}
+.chefbar-harness {{
+  background-color: {surface};
+  border: 1px solid {line};
+  border-radius: 200px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: {text_muted};
+}}
+.chefbar-harness:hover {{
+  background-color: {sunk};
+  color: {text};
+}}
+.chefbar-harness-active {{
+  background-color: {text};
+  border-color: {text};
+  border-radius: 200px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: {bg};
+}}
 "#
     )
 }

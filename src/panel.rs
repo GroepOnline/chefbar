@@ -5,13 +5,20 @@
 //! (Devin-sgroup met hairlines), en footer. Inhoud wordt elke poll-cyclus
 //! opnieuw gevuld uit de gedeelde snapshot: geen eigen poll-loops, geen
 //! netwerk op de UI-thread.
+//!
+//! Room-model: meerdere harnassen tegelijk zichtbaar (fleet / commerce / eval).
+//! Het panel toont harnas-tabs; acties worden gefilterd op het geselecteerde
+//! harnas via prefix-match op keywords.
 
 use crate::actions::{build_actions, Executor};
+use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions, Action};
 use crate::state::{Shared, VAULT_POLL_MS};
 use glib::ControlFlow;
 use gtk::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Panel {
     pub window: gtk::Window,
@@ -19,6 +26,9 @@ pub struct Panel {
     search: gtk::SearchEntry,
     shared: Shared,
     executor: Executor,
+    // geselecteerde harnas binnen de room — default naar eerste harnas
+    pub active_harness: String,
+    harness_state: Rc<RefCell<String>>,
 }
 
 impl Panel {
@@ -201,13 +211,17 @@ impl Panel {
         scroller.add(&content);
 
         root.pack_start(&main, true, true, 0);
-
+        // harnas-state: default naar eerste harnas (fleet)
+        let initial = "fleet".to_string();
+        let harness_state = Rc::new(RefCell::new(initial.clone()));
         let panel = Self {
             window,
             content,
             search,
             shared,
             executor,
+            active_harness: initial,
+            harness_state,
         };
         panel.wire_search();
         panel.render("");
@@ -233,17 +247,38 @@ impl Panel {
         let shared = self.shared.clone();
         let executor = self.executor.clone();
         let window = self.window.clone();
+        let harness_state = self.harness_state.clone();
         self.search.connect_changed(move |search| {
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(&content, &shared, &executor, &window, &query);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state);
             }
         });
     }
 
     /// Herbouw de hele inhoud uit de gedeelde snapshot, gefilterd op `query`.
     pub fn render(&self, query: &str) {
-        render_into(&self.content, &self.shared, &self.executor, &self.window, query);
+        // houd active_harness in sync met gedeelde state
+        let current = self.harness_state.borrow().clone();
+        // als snapshot al beschikbaar is, valideer tegen echte harnassen
+        {
+            let snap = self.shared.snapshot.read().unwrap().clone();
+            let ops = self.shared.ops.read().unwrap().clone();
+            let harnesses = build_harnesses(&snap, &ops);
+            if !harnesses.is_empty() && !harnesses.iter().any(|h| h.id == current) {
+                if let Some(first) = harnesses.first() {
+                    *self.harness_state.borrow_mut() = first.id.clone();
+                }
+            }
+        }
+        render_into(
+            &self.content,
+            &self.shared,
+            &self.executor,
+            &self.window,
+            query,
+            &self.harness_state,
+        );
     }
 
     /// Start de periodieke render-loop (één glib-timer, geen eigen polls).
@@ -253,13 +288,48 @@ impl Panel {
         let executor = self.executor.clone();
         let window = self.window.clone();
         let search = self.search.clone();
+        let harness_state = self.harness_state.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(&content, &shared, &executor, &window, &query);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state);
             }
             ControlFlow::Continue
         });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Room-helpers: harnas-filtering
+// ---------------------------------------------------------------------------
+
+/// Bepaalt of een action bij het geselecteerde harnas hoort via prefix-match
+/// op keywords (elke keyword-token wordt tegen de prefixes van het harnas
+/// getest).
+fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
+    let prefixes = kind.prefixes();
+    let kw = action.keywords.to_lowercase();
+    let tokens: Vec<&str> = kw.split_whitespace().collect();
+    for prefix in prefixes {
+        let p = prefix.to_lowercase();
+        for token in &tokens {
+            if token.starts_with(&p) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Filter acties op harnas; als kind None is, geen filtering.
+fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -> Vec<Action> {
+    if let Some(k) = kind {
+        actions
+            .into_iter()
+            .filter(|a| action_matches_harness(a, k))
+            .collect()
+    } else {
+        actions
     }
 }
 
@@ -273,6 +343,7 @@ fn render_into(
     executor: &Executor,
     window: &gtk::Window,
     query: &str,
+    harness_state: &Rc<RefCell<String>>,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -287,8 +358,76 @@ fn render_into(
     let sessions = crate::sessions::load_ranked_sessions(&snap.events);
     let (state, line) = snap.tray_state();
     let q = query.to_lowercase();
+
+    // ---- Harnassen (room) -------------------------------------------------
+    let harnesses: Vec<Harness> = build_harnesses(&snap, &ops);
+    // valideer geselecteerde harnas, fallback naar eerste
+    let active_id = {
+        let current = harness_state.borrow().clone();
+        if harnesses.iter().any(|h| h.id == current) {
+            current
+        } else if let Some(first) = harnesses.first() {
+            let id = first.id.clone();
+            *harness_state.borrow_mut() = id.clone();
+            id
+        } else {
+            "fleet".to_string()
+        }
+    };
+    let active_kind = harnesses
+        .iter()
+        .find(|h| h.id == active_id)
+        .map(|h| h.kind.clone());
+
+    // harnas-tabs: room-navigatie
+    if !harnesses.is_empty() {
+        let harness_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        harness_row.style_context().add_class("chefbar-harness-row");
+        harness_row.set_margin_top(10);
+        harness_row.set_margin_start(20);
+        harness_row.set_margin_end(20);
+        for h in &harnesses {
+            let label_text = if h.queue_depth > 0 {
+                format!("{} · {}", h.label, h.queue_depth)
+            } else {
+                h.label.clone()
+            };
+            let btn = gtk::Button::with_label(&label_text);
+            btn.set_relief(gtk::ReliefStyle::None);
+            if h.id == active_id {
+                btn.style_context().add_class("chefbar-harness-active");
+            } else {
+                btn.style_context().add_class("chefbar-harness");
+            }
+            // kleur-accent als tooltip/status
+            btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
+            let harness_state_clone = harness_state.clone();
+            let content_clone = content.clone();
+            let shared_clone = shared.clone();
+            let executor_clone = executor.clone();
+            let window_clone = window.clone();
+            let query_clone = query.to_string();
+            let id_clone = h.id.clone();
+            btn.connect_clicked(move |_| {
+                *harness_state_clone.borrow_mut() = id_clone.clone();
+                render_into(
+                    &content_clone,
+                    &shared_clone,
+                    &executor_clone,
+                    &window_clone,
+                    &query_clone,
+                    &harness_state_clone,
+                );
+            });
+            harness_row.pack_start(&btn, false, false, 0);
+        }
+        content.pack_start(&harness_row, false, false, 0);
+    }
+
     let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
     let ranked = rank_actions(&all_actions, query, 40);
+    // filter op geselecteerde harnas (prefix-match op keywords)
+    let ranked = filter_actions_by_harness(ranked, active_kind.as_ref());
 
     // Status-badge in de header-positie (bovenaan de content-stroom).
     let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -321,6 +460,12 @@ fn render_into(
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
         let empty = gtk::Label::new(Some("Geen acties voor deze zoekterm"));
+        empty.set_halign(gtk::Align::Start);
+        empty.set_xalign(0.0);
+        empty.style_context().add_class("chefbar-card-meta");
+        group.pack_start(&empty, false, false, 0);
+    } else if actions_visible.is_empty() {
+        let empty = gtk::Label::new(Some("Geen acties voor dit harnas"));
         empty.set_halign(gtk::Align::Start);
         empty.set_xalign(0.0);
         empty.style_context().add_class("chefbar-card-meta");

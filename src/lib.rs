@@ -16,6 +16,7 @@ pub mod motion;
 pub mod notify;
 pub mod ops_cli;
 pub mod palette;
+pub mod harness;
 pub mod panel;
 pub mod policy;
 pub mod sessions;
