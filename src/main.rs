@@ -169,7 +169,9 @@ fn run_app(cli: &Cli) {
     // Tray in eigen thread (ksni).
     let snapshot = shared.snapshot.clone();
     let tray = chefbar::tray::ChefTray::new(snapshot, ui_tx);
-    let _tray_service = ksni::TrayService::new(tray).spawn();
+    let tray_service = ksni::TrayService::new(tray);
+    chefbar::tray::register_handle(tray_service.handle());
+    let _tray_service = tray_service.spawn();
 
     gtk::main();
 }

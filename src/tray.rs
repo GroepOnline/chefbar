@@ -36,20 +36,57 @@ pub struct ChefTray {
     shared: Arc<RwLock<Snapshot>>,
     tx: Sender<UiCommand>,
     icon: ksni::Icon,
+    /// Laatst gezonden statuslijn, geüpdatet via Handle::update.
+    status_line: Mutex<String>,
 }
 
 impl ChefTray {
     pub fn new(shared: Arc<RwLock<Snapshot>>, tx: Sender<UiCommand>) -> Self {
+        let (state, line) = shared
+            .read()
+            .map(|s| s.tray_state())
+            .unwrap_or_else(|_| ("stil".into(), "ChefGroep".into()));
         Self {
             shared,
             tx,
-            icon: tray_icon(),
+            icon: tray_icon_for(&state),
+            status_line: Mutex::new(line),
         }
     }
 
     fn send(&self, cmd: UiCommand) {
         let _ = self.tx.send(cmd);
     }
+}
+
+/// Update-handle die de poll-actor elke cyclus laat bijwerken (tooltip + icon).
+static TRAY_HANDLE: std::sync::OnceLock<Mutex<Option<ksni::Handle<ChefTray>>>> =
+    std::sync::OnceLock::new();
+
+pub fn register_handle(handle: ksni::Handle<ChefTray>) {
+    let slot = TRAY_HANDLE.get_or_init(|| Mutex::new(None));
+    *slot.lock().unwrap() = Some(handle);
+}
+
+/// Fetch de laatste snapshot en werk de tray bij (parity: tooltip + icon per
+/// status, zoals indicator.py dat per poll deed).
+pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
+    let Some(slot) = TRAY_HANDLE.get() else {
+        return;
+    };
+    let guard = slot.lock().unwrap();
+    let Some(handle) = guard.as_ref() else {
+        return;
+    };
+    let (state, line) = shared
+        .read()
+        .map(|s| s.tray_state())
+        .unwrap_or_else(|_| ("offline".into(), "ChefGroep".into()));
+    let icon = tray_icon_for(&state);
+    handle.update(|tray| {
+        tray.icon = icon;
+        *tray.status_line.lock().unwrap() = line;
+    });
 }
 
 impl ksni::Tray for ChefTray {
@@ -113,13 +150,17 @@ impl ksni::Tray for ChefTray {
     }
 }
 
-/// Programmatisch gegenereerd 22x22 RGBA-pictogram: donkere pill met
-/// accent-dot + groene status-dot (alleen data, geen assets nodig).
-fn tray_icon() -> ksni::Icon {
+/// Programmatisch gegenereerd 22x22 ARGB-pictogram; dot-kleur volgt de
+/// tray-status (parity met de Python-indicator, alleen data, geen assets).
+fn tray_icon_for(state: &str) -> ksni::Icon {
     const SIZE: usize = 22;
     let bg: (u8, u8, u8) = (0x16, 0x18, 0x1C);
-    let accent: (u8, u8, u8) = (0x4F, 0x8D, 0xFF);
-    let green: (u8, u8, u8) = (0x3F, 0xB9, 0x50);
+    let accent: (u8, u8, u8) = match state {
+        "offline" | "fout" => (0xF8, 0x51, 0x49), // red
+        "hulp" => (0xD9, 0xA0, 0x38),              // amber
+        "bezig" => (0x4F, 0x8D, 0xFF),             // accent
+        _ => (0x3F, 0xB9, 0x50),                   // green
+    };
     let mut pixels: Vec<u8> = Vec::with_capacity(SIZE * SIZE * 4);
 
     for y in 0..SIZE {
@@ -136,10 +177,8 @@ fn tray_icon() -> ksni::Icon {
                 // Accent-dot linksonder, status-dot rechtsboven.
                 let dx = (x as f64 - 6.5).hypot(y as f64 - 15.0);
                 let gx2 = (x as f64 - 15.0).hypot(y as f64 - 6.5);
-                if dx <= 3.2 {
+                if dx <= 3.2 || gx2 <= 2.5 {
                     (accent.0, accent.1, accent.2, 255)
-                } else if gx2 <= 2.5 {
-                    (green.0, green.1, green.2, 255)
                 } else {
                     (bg.0, bg.1, bg.2, 255)
                 }
@@ -155,27 +194,6 @@ fn tray_icon() -> ksni::Icon {
     }
 }
 
-/// Snapshot-handle voor de tray: kleine clone-waardige struct.
-pub fn snapshot_handle(snapshot: &Arc<RwLock<Snapshot>>) -> Arc<RwLock<Snapshot>> {
-    snapshot.clone()
-}
-
-/// Mutex-free status-update voor testbare tooltips.
-pub fn status_line(snapshot: &Arc<RwLock<Snapshot>>) -> String {
-    snapshot
-        .read()
-        .map(|s| s.tray_state().1)
-        .unwrap_or_else(|_| "ChefGroep".into())
-}
-
-pub struct StatusCache {
-    pub line: Mutex<String>,
-}
-
-impl StatusCache {
-    pub fn new() -> Self {
-        Self {
-            line: Mutex::new(String::new()),
-        }
-    }
+pub fn tray_icon() -> ksni::Icon {
+    tray_icon_for("stil")
 }

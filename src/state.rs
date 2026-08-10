@@ -6,8 +6,9 @@
 
 use crate::http::{ApiError, Client};
 use crate::models::{
-    build_agents, build_fleet, build_ops_snapshot, build_providers, load_day_score_file,
-    parse_health, watch_dog_path, HealthInfo, OpsSnapshot, Snapshot,
+    build_agents, build_fleet, build_ops_snapshot, build_providers, day_score_from_agent_summary,
+    load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo, OpsSnapshot,
+    Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -150,10 +151,8 @@ impl Poller {
 
     fn poll_vault(&self) {
         let results = self.fetch_all();
-        let (mut snap, mut any_ok) = {
-            let current = self.shared.snapshot.read().unwrap().clone();
-            (current, false)
-        };
+        let prev_snapshot = self.shared.snapshot.read().unwrap().clone();
+        let (mut snap, mut any_ok) = (prev_snapshot.clone(), false);
 
         // Laatste-goede-waarde per sectie; de rest van het beeld blijft staan.
         if !snap.raw.is_object() {
@@ -223,9 +222,12 @@ impl Poller {
             any_ok = true;
         }
 
-        // Dagscore valt terug op de chef-eval agent summary als er geen bestand is.
+        // Dagscore: bestand eerst; valt terug op de chef-eval agent summary
+        // uit /agents (parity met de Python load_day_score).
         if snap.day_score.score.is_none() {
-            snap.day_score = load_day_score_file();
+            snap.day_score =
+                day_score_from_agent_summary(results.get("agents").and_then(|v| v.as_ref()))
+                    .unwrap_or_else(load_day_score_file);
         }
 
         // Cloudflare Access sessies uit de connector/API-feed.
@@ -247,6 +249,24 @@ impl Poller {
                 snap.raw["sessions"] = Value::Array(events);
             }
             any_ok = true;
+        }
+
+        // Watcher-suggesties (parity): transities → toasts + snapshot-feed.
+        let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap);
+        if !fresh.is_empty() {
+            for suggestion in &fresh {
+                let status = match suggestion.stamp.as_str() {
+                    "KLAAR" => "ok",
+                    "HULP" => "warn",
+                    _ => "error",
+                };
+                crate::notify::notify(&suggestion.title, &suggestion.meta, status);
+            }
+            snap.suggestions.retain(|s| {
+                s.fresh(SUGGESTION_TTL_SECONDS) && !fresh.iter().any(|n| n.key == s.key)
+            });
+            snap.suggestions.extend(fresh.clone());
+            snap.suggestions.truncate(6);
         }
 
         snap.fetched_at_unix = SystemTime::now()
@@ -285,6 +305,7 @@ impl Poller {
             let mut current = self.shared.snapshot.write().unwrap();
             *current = snap;
         }
+        crate::tray::update_from(&self.shared.snapshot);
         {
             let actual = self.shared.snapshot.read().unwrap().revision;
             let loaded = self.shared.revision.load(Ordering::Relaxed);

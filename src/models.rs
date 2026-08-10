@@ -169,6 +169,22 @@ pub fn eval_dir() -> PathBuf {
     }
 }
 
+/// Fallback: chef-eval agent summary uit /agents (parity met Python api.py
+/// load_day_score: geen reports-bestand, dan de chef-eval summary-score).
+pub fn day_score_from_agent_summary(agents_payload: Option<&Value>) -> Option<DayScore> {
+    let items = agents_payload?.get("agents")?.as_array()?;
+    let item = items.iter().find(|a| {
+        a.get("agent").and_then(|v| v.as_str()) == Some("chef-eval")
+    })?;
+    let summary = item.get("summary").and_then(|v| v.as_str())?;
+    let (letter, score) = score_regex_letter(summary)?;
+    Some(DayScore {
+        letter: Some(letter),
+        score: Some(score),
+        source: Some("chef-eval Summary".into()),
+    })
+}
+
 pub fn load_day_score_file() -> DayScore {
     let dir = eval_dir();
     if !dir.is_dir() {
@@ -608,8 +624,7 @@ pub struct Snapshot {
     pub share_sync: HashMap<String, Value>,
     pub error: Option<String>,
     pub raw: Value,
-    pub ops: OpsSnapshot,
-    pub suggestions: Vec<Value>,
+    pub suggestions: Vec<Suggestion>,
 }
 
 impl Snapshot {
@@ -717,5 +732,130 @@ impl Suggestion {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
         now - self.created_unix < ttl_seconds
+    }
+}
+
+pub const SUGGESTION_TTL_SECONDS: i64 = 45;
+
+fn now_unix() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Watcher-overgangen tussen de vorige en nieuwe snapshot.
+///
+/// Pure functie (geen I/O, geen notificaties): geeft suggesties terug voor
+/// statusveranderingen van agents — parity met de Python watcher. De actor
+/// stuurt ze daarna als toast + slaat ze in de snapshot.
+pub fn watcher_events(prev: &Snapshot, next: &Snapshot) -> Vec<Suggestion> {
+    let mut out: Vec<Suggestion> = Vec::new();
+    let prev_agents: HashMap<String, &AgentRow> = prev
+        .agents
+        .iter()
+        .map(|a| (a.key.clone(), a))
+        .collect();
+    for agent in &next.agents {
+        // Alleen transities van agents die al bekend waren (geen startup-spam).
+        let Some(was_agent) = prev_agents.get(&agent.key) else {
+            continue;
+        };
+        let was = Some(was_agent.status.as_str());
+        let is = agent.status.as_str();
+        let key = format!("{}-{}", agent.key, is);
+        // Alleen op transitie, niet elke poll opnieuw.
+        if was == Some(is) {
+            continue;
+        }
+        let (title, meta, stamp, kind) = match is {
+            "blocked" | "waiting" | "needs_input" | "input" | "attention" => (
+                format!("{} · even jou nodig", agent.agent),
+                agent.summary.clone(),
+                "HULP",
+                SuggestionKind::FocusAgent(agent.key.clone()),
+            ),
+            "failed" | "error" | "crashed" => (
+                format!("{} · hapert", agent.agent),
+                agent.summary.clone(),
+                "FOUT",
+                SuggestionKind::FocusAgent(agent.key.clone()),
+            ),
+            "done" => (
+                format!("{} · klaar", agent.agent),
+                agent.summary.clone(),
+                "KLAAR",
+                SuggestionKind::OpenDashboard,
+            ),
+            _ => continue,
+        };
+        out.push(Suggestion {
+            key,
+            title,
+            meta,
+            stamp: stamp.into(),
+            action_label: "Open".into(),
+            kind,
+            created_unix: now_unix(),
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod watcher_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn snap_with(agents: Vec<(&str, &str)>) -> Snapshot {
+        let mut snap = Snapshot::default();
+        snap.raw = json!({});
+        snap.agents = agents
+            .into_iter()
+            .map(|(key, status)| AgentRow {
+                key: key.into(),
+                agent: key.into(),
+                workspace: "ws".into(),
+                status: status.into(),
+                summary: String::new(),
+                last_activity: None,
+                running: status == "running",
+            })
+            .collect();
+        snap
+    }
+
+    #[test]
+    fn transition_to_blocked_yields_hulp() {
+        let prev = snap_with(vec![("a::ws", "running")]);
+        let next = snap_with(vec![("a::ws", "blocked")]);
+        let events = watcher_events(&prev, &next);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].stamp, "HULP");
+        assert_eq!(events[0].kind, SuggestionKind::FocusAgent("a::ws".into()));
+    }
+
+    #[test]
+    fn first_appearance_is_silent() {
+        let prev = snap_with(vec![]);
+        let next = snap_with(vec![("b::ws", "running")]);
+        assert!(watcher_events(&prev, &next).is_empty());
+    }
+
+    #[test]
+    fn no_status_change_yields_nothing() {
+        let prev = snap_with(vec![("c::ws", "running")]);
+        let next = snap_with(vec![("c::ws", "running")]);
+        assert!(watcher_events(&prev, &next).is_empty());
+    }
+
+    #[test]
+    fn done_transition_is_klaar() {
+        let prev = snap_with(vec![("d::ws", "running")]);
+        let next = snap_with(vec![("d::ws", "done")]);
+        let events = watcher_events(&prev, &next);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].stamp, "KLAAR");
     }
 }
