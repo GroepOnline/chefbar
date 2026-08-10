@@ -286,6 +286,69 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {hover};
 }}
 
+/* Room — sidebar + main canvas (tokens dark: bg #121111, surface #1B1A19, sunk #242322, line 09%, line-strong 16%, accent #5C97FF) */
+.chefbar-sidebar {{
+  background-color: {sunk};
+  border-right: 1px solid {line};
+}}
+.chefbar-sidebar-title {{
+  font-family: "Instrument Serif", "General Sans", Georgia, serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: {text};
+}}
+.chefbar-sidebar-sub {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  color: {text_faint};
+}}
+.chefbar-nav-item {{
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  color: {text_muted};
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 10px;
+  min-height: 30px;
+}}
+.chefbar-nav-item:hover {{
+  background-color: {sunk};
+  color: {text};
+}}
+.chefbar-nav-item.active {{
+  background-color: {surface};
+  border: 1px solid {line_strong};
+  border-left: 2px solid {accent};
+  color: {text};
+}}
+.chefbar-nav-item.active:hover {{
+  background-color: {surface};
+}}
+.chefbar-nav-item:active {{
+  background-color: {accent_soft};
+}}
+.chefbar-sidebar-footer {{
+  border-top: 1px solid {line};
+  padding-top: 10px;
+}}
+.chefbar-sidebar-footer-title {{
+  font-size: 11px;
+  font-weight: 600;
+  color: {text_muted};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}}
+.chefbar-sidebar-footer-meta {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: {text_faint};
+}}
+.chefbar-main {{
+  background-color: {bg};
+}}
+
 /* Footer */
 .chefbar-footer {{
   background-color: {bg};

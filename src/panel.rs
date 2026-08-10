@@ -30,11 +30,89 @@ impl Panel {
         window.set_keep_above(true);
         window.set_position(gtk::WindowPosition::Center);
 
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        // ---- Room layout: sidebar (220px fixed) + main canvas ----
+        let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         root.style_context().add_class("chefbar-app");
         window.add(&root);
 
-        // ---- Custom header (drag + controls) ----
+        // ---- Sidebar (fixed 220px) ----
+        let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        sidebar.style_context().add_class("chefbar-sidebar");
+        sidebar.set_size_request(220, -1);
+
+        // App-title
+        let sidebar_title_wrap = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        sidebar_title_wrap.set_margin_top(14);
+        sidebar_title_wrap.set_margin_start(14);
+        sidebar_title_wrap.set_margin_end(14);
+        sidebar_title_wrap.set_margin_bottom(10);
+        let sidebar_title = gtk::Label::new(Some("ChefBar"));
+        sidebar_title.set_halign(gtk::Align::Start);
+        sidebar_title.set_xalign(0.0);
+        sidebar_title.style_context().add_class("chefbar-sidebar-title");
+        sidebar_title_wrap.pack_start(&sidebar_title, false, false, 0);
+        let sidebar_sub = gtk::Label::new(Some("agentische assistent"));
+        sidebar_sub.set_halign(gtk::Align::Start);
+        sidebar_sub.set_xalign(0.0);
+        sidebar_sub.style_context().add_class("chefbar-sidebar-sub");
+        sidebar_title_wrap.pack_start(&sidebar_sub, false, false, 0);
+        sidebar.pack_start(&sidebar_title_wrap, false, false, 0);
+
+        // Nav-lijst (3 dummy items)
+        let nav_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        nav_box.style_context().add_class("chefbar-nav");
+        nav_box.set_margin_start(8);
+        nav_box.set_margin_end(8);
+        for (idx, label) in ["Fleet", "Commerce", "Eval"].iter().enumerate() {
+            let btn = gtk::Button::with_label(label);
+            btn.set_relief(gtk::ReliefStyle::None);
+            btn.style_context().add_class("chefbar-nav-item");
+            btn.set_hexpand(true);
+            btn.set_halign(gtk::Align::Fill);
+            if let Some(child) = btn.child() {
+                if let Some(lbl) = child.downcast_ref::<gtk::Label>() {
+                    lbl.set_halign(gtk::Align::Start);
+                    lbl.set_xalign(0.0);
+                }
+            }
+            if idx == 0 {
+                btn.style_context().add_class("active");
+            }
+            nav_box.pack_start(&btn, false, false, 0);
+        }
+        sidebar.pack_start(&nav_box, false, false, 0);
+
+        // Spacer zodat footer onderaan blijft
+        let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        sidebar.pack_start(&spacer, true, true, 0);
+
+        // Status-footer
+        let status_footer = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        status_footer.style_context().add_class("chefbar-sidebar-footer");
+        status_footer.set_margin_start(12);
+        status_footer.set_margin_end(12);
+        status_footer.set_margin_top(10);
+        status_footer.set_margin_bottom(12);
+        let footer_title = gtk::Label::new(Some("Status"));
+        footer_title.set_halign(gtk::Align::Start);
+        footer_title.set_xalign(0.0);
+        footer_title.style_context().add_class("chefbar-sidebar-footer-title");
+        status_footer.pack_start(&footer_title, false, false, 0);
+        let footer_meta = gtk::Label::new(Some("online \u{00b7} devin-skin"));
+        footer_meta.set_halign(gtk::Align::Start);
+        footer_meta.set_xalign(0.0);
+        footer_meta.style_context().add_class("chefbar-sidebar-footer-meta");
+        status_footer.pack_start(&footer_meta, false, false, 0);
+        sidebar.pack_end(&status_footer, false, false, 0);
+
+        root.pack_start(&sidebar, false, false, 0);
+
+        // ---- Main canvas ----
+        let main = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        main.style_context().add_class("chefbar-main");
+        main.set_hexpand(true);
+
+        // Header (title + search + controls)
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         header.style_context().add_class("chefbar-header");
         header.set_margin_bottom(0);
@@ -45,12 +123,20 @@ impl Panel {
         title.set_xalign(0.0);
         title.style_context().add_class("chefbar-title");
         title_block.pack_start(&title, false, false, 0);
-        let title_sub = gtk::Label::new(Some("agentische assistent · devin-skin"));
+        let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} devin-skin"));
         title_sub.set_halign(gtk::Align::Start);
         title_sub.set_xalign(0.0);
         title_sub.style_context().add_class("chefbar-title-sub");
         title_block.pack_start(&title_sub, false, false, 0);
-        header.pack_start(&title_block, true, true, 0);
+        header.pack_start(&title_block, false, false, 0);
+
+        // Search in header (hexpand)
+        let search = gtk::SearchEntry::new();
+        search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies\u{2026}"));
+        search.style_context().add_class("chefbar-search");
+        search.set_hexpand(true);
+        search.set_halign(gtk::Align::Fill);
+        header.pack_start(&search, true, true, 0);
 
         let header_controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let refresh_btn = gtk::Button::new();
@@ -86,7 +172,7 @@ impl Panel {
         header_controls.pack_start(&min_btn, false, false, 0);
         header_controls.pack_start(&close_btn, false, false, 0);
         header.pack_end(&header_controls, false, false, 0);
-        root.pack_start(&header, false, false, 0);
+        main.pack_start(&header, false, false, 0);
 
         // Drag het venster via de header.
         let window_drag = window.clone();
@@ -103,25 +189,18 @@ impl Panel {
             glib::Propagation::Proceed
         });
 
-        // ---- Zoek-input (filtert de hele surface) ----
-        let search_wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        search_wrap.style_context().add_class("chefbar-search-wrap");
-        let search = gtk::SearchEntry::new();
-        search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies…"));
-        search.style_context().add_class("chefbar-search");
-        search_wrap.pack_start(&search, false, false, 0);
-        root.pack_start(&search_wrap, false, false, 0);
-
-        // ---- Content ----
+        // ---- Content (scrolled) ----
         let scroller = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         scroller.set_min_content_height(480);
-        root.pack_start(&scroller, true, true, 0);
+        main.pack_start(&scroller, true, true, 0);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.set_hexpand(true);
         content.set_margin_bottom(8);
         scroller.add(&content);
+
+        root.pack_start(&main, true, true, 0);
 
         let panel = Self {
             window,
