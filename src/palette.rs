@@ -239,14 +239,16 @@ mod tests {
 
     #[test]
     fn prefix_blijft_onder_contains_ondanks_boost() {
-        let contains = action("Open sync dashboard", "status", "open sync dashboard");
-        let prefix = action("Synchroniseer nu", "sync", "sync push");
+        let contains = action("fl ex dashboard", "status", "open");
+        let prefix = action("fleet extra ops", "status", "run");
+        assert!(fuzzy_score("fl ex", &contains).unwrap() >= 1000);
+        assert_eq!(fuzzy_score("fl ex", &prefix), Some(700));
         let actions = vec![prefix, contains];
         let ctx = RankContext {
-            boost_terms: vec!["sync".into()],
+            boost_terms: vec!["fleet".into()],
         };
-        let ranked = rank_actions_with(&actions, "sync", 10, Some(&ctx));
-        assert_eq!(ranked[0].title, "Open sync dashboard");
+        let ranked = rank_actions_with(&actions, "fl ex", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "fl ex dashboard");
     }
 
     #[test]
