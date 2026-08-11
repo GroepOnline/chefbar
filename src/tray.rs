@@ -67,6 +67,19 @@ pub fn register_handle(handle: ksni::Handle<ChefTray>) {
     *slot.lock().unwrap() = Some(handle);
 }
 
+/// Tel verse meldingen voor de badge in de tray-statuslijn.
+fn inbox_count(shared: &Arc<RwLock<Snapshot>>) -> usize {
+    shared
+        .read()
+        .map(|s| {
+            s.suggestions
+                .iter()
+                .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 /// Fetch de laatste snapshot en werk de tray bij (parity: tooltip + icon per
 /// status, zoals indicator.py dat per poll deed).
 pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
@@ -77,10 +90,22 @@ pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
     let Some(handle) = guard.as_ref() else {
         return;
     };
-    let (state, line) = shared
+    let (mut state, mut line) = shared
         .read()
         .map(|s| s.tray_state())
         .unwrap_or_else(|_| ("offline".into(), "ChefGroep".into()));
+    let n = inbox_count(shared);
+    if n > 0 {
+        if state == "stil" {
+            state = "hulp".into();
+        }
+        let suffix = if n == 1 {
+            " · 1 melding".to_string()
+        } else {
+            format!(" · {n} meldingen")
+        };
+        line.push_str(&suffix);
+    }
     let icon = tray_icon_for(&state);
     handle.update(|tray| {
         tray.icon = icon;

@@ -545,6 +545,117 @@ fn render_into(
         .find(|h| h.id == active_id)
         .map(|h| h.label.clone())
         .unwrap_or_else(|| active_id.clone());
+    // ---- Inbox: watcher-suggesties die jou opvallen (vers binnen TTL) ----
+    {
+        let fresh: Vec<&crate::models::Suggestion> = snap
+            .suggestions
+            .iter()
+            .filter(|s| s.fresh(crate::models::SUGGESTION_TTL_SECONDS))
+            .collect();
+        if !fresh.is_empty() {
+            let count = fresh.len();
+            let sub = if count == 1 {
+                "1 melding vraagt om jou".to_string()
+            } else {
+                format!("{count} meldingen vragen om jou")
+            };
+            section_title(content, "Inbox", &sub);
+            let group = group_box_attention();
+            for suggestion in fresh.iter().take(4) {
+                let row_btn = gtk::Button::new();
+                row_btn.set_relief(gtk::ReliefStyle::None);
+                row_btn.set_hexpand(true);
+                row_btn.set_halign(gtk::Align::Fill);
+                row_btn.style_context().add_class("chefbar-row-btn");
+                row_btn.set_tooltip_text(Some(if suggestion.meta.is_empty() {
+                    suggestion.title.as_str()
+                } else {
+                    suggestion.title.as_str()
+                }));
+                if !suggestion.meta.is_empty() {
+                    let tip = format!("{} — {}", suggestion.title, suggestion.meta);
+                    row_btn.set_tooltip_text(Some(tip.as_str()));
+                }
+                let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                dot.set_size_request(8, 8);
+                dot.set_halign(gtk::Align::Start);
+                dot.set_valign(gtk::Align::Center);
+                let dot_cls = match suggestion.stamp.as_str() {
+                    "FOUT" => "down",
+                    "HULP" | "LIMIET" => "warn",
+                    _ => "info",
+                };
+                dot.style_context().add_class("chefbar-dot");
+                dot.style_context().add_class(dot_cls);
+                row.pack_start(&dot, false, false, 0);
+                let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+                let title_l = gtk::Label::new(Some(&suggestion.title));
+                title_l.set_halign(gtk::Align::Start);
+                title_l.set_xalign(0.0);
+                title_l.set_ellipsize(pango::EllipsizeMode::End);
+                title_l.set_line_wrap(false);
+                title_l.set_max_width_chars(36);
+                title_l.style_context().add_class("chefbar-card-title");
+                text.pack_start(&title_l, false, false, 0);
+                if !suggestion.meta.is_empty() {
+                    let meta_l = gtk::Label::new(Some(&suggestion.meta));
+                    meta_l.set_halign(gtk::Align::Start);
+                    meta_l.set_xalign(0.0);
+                    meta_l.set_line_wrap(true);
+                    meta_l.set_lines(1);
+                    meta_l.set_ellipsize(pango::EllipsizeMode::End);
+                    meta_l.set_max_width_chars(52);
+                    meta_l.style_context().add_class("chefbar-card-meta");
+                    text.pack_start(&meta_l, false, false, 0);
+                }
+                row.pack_start(&text, true, true, 0);
+                let cta_text = if suggestion.action_label.is_empty() {
+                    "OPEN".to_string()
+                } else {
+                    suggestion.action_label.to_uppercase()
+                };
+                let cta = stamp_label(&cta_text);
+                cta.style_context().add_class(match suggestion.stamp.as_str() {
+                    "FOUT" => "error",
+                    "HULP" => "warn",
+                    _ => "info",
+                });
+                row.pack_end(&cta, false, false, 0);
+                row_btn.add(&row);
+                if let Some(child) = row_btn.child() {
+                    child.set_margin_start(10);
+                    child.set_margin_end(10);
+                    child.set_margin_top(6);
+                    child.set_margin_bottom(6);
+                }
+                // Actie aan de suggestie: FocusAgent/OpenDashboard via executor.
+                let spec = suggestion_spec(suggestion, &profile);
+                if let Some(spec) = spec {
+                    let executor_clone = executor.clone();
+                    let window_clone = window.clone();
+                    row_btn.connect_clicked(move |_| {
+                        if let crate::actions::RunSpec::CopyText(text) = &spec {
+                            let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                            cb.set_text(text);
+                            crate::notify::notify(
+                                "Gekopieerd",
+                                &text.chars().take(60).collect::<String>(),
+                                "ok",
+                            );
+                        } else {
+                            executor_clone.run_for_ui(&spec);
+                        }
+                        fade_out(&window_clone, PANEL_MS);
+                    });
+                } else {
+                    row_btn.set_sensitive(false);
+                }
+                group.pack_start(&row_btn, false, false, 0);
+            }
+            content.pack_start(&group, false, false, 0);
+        }
+    }
     section_title(content, "Acties", &format!("zoek of kies — {}", harness_label.to_lowercase()));
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
@@ -1058,6 +1169,21 @@ fn truncate_q(q: &str, max: usize) -> String {
         q.to_string()
     } else {
         chars[..max].iter().collect::<String>() + "…"
+    }
+}
+
+/// Zet een watcher-suggestie om naar een uitvoerbare actie voor de executor.
+fn suggestion_spec(
+    suggestion: &crate::models::Suggestion,
+    profile: &crate::config::EndpointProfile,
+) -> Option<crate::actions::RunSpec> {
+    use crate::models::SuggestionKind;
+    match &suggestion.kind {
+        SuggestionKind::FocusAgent(id) => Some(crate::actions::RunSpec::FocusAgent(id.clone())),
+        SuggestionKind::OpenDashboard => {
+            Some(crate::actions::RunSpec::OpenUrl(profile.dashboard.clone()))
+        }
+        SuggestionKind::None_ => None,
     }
 }
 
