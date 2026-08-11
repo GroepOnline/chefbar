@@ -15,7 +15,7 @@ use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions_with, Action, RankContext};
 use crate::state::{Shared, VAULT_POLL_MS};
-use gtk::glib::ControlFlow;
+use glib::ControlFlow;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -82,7 +82,7 @@ impl Panel {
         let nav_labels = ["Fleet", "Commerce", "Evaluatie", "Sync"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
-            let btn = gtk::Button::with_label(label);
+            let btn = gtk::Button::with_label(*label);
             btn.set_relief(gtk::ReliefStyle::None);
             btn.style_context().add_class("chefbar-nav-item");
             btn.set_hexpand(true);
@@ -208,7 +208,7 @@ impl Panel {
                     event.time(),
                 );
             }
-            gtk::glib::Propagation::Proceed
+            glib::Propagation::Proceed
         });
 
         // "/" → focus search, Esc → verbergen (Raycast-geest).
@@ -220,15 +220,15 @@ impl Panel {
                 let kv = event.keyval();
                 if kv == gdk::keys::constants::Escape {
                     fade_out(&window_esc, PANEL_MS);
-                    return gtk::glib::Propagation::Stop;
+                    return glib::Propagation::Stop;
                 }
                 if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
                     search_focus.grab_focus();
-                    return gtk::glib::Propagation::Stop;
+                    return glib::Propagation::Stop;
                 }
                 // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
                 // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
-                gtk::glib::Propagation::Proceed
+                glib::Propagation::Proceed
             });
         }
 
@@ -397,7 +397,7 @@ impl Panel {
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
-        gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
+        glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
                 render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
@@ -407,16 +407,33 @@ impl Panel {
         let dirty_persist = self.persist_dirty.clone();
         let harness_persist = self.harness_state.clone();
         let search_persist = self.search.clone();
-        gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
-            if dirty_persist.replace(false) {
-                crate::panel_state::save(&crate::panel_state::PanelState {
+        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+            if dirty_persist.get() {
+                let state = crate::panel_state::PanelState {
                     harness: Some(harness_persist.borrow().clone()),
                     query: Some(search_persist.text().to_string())
                         .filter(|q: &String| !q.trim().is_empty()),
-                });
+                };
+                if crate::panel_state::save(&state).is_ok() {
+                    dirty_persist.set(false);
+                }
             }
             ControlFlow::Continue
         });
+    }
+
+    /// Flush pending UI state before orderly application shutdown.
+    pub fn flush_persist(&self) {
+        if !self.persist_dirty.get() {
+            return;
+        }
+        let state = crate::panel_state::PanelState {
+            harness: Some(self.harness_state.borrow().clone()),
+            query: Some(self.search.text().to_string()).filter(|q| !q.trim().is_empty()),
+        };
+        if crate::panel_state::save(&state).is_ok() {
+            self.persist_dirty.set(false);
+        }
     }
 }
 
@@ -639,12 +656,15 @@ fn render_into(
                 row_btn.set_hexpand(true);
                 row_btn.set_halign(gtk::Align::Fill);
                 row_btn.style_context().add_class("chefbar-row-btn");
-                let tip = if suggestion.meta.is_empty() {
-                    suggestion.title.clone()
+                row_btn.set_tooltip_text(Some(if suggestion.meta.is_empty() {
+                    suggestion.title.as_str()
                 } else {
-                    format!("{} — {}", suggestion.title, suggestion.meta)
-                };
-                row_btn.set_tooltip_text(Some(tip.as_str()));
+                    suggestion.title.as_str()
+                }));
+                if !suggestion.meta.is_empty() {
+                    let tip = format!("{} — {}", suggestion.title, suggestion.meta);
+                    row_btn.set_tooltip_text(Some(tip.as_str()));
+                }
                 let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
                 let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
                 dot.set_size_request(8, 8);
@@ -1030,7 +1050,7 @@ fn render_into(
             let cta_label = spec_and_label.as_ref().map(|(l, _)| l.as_str()).unwrap_or("Open");
             let pill = stamp_label(match session.state.as_str() { "failed" => "FOUT", _ => "HULP" });
             // vervang stamp-text door CTA hint als beschikbaar
-            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text(), cta_label)); }
+            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text().to_string(), cta_label)); }
             inner.pack_end(&pill, false, false, 0);
             row_btn.add(&inner);
             let inner_child = row_btn.child().unwrap();
@@ -1225,8 +1245,8 @@ fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
         meta_label.style_context().add_class("chefbar-card-meta");
         row.pack_end(&meta_label, false, false, 0);
     }
-    
-    row_wrap(&row)
+    let wrap = row_wrap(&row);
+    wrap
 }
 
 fn truncate_q(q: &str, max: usize) -> String {
@@ -1368,13 +1388,13 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
             let text = entry.text().to_string();
             dialog_keys.close();
             executor_keys.run(&run_keys, &text);
-            return gtk::glib::Propagation::Stop;
+            return glib::Propagation::Stop;
         }
         if event.keyval() == gdk::keys::constants::Escape {
             dialog_keys.close();
-            return gtk::glib::Propagation::Stop;
+            return glib::Propagation::Stop;
         }
-        gtk::glib::Propagation::Proceed
+        glib::Propagation::Proceed
     });
 
     let (x, y) = window.position();

@@ -32,8 +32,8 @@ pub fn load() -> PanelState {
 }
 
 /// Atomair schrijven (tmp + rename): nooit een half bestand bij een crash.
-pub fn save(state: &PanelState) {
-    save_to(&state_path(), state);
+pub fn save(state: &PanelState) -> std::io::Result<()> {
+    save_to(&state_path(), state)
 }
 
 /// Pad-expliciete kern van `load` — testbaar zonder env.
@@ -45,17 +45,15 @@ pub fn load_from(path: &std::path::Path) -> PanelState {
 }
 
 /// Pad-expliciete kern van `save` — testbaar zonder env.
-pub fn save_to(path: &std::path::Path, state: &PanelState) {
+pub fn save_to(path: &std::path::Path, state: &PanelState) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)?;
     }
-    let Ok(json) = serde_json::to_string_pretty(state) else {
-        return;
-    };
+    let json = serde_json::to_string_pretty(state)
+        .map_err(std::io::Error::other)?;
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, json).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
-    }
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]
