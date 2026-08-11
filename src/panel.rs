@@ -669,6 +669,24 @@ fn render_into(
         name.set_tooltip_text(Some(&row.label));
         name.style_context().add_class("chefbar-card-title");
         top.pack_start(&name, true, true, 0);
+        // Versheids-indicator: "STALE" als de provider-data achterloopt op de
+        // connector-refresh, anders de laatste update-tijd.
+        if row.stale || !row.available {
+            let stale_badge = gtk::Label::new(Some("STALE"));
+            stale_badge.set_halign(gtk::Align::Start);
+            stale_badge.set_xalign(0.0);
+            stale_badge.style_context().add_class("chefbar-stamp");
+            stale_badge.style_context().add_class("error");
+            row_top_stale(&top, &stale_badge, row.refresh_at.as_deref());
+        } else if let Some(ref at) = row.refresh_at {
+            let meta = gtk::Label::new(Some(&format!("update {}", short_ts(at))));
+            meta.set_halign(gtk::Align::Start);
+            meta.set_xalign(0.0);
+            meta.set_ellipsize(pango::EllipsizeMode::End);
+            meta.set_line_wrap(false);
+            meta.style_context().add_class("chefbar-card-meta");
+            top.pack_start(&meta, false, false, 0);
+        }
         let active = gtk::Label::new(Some(&row.usage_text));
         active.set_halign(gtk::Align::End);
         active.set_xalign(1.0);
@@ -1041,6 +1059,31 @@ fn truncate_q(q: &str, max: usize) -> String {
     } else {
         chars[..max].iter().collect::<String>() + "…"
     }
+}
+
+/// Korte, locale tijdstempel (HH:MM of <1d → "12:03", anders "04-08").
+fn short_ts(ts: &str) -> String {
+    // Aanname: ISO-8601 zonder tijdzone, gereedschapsdatum—toon alleen de delen
+    // die we betrouwbaar uit de string kunnen knippen.
+    let body = ts.chars().take_while(|c| *c != 'T' && *c != ' ' && *c != '.').collect::<String>();
+    if body.is_empty() { return ts.to_string(); }
+    body
+}
+
+/// Plaatst een STALE-badge + eventuele oude refresh-tijd achteraan de top-row.
+fn row_top_stale(top: &gtk::Box, badge: &gtk::Label, refresh_at: Option<&str>) {
+    let inner = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    inner.pack_start(badge, false, false, 0);
+    if let Some(at) = refresh_at {
+        let meta = gtk::Label::new(Some(&format!("sinds {}", short_ts(at))));
+        meta.set_halign(gtk::Align::End);
+        meta.set_xalign(1.0);
+        meta.set_ellipsize(pango::EllipsizeMode::End);
+        meta.set_line_wrap(false);
+        meta.style_context().add_class("chefbar-card-meta");
+        inner.pack_start(&meta, false, false, 0);
+    }
+    top.pack_start(&inner, false, false, 0);
 }
 
 fn empty_state(title: &str, sub: &str) -> gtk::Box {

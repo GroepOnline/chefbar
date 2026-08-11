@@ -236,6 +236,11 @@ pub struct ProviderRow {
     pub usage_level: String,
     pub usage_text: String,
     pub available: bool,
+    /// Laatste refresh-tijdstip van de provider (uit `refresh.updatedAt`), bruikbaar
+    /// om versheid in de UI te tonen. None als de backend geen timestamp gaf.
+    pub refresh_at: Option<String>,
+    /// Data is ouder dan de connector-refresh (stale/error) → UI-waarschuwing.
+    pub stale: bool,
 }
 
 pub const OCX_REQ_BUDGET: i64 = 500;
@@ -322,10 +327,14 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
                 ("down".to_string(), text)
             } else if stale {
                 ("warn".to_string(), text)
-            } else {
-                (level, text)
-            }
-        })();
+        } else {
+            (level, text)
+        }
+    })();
+        let refresh_at = refresh
+            .and_then(|r| r.get("updatedAt"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let label = provider
             .get("label")
             .and_then(|v| v.as_str())
@@ -357,6 +366,8 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             usage_level: level,
             usage_text,
             available: !unavailable && !stale,
+            refresh_at,
+            stale,
         });
     }
     rows
