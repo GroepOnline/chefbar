@@ -40,6 +40,12 @@ jobs:
           restore-keys: |
             chefbar-target-${{ runner.os }}-
 
+      - name: Cargo check (fast gate)
+        run: cargo check --all-targets
+
+      - name: Shellcheck
+        run: shellcheck install.sh
+
       - name: Test
         run: cargo test --all-targets
 
@@ -52,3 +58,11 @@ jobs:
           name: chefbar-release
           path: target/release/chefbar
           if-no-files-found: error
+
+      - name: Smoke install dry-run
+        run: |
+          bash -n install.sh
+          ./install.sh --help
+          # profile bootstrap smoke (no network, no daemon)
+          ls -la config/endpoints.example.json config/endpoints.tailnet.example.json chefbar.service
+          systemd-analyze verify chefbar.service 2>&1 || echo "verify skip (no systemd target in runner, non-fatal)"

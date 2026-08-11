@@ -42,6 +42,8 @@ fn main() {
     let cli = Cli::parse();
 
     // Externe IPC-commando's hebben geen GTK nodig en geen tweede instantie.
+    // Proberen we een commando te sturen maar is er geen listener, geven we
+    // een bruikbare hint (was een stille "kan commando niet versturen").
     if let Some(command) = &cli.ipc {
         match chefbar::ipc::parse_command(command) {
             Some(cmd) => match chefbar::ipc::send_command(cmd) {
@@ -50,7 +52,7 @@ fn main() {
                     std::process::exit(0);
                 }
                 Err(e) => {
-                    eprintln!("chefbar: kan commando niet versturen: {e}");
+                    eprintln!("chefbar: kan commando niet versturen ({e}) — draait er een instantie? (chefbar &)");
                     std::process::exit(1);
                 }
             },
@@ -78,6 +80,15 @@ fn main() {
         println!("kater    {}", profile.label("katerWorkspace"));
         println!("vastzet  {}", profile.dashboard);
         std::process::exit(0);
+    }
+
+    // Single-instance: als er al een bar draait, stuur TogglePanel in plaats
+    // van een tweede GTK-instantie te starten (on-click/XDG-autostart race).
+    if std::env::var("CHEFBAR_FORCE_NEW").is_err() {
+        if chefbar::ipc::send_command(chefbar::tray::UiCommand::TogglePanel).is_ok() {
+            println!("chefbar: bestaande instantie getoggled via IPC");
+            std::process::exit(0);
+        }
     }
 
     if cli.serve {

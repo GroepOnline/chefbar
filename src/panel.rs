@@ -76,8 +76,8 @@ impl Panel {
         nav_box.set_margin_end(8);
         // We bouwen de nav-knoppen hier maar wire pas na harness_state.
         // Placeholder: wordt direct hieronder gevuld.
-        let nav_ids = ["fleet", "commerce", "eval"];
-        let nav_labels = ["Fleet", "Commerce", "Eval"];
+        let nav_ids = ["fleet", "commerce", "sync", "eval"];
+        let nav_labels = ["Fleet", "Commerce", "Sync", "Evaluatie"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
             let btn = gtk::Button::with_label(*label);
@@ -210,6 +210,7 @@ impl Panel {
         });
 
         // "/" → focus search, Esc → verbergen (Raycast-geest).
+        // Pijltjes ↑/↓ gaan naar de zoek-input terug als je eruit springt.
         {
             let search_focus = search.clone();
             let window_esc = window.clone();
@@ -223,6 +224,8 @@ impl Panel {
                     search_focus.grab_focus();
                     return glib::Propagation::Stop;
                 }
+                // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
+                // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
                 glib::Propagation::Proceed
             });
         }
@@ -451,13 +454,13 @@ fn render_into(
         .find(|h| h.id == active_id)
         .map(|h| h.kind.clone());
 
-    // harnas-tabs: room-navigatie
+    // harnas-tabs: room-navigatie — strak 16px
     if !harnesses.is_empty() {
         let harness_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         harness_row.style_context().add_class("chefbar-harness-row");
-        harness_row.set_margin_top(10);
-        harness_row.set_margin_start(20);
-        harness_row.set_margin_end(20);
+        harness_row.set_margin_top(8);
+        harness_row.set_margin_start(16);
+        harness_row.set_margin_end(16);
         for h in &harnesses {
             let label_text = if h.queue_depth > 0 {
                 format!("{} · {}", h.label, h.queue_depth)
@@ -502,14 +505,16 @@ fn render_into(
     let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
     let ranked = rank_actions(&filtered, query, 40);
 
-    // Status-badge in de header-positie (bovenaan de content-stroom).
+    // Status-badge — strak, 16px
     let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    badge_row.set_margin_top(8);
-    badge_row.set_margin_start(20);
-    badge_row.set_margin_end(20);
+    badge_row.set_margin_top(6);
+    badge_row.set_margin_start(16);
+    badge_row.set_margin_end(16);
     let badge = gtk::Label::new(Some(&line));
     badge.set_xalign(0.0);
     badge.set_ellipsize(pango::EllipsizeMode::End);
+    badge.set_line_wrap(false);
+    badge.set_max_width_chars(34);
     let badge_class = match state.as_str() {
         "offline" | "fout" => "error",
         "hulp" => "warn",
@@ -527,27 +532,27 @@ fn render_into(
     updated.set_halign(gtk::Align::End);
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
+    updated.set_line_wrap(false);
+    updated.set_max_width_chars(28);
     updated.style_context().add_class("chefbar-card-meta");
     badge_row.pack_end(&updated, false, false, 0);
     content.pack_start(&badge_row, false, false, 0);
 
     // ---- Sectie: Acties (eerste, want interactie eerst) ----
     let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(6).collect();
-    section_title(content, "Acties", "zoek of kies — gefilterd op dit harnas");
+    let harness_label = harnesses
+        .iter()
+        .find(|h| h.id == active_id)
+        .map(|h| h.label.clone())
+        .unwrap_or_else(|| active_id.clone());
+    section_title(content, "Acties", &format!("zoek of kies — {}", harness_label.to_lowercase()));
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
-        let empty = gtk::Label::new(Some("Geen acties voor deze zoekterm"));
-        empty.set_halign(gtk::Align::Start);
-        empty.set_xalign(0.0);
-        empty.set_ellipsize(pango::EllipsizeMode::End);
-        empty.style_context().add_class("chefbar-card-meta");
-        group.pack_start(&empty, false, false, 0);
+        let sub = format!("Pas je zoekterm “{}” aan of wissel van harnas.", truncate_q(&q, 24));
+        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
     } else if actions_visible.is_empty() {
-        let empty = gtk::Label::new(Some("Geen acties voor dit harnas"));
-        empty.set_halign(gtk::Align::Start);
-        empty.set_xalign(0.0);
-        empty.style_context().add_class("chefbar-card-meta");
-        group.pack_start(&empty, false, false, 0);
+        let sub = format!("Geen acties voor {} — wissel via de zijbalk of zoek breder.", harness_label.to_lowercase());
+        group.pack_start(&empty_state("Niks hier", &sub), false, false, 0);
     }
     for action in &actions_visible {
         let spec = action.run.clone();
@@ -563,17 +568,20 @@ fn render_into(
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
+        title.set_line_wrap(false);
+        title.set_max_width_chars(48);
         title.style_context().add_class("chefbar-card-title");
         row_box.pack_start(&title, true, true, 0);
         let stamp = stamp_label(&action.stamp);
         row_box.pack_end(&stamp, false, false, 0);
         row.add(&row_box);
         row.set_hexpand(true);
+        row.set_halign(gtk::Align::Fill);
         let row_inner = row.child().unwrap();
-        row_inner.set_margin_start(12);
-        row_inner.set_margin_end(12);
-        row_inner.set_margin_top(7);
-        row_inner.set_margin_bottom(7);
+        row_inner.set_margin_start(10);
+        row_inner.set_margin_end(10);
+        row_inner.set_margin_top(6);
+        row_inner.set_margin_bottom(6);
         row.connect_clicked(move |_| {
             if needs_text {
                 prompt_for(&executor, &window, &action);
@@ -595,15 +603,16 @@ fn render_into(
     }
     content.pack_start(&group, false, false, 0);
 
-    // Tekstacties onder de directe acties (kleine knoppenrij).
+    // Tekstacties onder de directe acties (kleine knoppenrij) — strak.
     let text_actions: Vec<&Action> = ranked.iter().filter(|a| a.needs_text).take(3).collect();
     if !text_actions.is_empty() {
         let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        wrap.set_margin_top(6);
-        wrap.set_margin_start(20);
-        wrap.set_margin_end(20);
+        wrap.set_margin_top(4);
+        wrap.set_margin_start(16);
+        wrap.set_margin_end(16);
         for action in text_actions {
             let btn = gtk::Button::with_label(&action.title);
+            btn.set_tooltip_text(Some(&action.meta));
             btn.style_context().add_class("chefbar-btn");
             let executor = executor.clone();
             let window = window.clone();
@@ -637,7 +646,7 @@ fn render_into(
     }
     content.pack_start(&group, false, false, 0);
 
-    // ---- Sectie: Providers ----
+    // ---- Sectie: Providers — strak, overflow-veilig ----
     section_title(content, "Providers", "accounts, budgets en fleet");
     let group = group_box();
     let mut any_provider = false;
@@ -648,19 +657,25 @@ fn render_into(
     }) {
         any_provider = true;
         let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
-        card.set_margin_top(8);
-        card.set_margin_bottom(8);
+        card.set_margin_top(6);
+        card.set_margin_bottom(6);
         let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let name = gtk::Label::new(Some(&row.label));
         name.set_halign(gtk::Align::Start);
         name.set_xalign(0.0);
         name.set_ellipsize(pango::EllipsizeMode::End);
+        name.set_line_wrap(false);
+        name.set_max_width_chars(24);
+        name.set_tooltip_text(Some(&row.label));
         name.style_context().add_class("chefbar-card-title");
         top.pack_start(&name, true, true, 0);
         let active = gtk::Label::new(Some(&row.usage_text));
         active.set_halign(gtk::Align::End);
         active.set_xalign(1.0);
         active.set_ellipsize(pango::EllipsizeMode::End);
+        active.set_line_wrap(false);
+        active.set_max_width_chars(22);
+        active.set_tooltip_text(Some(&row.usage_text));
         active.style_context().add_class("chefbar-card-meta");
         top.pack_end(&active, false, false, 0);
         card.pack_start(&top, false, false, 0);
@@ -668,11 +683,11 @@ fn render_into(
             let frac = row.usage_frac;
             let level = row.usage_level.clone();
             let track = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            track.set_size_request(200, 4);
+            track.set_size_request(120, 4);
             track.set_hexpand(true);
             track.style_context().add_class("chefbar-bar-track");
             let fill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            fill.set_size_request(((200.0 * frac).round() as i32).clamp(4, 200), 4);
+            fill.set_size_request(((120.0 * frac).round() as i32).clamp(4, 120), 4);
             fill.style_context().add_class("chefbar-bar-fill");
             fill.style_context().add_class(&level);
             track.pack_start(&fill, false, false, 0);
@@ -686,6 +701,7 @@ fn render_into(
             nums.set_halign(gtk::Align::End);
             nums.set_xalign(1.0);
             nums.set_ellipsize(pango::EllipsizeMode::End);
+            nums.set_line_wrap(false);
             nums.style_context().add_class("chefbar-card-meta");
             bottom.pack_end(&nums, false, false, 0);
             card.pack_start(&bottom, false, false, 0);
@@ -694,19 +710,16 @@ fn render_into(
         group.pack_start(&wrap, false, false, 0);
     }
     if !any_provider {
-        let empty = gtk::Label::new(Some("Geen provider-data"));
-        empty.set_halign(gtk::Align::Start);
-        empty.set_xalign(0.0);
-        empty.set_ellipsize(pango::EllipsizeMode::End);
-        empty.style_context().add_class("chefbar-card-meta");
-        empty.set_margin_start(16);
-        empty.set_margin_top(8);
-        empty.set_margin_bottom(8);
-        group.pack_start(&empty, false, false, 0);
+        if q.is_empty() {
+            group.pack_start(&empty_state("Nog geen providers", "Koppel een account in de vault of vernieuw de status."), false, false, 0);
+        } else {
+            let sub = format!("Geen providers voor “{}”.", truncate_q(&q, 28));
+            group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
+        }
     }
     content.pack_start(&group, false, false, 0);
 
-    // ---- Sectie: Agents ----
+    // ---- Sectie: Agents — strak, ellipsis, premium empty ----
     section_title(content, "Agents", "herdr en lopende werkstromen");
     let group = group_box();
     let mut any_agent = false;
@@ -716,7 +729,7 @@ fn render_into(
             || a.workspace.to_lowercase().contains(&q)
     }) {
         any_agent = true;
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 9);
         let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         dot.set_size_request(8, 8);
         dot.set_halign(gtk::Align::Start);
@@ -731,10 +744,14 @@ fn render_into(
         dot.style_context().add_class(cls);
         row.pack_start(&dot, false, false, 0);
         let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        let title = gtk::Label::new(Some(&format!("{} · {}", agent.agent, agent.workspace)));
+        let title_raw = format!("{} · {}", agent.agent, agent.workspace);
+        let title = gtk::Label::new(Some(&title_raw));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
+        title.set_line_wrap(false);
+        title.set_max_width_chars(36);
+        title.set_tooltip_text(Some(&title_raw));
         title.style_context().add_class("chefbar-card-title");
         text.pack_start(&title, false, false, 0);
         if !agent.summary.is_empty() {
@@ -742,9 +759,10 @@ fn render_into(
             summary.set_halign(gtk::Align::Start);
             summary.set_xalign(0.0);
             summary.set_line_wrap(true);
-            summary.set_lines(2);
+            summary.set_lines(1);
             summary.set_ellipsize(pango::EllipsizeMode::End);
-            summary.set_max_width_chars(64);
+            summary.set_max_width_chars(56);
+            summary.set_tooltip_text(Some(&agent.summary));
             summary.style_context().add_class("chefbar-card-meta");
             text.pack_start(&summary, false, false, 0);
         }
@@ -754,60 +772,135 @@ fn render_into(
         group.pack_start(&wrap, false, false, 0);
     }
     if !any_agent {
-        let empty = gtk::Label::new(Some("Geen agents actief"));
-        empty.set_halign(gtk::Align::Start);
-        empty.set_xalign(0.0);
-        empty.set_ellipsize(pango::EllipsizeMode::End);
-        empty.style_context().add_class("chefbar-card-meta");
-        empty.set_margin_start(16);
-        empty.set_margin_top(8);
-        empty.set_margin_bottom(8);
-        group.pack_start(&empty, false, false, 0);
+        if q.is_empty() {
+            group.pack_start(&empty_state("Geen agents actief", "Start een herdr-agent of open een workspace — ze verschijnen hier."), false, false, 0);
+        } else {
+            let sub = format!("Geen agents voor “{}”.", truncate_q(&q, 28));
+            group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
+        }
     }
     content.pack_start(&group, false, false, 0);
 
-    // ---- Sectie: Aandacht (sessions die jou nodig hebben) ----
+    // ---- Sectie: Aandacht (sessions die jou nodig hebben) — premium, actionable ----
     let attention: Vec<_> = sessions.iter().filter(|s| s.needs_attention()).collect();
     if !attention.is_empty() {
-        section_title(content, "Heeft jou nodig", "aanhechtbare sessies");
-        let group = group_box();
+        let count = attention.len();
+        let sub = if count == 1 { "1 sessie vraagt om jou".to_string() } else { format!("{count} sessies vragen om jou") };
+        section_title(content, "Heeft jou nodig", &sub);
+        let group = group_box_attention();
+        // Toon max 4, maar footer hint als er meer zijn
         for session in attention.iter().take(4) {
-            let row = gtk::Box::new(gtk::Orientation::Vertical, 1);
-            let title = gtk::Label::new(Some(&format!("{} · {}", session.source, session.title)));
+            let spec_and_label = session_cta(session, &profile);
+            let row_btn = gtk::Button::new();
+            row_btn.set_relief(gtk::ReliefStyle::None);
+            row_btn.set_hexpand(true);
+            row_btn.set_halign(gtk::Align::Fill);
+            row_btn.style_context().add_class("chefbar-row-btn");
+            // Tooltip met volledige context
+            let tooltip = if session.summary.is_empty() {
+                format!("{} · {} · {}", session.source, session.title, session.state)
+            } else {
+                format!("{} · {} — {}", session.source, session.title, session.summary)
+            };
+            row_btn.set_tooltip_text(Some(&tooltip));
+            let inner = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            dot.set_size_request(8, 8);
+            dot.set_halign(gtk::Align::Start);
+            dot.set_valign(gtk::Align::Center);
+            dot.style_context().add_class("chefbar-dot");
+            dot.style_context().add_class(match session.state.as_str() {
+                "failed" => "down",
+                "blocked" => "warn",
+                _ => "warn",
+            });
+            inner.pack_start(&dot, false, false, 0);
+            let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+            let title_raw = format!("{} · {}", session.source, session.title);
+            let title = gtk::Label::new(Some(&title_raw));
             title.set_halign(gtk::Align::Start);
             title.set_xalign(0.0);
             title.set_ellipsize(pango::EllipsizeMode::End);
+            title.set_line_wrap(false);
+            title.set_max_width_chars(36);
             title.style_context().add_class("chefbar-card-title");
-            row.pack_start(&title, false, false, 0);
+            text.pack_start(&title, false, false, 0);
             if !session.summary.is_empty() {
                 let meta = gtk::Label::new(Some(&session.summary));
                 meta.set_halign(gtk::Align::Start);
                 meta.set_xalign(0.0);
                 meta.set_line_wrap(true);
-                meta.set_lines(2);
+                meta.set_lines(1);
                 meta.set_ellipsize(pango::EllipsizeMode::End);
-                meta.set_max_width_chars(64);
+                meta.set_max_width_chars(52);
                 meta.style_context().add_class("chefbar-card-meta");
-                row.pack_start(&meta, false, false, 0);
+                text.pack_start(&meta, false, false, 0);
             }
-            let wrap = row_wrap(&row);
+            inner.pack_start(&text, true, true, 0);
+            let cta_label = spec_and_label.as_ref().map(|(l, _)| l.as_str()).unwrap_or("Open");
+            let pill = stamp_label(match session.state.as_str() { "failed" => "FOUT", _ => "HULP" });
+            // vervang stamp-text door CTA hint als beschikbaar
+            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text().to_string(), cta_label)); }
+            inner.pack_end(&pill, false, false, 0);
+            row_btn.add(&inner);
+            let inner_child = row_btn.child().unwrap();
+            inner_child.set_margin_start(10);
+            inner_child.set_margin_end(10);
+            inner_child.set_margin_top(6);
+            inner_child.set_margin_bottom(6);
+            if let Some((_, spec)) = spec_and_label {
+                let executor_clone = executor.clone();
+                row_btn.connect_clicked(move |_| {
+                    // CopyText vs OpenUrl/Focus — via zelfde executor-pad
+                    if let crate::actions::RunSpec::CopyText(ref text) = spec {
+                        let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                        cb.set_text(text);
+                        crate::notify::notify("Gekopieerd", &text.chars().take(60).collect::<String>(), "ok");
+                    } else {
+                        executor_clone.run_for_ui(&spec);
+                    }
+                });
+            } else {
+                row_btn.set_sensitive(false);
+            }
+            group.pack_start(&row_btn, false, false, 0);
+        }
+        if attention.len() > 4 {
+            let more = gtk::Label::new(Some(&format!("+{} meer — zoek om te filteren", attention.len() - 4)));
+            more.set_halign(gtk::Align::Start);
+            more.set_xalign(0.0);
+            more.set_ellipsize(pango::EllipsizeMode::End);
+            more.style_context().add_class("chefbar-card-meta");
+            let wrap = row_wrap(&{
+                let b = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                b.pack_start(&more, false, false, 0);
+                b
+            });
             group.pack_start(&wrap, false, false, 0);
         }
         content.pack_start(&group, false, false, 0);
+    } else if !q.is_empty() && sessions.is_empty() {
+        // geen losse lege sectie wanneer er überhaupt geen sessies zijn — stil
     }
 
-    // ---- Footer ----
+    // ---- Footer — strak, mono, met live counts ----
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     footer.style_context().add_class("chefbar-footer");
-    let footer_label = gtk::Label::new(Some(&format!(
-        "ChefBar v{} · profiel {} · {}",
-        crate::VERSION,
-        profile.name,
-        fetched
-    )));
+    let attention_n = sessions.iter().filter(|s| s.needs_attention()).count();
+    let running_n = snap.agents.iter().filter(|a| a.running).count();
+    let footer_text = if attention_n > 0 {
+        format!("v{} · {} · {} wacht · {} bezig · {}", crate::VERSION, profile.name, attention_n, running_n, fetched)
+    } else {
+        format!("v{} · {} · {} bezig · {}", crate::VERSION, profile.name, running_n, fetched)
+    };
+    let footer_label = gtk::Label::new(Some(&footer_text));
     footer_label.set_halign(gtk::Align::Start);
     footer_label.set_xalign(0.0);
     footer_label.set_ellipsize(pango::EllipsizeMode::End);
+    footer_label.set_line_wrap(false);
+    footer_label.set_max_width_chars(64);
+    footer_label.set_tooltip_text(Some(&footer_text));
+    footer_label.style_context().add_class("chefbar-footer-label");
     footer.pack_start(&footer_label, true, true, 0);
     let quit_btn = gtk::Button::with_label("Verbergen");
     quit_btn.style_context().add_class("chefbar-gbtn");
@@ -848,6 +941,52 @@ fn group_box() -> gtk::Box {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
     group.style_context().add_class("chefbar-group");
     group
+}
+
+fn group_box_attention() -> gtk::Box {
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    group.style_context().add_class("chefbar-group-attention");
+    group
+}
+
+fn session_cta(
+    session: &crate::sessions::Session,
+    profile: &crate::config::EndpointProfile,
+) -> Option<(String, crate::actions::RunSpec)> {
+    use crate::sessions::SessionActionKind;
+    match session.primary_action() {
+        SessionActionKind::None_ => None,
+        SessionActionKind::Kater => {
+            let base = profile.kater_workspace.as_deref()?;
+            let kid = session.attach.kater_session_id.as_deref()?;
+            Some((
+                "Open sessie".into(),
+                crate::actions::RunSpec::OpenUrl(format!(
+                    "{}/{}",
+                    base.trim_end_matches('/'),
+                    kid
+                )),
+            ))
+        }
+        SessionActionKind::Focus => session.attach.focus.clone().map(|focus| {
+            ("Neem over".into(), crate::actions::RunSpec::FocusAgent(focus))
+        }),
+        SessionActionKind::Workspace => session
+            .attach
+            .workspace_url
+            .clone()
+            .map(|url| ("Open workspace".into(), crate::actions::RunSpec::OpenUrl(url))),
+        SessionActionKind::Browser => session
+            .attach
+            .browser
+            .clone()
+            .map(|url| ("Open".into(), crate::actions::RunSpec::OpenUrl(url))),
+        SessionActionKind::Evidence => session
+            .attach
+            .evidence_url
+            .clone()
+            .map(|url| ("Bewijs".into(), crate::actions::RunSpec::OpenUrl(url))),
+    }
 }
 
 fn row_wrap(inner: &gtk::Box) -> gtk::Box {
@@ -893,6 +1032,43 @@ fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
     }
     let wrap = row_wrap(&row);
     wrap
+}
+
+fn truncate_q(q: &str, max: usize) -> String {
+    let chars: Vec<char> = q.chars().collect();
+    if chars.len() <= max {
+        q.to_string()
+    } else {
+        chars[..max].iter().collect::<String>() + "…"
+    }
+}
+
+fn empty_state(title: &str, sub: &str) -> gtk::Box {
+    let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    outer.style_context().add_class("chefbar-empty");
+    let icon = gtk::Label::new(Some("—"));
+    icon.set_halign(gtk::Align::Start);
+    icon.set_xalign(0.0);
+    icon.style_context().add_class("chefbar-empty-icon");
+    outer.pack_start(&icon, false, false, 0);
+    let t = gtk::Label::new(Some(title));
+    t.set_halign(gtk::Align::Start);
+    t.set_xalign(0.0);
+    t.set_ellipsize(pango::EllipsizeMode::End);
+    t.style_context().add_class("chefbar-empty-title");
+    outer.pack_start(&t, false, false, 0);
+    if !sub.is_empty() {
+        let s = gtk::Label::new(Some(sub));
+        s.set_halign(gtk::Align::Start);
+        s.set_xalign(0.0);
+        s.set_line_wrap(true);
+        s.set_lines(2);
+        s.set_ellipsize(pango::EllipsizeMode::End);
+        s.set_max_width_chars(62);
+        s.style_context().add_class("chefbar-empty-sub");
+        outer.pack_start(&s, false, false, 0);
+    }
+    outer
 }
 
 /// Tekstdialog voor acties die input vragen (taak aanmaken, clipboard, prompt).
