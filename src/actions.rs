@@ -89,6 +89,16 @@ fn agent_stamp(status: &str) -> &'static str {
     }
 }
 
+/// Sync-acties mogen niet draaien als share-sync in een foutstatus staat
+/// (parity met het Sync-harnas in harness.rs).
+pub fn sync_blocked(snap: &Snapshot) -> bool {
+    snap.share_sync.contains_key("error")
+        || matches!(
+            snap.share_sync.get("status").and_then(|v| v.as_str()),
+            Some("error") | Some("blocked")
+        )
+}
+
 /// Bouw de catalogus uit de laatste snapshots (pure functie, geen I/O).
 pub fn build_actions(
     ops: &OpsSnapshot,
@@ -316,20 +326,6 @@ pub fn build_actions(
             RunSpec::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
         ),
         action(
-            "Haal gedeelde bestanden op",
-            format!("{pending} wijzigingen wachten"),
-            "STIL",
-            "share sync pull ophalen bestanden",
-            RunSpec::ShareSync("pull".into()),
-        ),
-        action(
-            "Deel lokale bestanden",
-            "push naar de gedeelde map",
-            "STIL",
-            "share sync push delen bestanden",
-            RunSpec::ShareSync("push".into()),
-        ),
-        action(
             "Open ops",
             format!("joep-ops · {}", profile.label("opsApi")),
             "STIL",
@@ -365,6 +361,35 @@ pub fn build_actions(
             RunSpec::Refresh,
         ),
     ]);
+
+    // Sync-acties alleen als share-sync gezond is; bij fout één uitleg-actie
+    // (Noop) zodat pull/push nooit tegen een kapotte sync lopen.
+    if sync_blocked(snap) {
+        actions.push(action(
+            "Sync hapert",
+            "los de sync-fout op voordat je bestanden ophaalt of deelt",
+            "FOUT",
+            "share sync error hapert fout",
+            RunSpec::Noop,
+        ));
+    } else {
+        actions.extend([
+            action(
+                "Haal gedeelde bestanden op",
+                format!("{pending} wijzigingen wachten"),
+                "STIL",
+                "share sync pull ophalen bestanden",
+                RunSpec::ShareSync("pull".into()),
+            ),
+            action(
+                "Deel lokale bestanden",
+                "push naar de gedeelde map",
+                "STIL",
+                "share sync push delen bestanden",
+                RunSpec::ShareSync("push".into()),
+            ),
+        ]);
+    }
     actions
 }
 
@@ -427,7 +452,7 @@ impl Executor {
             RunSpec::CopyText(_text) => {
                 // GTK-clipboard pad wordt in de UI afgehandeld (panel.rs); hier
                 // alleen toast — zonder inhoud (privacy, niks in notificaties).
-                crate::notify::notify("Gekopieerd", "naar klembord gezet", "ok");
+                crate::notify::notify("Gekopieerd", "Tekst staat op het klembord.", "ok");
             }
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
             RunSpec::Refresh => self.request_refresh(),
@@ -563,6 +588,26 @@ impl Executor {
                 let kind = kind.clone();
                 let vault = self.vault.clone();
                 self.spawn_bg(move || {
+                    // Live check: nooit pull/push tegen een sync in foutstatus.
+                    let blocked = vault
+                        .get_json("/share-sync/status")
+                        .ok()
+                        .map(|status| {
+                            status.get("error").is_some()
+                                || matches!(
+                                    status.get("status").and_then(|v| v.as_str()),
+                                    Some("error") | Some("blocked")
+                                )
+                        })
+                        .unwrap_or(false);
+                    if blocked {
+                        crate::notify::notify(
+                            "Sync hapert",
+                            "Los de sync-fout op voordat je bestanden ophaalt of deelt.",
+                            "error",
+                        );
+                        return;
+                    }
                     match vault.post_json(&format!("/share-sync/{kind}"), &json!({})) {
                         Ok(_) => {
                             crate::notify::notify("Gedeelde bestanden gesynchroniseerd", "", "ok")
@@ -605,4 +650,75 @@ fn urlencoding(input: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EndpointProfile;
+    use crate::models::OpsSnapshot;
+
+    fn catalogus_met(snap: &Snapshot) -> Vec<Action> {
+        build_actions(
+            &OpsSnapshot::default(),
+            snap,
+            &EndpointProfile::default(),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn sync_acties_beschikbaar_als_gezond() {
+        let snap = Snapshot::default();
+        let actions = catalogus_met(&snap);
+        let sync_runs: Vec<&RunSpec> = actions
+            .iter()
+            .map(|a| &a.run)
+            .filter(|r| matches!(r, RunSpec::ShareSync(_)))
+            .collect();
+        assert_eq!(sync_runs.len(), 2);
+    }
+
+    #[test]
+    fn sync_acties_geblokkeerd_bij_error_status() {
+        let mut snap = Snapshot::default();
+        snap.share_sync.insert(
+            "status".into(),
+            serde_json::Value::String("error".into()),
+        );
+        let actions = catalogus_met(&snap);
+        assert!(actions
+            .iter()
+            .all(|a| !matches!(a.run, RunSpec::ShareSync(_))));
+        let uitleg = actions
+            .iter()
+            .find(|a| a.title == "Sync hapert")
+            .expect("uitleg-actie aanwezig");
+        assert_eq!(uitleg.run, RunSpec::Noop);
+        assert_eq!(uitleg.stamp, "FOUT");
+    }
+
+    #[test]
+    fn sync_blocked_detecteert_error_key_en_blocked_status() {
+        let mut snap = Snapshot::default();
+        snap.share_sync.insert(
+            "error".into(),
+            serde_json::Value::String("disk vol".into()),
+        );
+        assert!(sync_blocked(&snap));
+
+        let mut snap = Snapshot::default();
+        snap.share_sync.insert(
+            "status".into(),
+            serde_json::Value::String("blocked".into()),
+        );
+        assert!(sync_blocked(&snap));
+
+        let mut snap = Snapshot::default();
+        snap.share_sync.insert(
+            "status".into(),
+            serde_json::Value::String("ok".into()),
+        );
+        assert!(!sync_blocked(&snap));
+    }
 }

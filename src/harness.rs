@@ -288,8 +288,8 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         .unwrap_or(0);
     let sync_active = share_sync
         .get("last_sync")
-        .or_else(|| share_sync.get("updated_at"))
         .and_then(|v| v.as_str())
+        .or_else(|| share_sync.get("updated_at").and_then(|v| v.as_str()))
         .map(|s| s.to_string());
     out.push(Harness::new(
         HarnessKind::Sync.id(),
@@ -331,6 +331,21 @@ mod tests {
         snap.share_sync.insert("status".into(), serde_json::Value::String("error".into()));
         let h = build_harnesses(&snap, &OpsSnapshot::default());
         assert_eq!(h[3].status, HarnessStatus::Blocked);
+    }
+
+    #[test]
+    fn sync_active_valt_terug_op_updated_at_als_last_sync_null_is() {
+        let mut snap = empty_snapshot();
+        snap.share_sync.insert("last_sync".into(), serde_json::Value::Null);
+        snap.share_sync.insert(
+            "updated_at".into(),
+            serde_json::Value::String("2026-08-11T21:00:00Z".into()),
+        );
+        let h = build_harnesses(&snap, &OpsSnapshot::default());
+        assert_eq!(
+            h[3].active_task.as_deref(),
+            Some("2026-08-11T21:00:00Z")
+        );
     }
 
     #[test]
