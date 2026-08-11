@@ -133,6 +133,6 @@ fi
 echo "ChefBar (Rust) geïnstalleerd → $BIN_DIR/chefbar"
 # Non-blocking quick-check (faalt niet de install als vault offline is).
 if [ -x "$BIN_DIR/chefbar" ]; then
-  echo "doctor    $($BIN_DIR/chefbar --doctor 2>&1 | head -6 | tr '\n' '; ')"
+  echo "doctor    $("$BIN_DIR/chefbar" --doctor 2>&1 | head -6 | tr '\n' '; ')"
 fi
 echo "Test: $BIN_DIR/chefbar --doctor  ·  Super+Space opent de bar (na --systemd)"
