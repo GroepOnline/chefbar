@@ -217,7 +217,6 @@ pub fn styles_css(theme: &str) -> String {
   font-weight: 600;
   color: {text_faint};
   letter-spacing: 0.06em;
-  text-transform: uppercase;
 }}
 
 /* Status-dots (pill) */
@@ -367,7 +366,6 @@ pub fn styles_css(theme: &str) -> String {
   font-weight: 600;
   color: {text_muted};
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }}
 .chefbar-sidebar-footer-meta {{
   font-family: "IBM Plex Mono", monospace;
