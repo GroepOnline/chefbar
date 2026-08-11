@@ -13,11 +13,11 @@
 use crate::actions::{build_actions, Executor};
 use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
-use crate::palette::{rank_actions, Action};
+use crate::palette::{rank_actions_with, Action, RankContext};
 use crate::state::{Shared, VAULT_POLL_MS};
 use glib::ControlFlow;
 use gtk::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub struct Panel {
@@ -30,6 +30,8 @@ pub struct Panel {
     pub active_harness: String,
     harness_state: Rc<RefCell<String>>,
     nav_buttons: Rc<Vec<(String, gtk::Button)>>,
+    /// UI-state (harnas + zoekterm) is gewijzigd maar nog niet naar disk.
+    persist_dirty: Rc<Cell<bool>>,
 }
 
 impl Panel {
@@ -242,8 +244,21 @@ impl Panel {
         scroller.add(&content);
 
         root.pack_start(&main, true, true, 0);
-        // harnas-state: default naar eerste harnas (fleet)
-        let initial = "fleet".to_string();
+        // harnas-state: herstel het laatst gekozen harnas (panel dat onthoudt),
+        // anders default naar eerste harnas (fleet). render() valideert tegen
+        // echte harnassen zodra de snapshot er is.
+        let persisted = crate::panel_state::load();
+        let initial = persisted
+            .harness
+            .clone()
+            .filter(|id| nav_ids.contains(&id.as_str()))
+            .unwrap_or_else(|| "fleet".to_string());
+        if let Some(query) = persisted.query.as_deref() {
+            if !query.trim().is_empty() {
+                search.set_text(query);
+            }
+        }
+        let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
         // Wire sidebar nav → harness_state + content re-render + active-class sync
         {
@@ -258,8 +273,10 @@ impl Panel {
                 let nav_rc = nav_buttons_rc.clone();
                 let id_for_class = id.clone();
                 let btn_clone = btn.clone();
+                let dirty_clone = persist_dirty.clone();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
+                    dirty_clone.set(true);
                     for (other_id, other_btn) in nav_rc.iter() {
                         if *other_id == id_for_class {
                             other_btn.style_context().add_class("active");
@@ -268,7 +285,7 @@ impl Panel {
                         }
                     }
                     let q = search_clone.text().to_string();
-                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone);
+                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone, &dirty_clone);
                 });
             }
         }
@@ -281,10 +298,13 @@ impl Panel {
             active_harness: initial.clone(),
             harness_state: harness_state.clone(),
             nav_buttons: nav_buttons_rc.clone(),
+            persist_dirty: persist_dirty.clone(),
         };
         panel.wire_search();
-        // Initieel ook nav active sync via harness_state
-        panel.render("");
+        // Initieel renderen met de (mogelijk herstelde) zoekterm — nooit een
+        // gefilterd veld met ongefilterde inhoud.
+        let initial_query = panel.search.text().to_string();
+        panel.render(&initial_query);
         panel
     }
 
@@ -319,10 +339,12 @@ impl Panel {
         let executor = self.executor.clone();
         let window = self.window.clone();
         let harness_state = self.harness_state.clone();
+        let dirty = self.persist_dirty.clone();
         self.search.connect_changed(move |search| {
+            dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(&content, &shared, &executor, &window, &query, &harness_state);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
             }
         });
     }
@@ -350,6 +372,7 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
+            &self.persist_dirty,
         );
     }
 
@@ -364,7 +387,8 @@ impl Panel {
         }
     }
 
-    /// Start de periodieke render-loop (één glib-timer, geen eigen polls).
+    /// Start de periodieke render-loop (één glib-timer, geen eigen polls) plus
+    /// een rustige persist-timer: gewijzigde UI-state gaat 1× per 2s naar disk.
     pub fn start_refresh_loop(&self) {
         let content = self.content.clone();
         let shared = self.shared.clone();
@@ -372,10 +396,24 @@ impl Panel {
         let window = self.window.clone();
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
+        let dirty = self.persist_dirty.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(&content, &shared, &executor, &window, &query, &harness_state);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
+            }
+            ControlFlow::Continue
+        });
+        let dirty_persist = self.persist_dirty.clone();
+        let harness_persist = self.harness_state.clone();
+        let search_persist = self.search.clone();
+        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+            if dirty_persist.replace(false) {
+                crate::panel_state::save(&crate::panel_state::PanelState {
+                    harness: Some(harness_persist.borrow().clone()),
+                    query: Some(search_persist.text().to_string())
+                        .filter(|q: &String| !q.trim().is_empty()),
+                });
             }
             ControlFlow::Continue
         });
@@ -427,6 +465,7 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
+    persist_dirty: &Rc<Cell<bool>>,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -494,8 +533,10 @@ fn render_into(
             let window_clone = window.clone();
             let query_clone = query.to_string();
             let id_clone = h.id.clone();
+            let dirty_clone = persist_dirty.clone();
             btn.connect_clicked(move |_| {
                 *harness_state_clone.borrow_mut() = id_clone.clone();
+                dirty_clone.set(true);
                 render_into(
                     &content_clone,
                     &shared_clone,
@@ -503,6 +544,7 @@ fn render_into(
                     &window_clone,
                     &query_clone,
                     &harness_state_clone,
+                    &dirty_clone,
                 );
             });
             harness_row.pack_start(&btn, false, false, 0);
@@ -514,7 +556,26 @@ fn render_into(
     // Filter eerst op het geselecteerde harnas, zodat de globale limiet geen
     // relevante acties van dit harnas wegdrukt.
     let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
-    let ranked = rank_actions(&filtered, query, 40);
+    // Zoeken dat kiest: recency-boost uit sessies die om jou vragen en agents
+    // die nu draaien. Alleen woorden van 4+ tekens (geen ruis op korte tokens).
+    let mut boost_terms: Vec<String> = Vec::new();
+    for session in sessions.iter().filter(|s| s.needs_attention()).take(4) {
+        boost_terms.push(session.source.to_lowercase());
+        for word in session.title.split_whitespace() {
+            let word = word.to_lowercase();
+            if word.chars().count() >= 4 {
+                boost_terms.push(word);
+            }
+        }
+    }
+    for agent in snap.agents.iter().filter(|a| a.running).take(4) {
+        boost_terms.push(agent.agent.to_lowercase());
+    }
+    boost_terms.sort();
+    boost_terms.dedup();
+    boost_terms.truncate(16);
+    let rank_ctx = RankContext { boost_terms };
+    let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
     // Status-badge — strak, 16px
     let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);

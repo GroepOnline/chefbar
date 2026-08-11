@@ -1,4 +1,4 @@
-# ChefBar 3.0
+# ChefBar 3.1
 
 Mission control aan je menubalk. Eén venster, één actor, alle harnassen.
 
@@ -35,10 +35,12 @@ chefbar --show-config
 
 | Vlak | Gedrag |
 | --- | --- |
-| **App-venster** | Sidebar met live harnas-navigatie (Fleet, Commerce, Evaluatie), header-zoekveld als enige bron van waarheid, content-paneel dat per harnas filtert en per poll opnieuw rendert. Undecorated, drag op header, Escape verbergt. |
-| **Zoeken** | `/` focust, typen filtert de hele surface, geen aparte modi. Raycast-geest, geen Raycast-kopie. |
+| **App-venster** | Sidebar met live harnas-navigatie (Fleet, Commerce, Evaluatie, Sync), header-zoekveld als enige bron van waarheid, content-paneel dat per harnas filtert en per poll opnieuw rendert. Undecorated, drag op header, Escape verbergt. |
+| **Zoeken** | `/` focust, typen filtert de hele surface, geen aparte modi. Ranking kiest: recency-boost uit sessies die om jou vragen en lopende agents (`RankContext` in `src/palette.rs`). Raycast-geest, geen Raycast-kopie. |
 | **Harnas-filtering** | Acties matchen op harnas via keyword-prefixen (`src/harness.rs`). Statuskleuren per harnas, geen generieke badges. |
 | **Tray + IPC** | ksni-tray met command-menu. Externe commando's via Unix-socket op `$XDG_RUNTIME_DIR/chefbar.sock`. Hotkey en scripts praten tegen een draaiende instantie, niet tegen een tweede proces. |
+| **Meldingen** | Watcher-transities gecoalesceerd tot hooguit één toast per poll-cyclus (`coalesce_toasts` in `src/models.rs`). Geen ticker, geen storm. |
+| **Panel-state** | Laatste harnas + zoekterm bewaard in `~/.config/chefbar/panel-state.json` (`src/panel_state.rs`). Heropenen zonder verrassingen. |
 | **Doctor** | `chefbar --doctor` beoordeelt profiel, policy, credentials (alleen fingerprints), watchdog en laatste poll. Exit 0 bij OK, anders 1. Ook als desktop-melding. |
 | **Serve** | `chefbar --serve` draait alleen de actor. Poll-ritme vault 5s, ops 15s. Geen UI, zelfde snapshot. |
 
@@ -167,8 +169,9 @@ Lokaal telt alleen `cargo test` als je de toolchain al hebt. Release-artifacts k
 | Panel | `src/panel.rs` (GTK3, sidebar 220px, search, cards) |
 | Styling | `src/css.rs` (Devin-tokens → GTK3-subset, dark/light) |
 | Doctor | `src/doctor.rs` |
+| Panel-state | `src/panel_state.rs` (harnas + zoekterm, atomair JSON) |
 
-Tests zitten inline per module (`#[cfg(test)]` in `config`, `palette`, `models`, `motion`, `harness`, `ipc`, `policy`, `sessions`).
+Tests zitten inline per module (`#[cfg(test)]` in `actions`, `config`, `palette`, `models`, `motion`, `harness`, `ipc`, `policy`, `sessions`, `panel_state`).
 
 Stack: `gtk 0.18`, `ksni 0.2`, `ureq 2` (json, geen redirects), `clap 4`, `url 2`, `serde_json 1`.
 
@@ -188,17 +191,17 @@ Veelvoorkomend:
 * Tray toont niets → actor offline. Kijk of `vault_online` false is en of credentials aanwezig zijn (`auth_status` in doctor).
 * Hotkey doet niets → `gsettings` custom-keybinding `chefbar0` controleren, `Super+Space` is vrijgegeven van input-source switching door `install.sh`.
 
-## Roadmap 3.1
+## Roadmap 3.1 — verscheept
 
-Zie `docs/roadmap.md` voor detail. Samenvatting:
+Zie `docs/roadmap.md` voor detail. Samenvatting van wat 3.1 bracht:
 
-* **Zoeken dat kiest** — ranking op recente sessies en open harnas, geen platte filter. Snel naar wat je net aanraakte.
-* **Rustiger meldingen** — coalescing per harnas, alleen bij echte statusovergang (blocked, hulp nodig). Geen ticker.
-* **Wayland zonder spijt** — layer-shell waar het kan, fallback waar het moet. Zelfde IPC, zelfde hotkey.
-* **Auth zonder wrijving** — OIDC access tokens via dezelfde `get_headers` seam, service tokens blijven werken.
-* **Panel dat onthoudt** — laatste harnas en zoekterm per sessie bewaard, geen verrassingen bij heropenen.
+* **Zoeken dat kiest** — ranking op recente sessies en lopende agents, geen platte filter. Snel naar wat je net aanraakte.
+* **Rustige meldingen** — coalescing tot één toast per cyclus, alleen bij echte statusovergang (blocked, hulp nodig). Geen ticker.
+* **Panel dat onthoudt** — laatste harnas en zoekterm bewaard over herstart heen, geen verrassingen bij heropenen.
 
-Scope is strak. 3.1 voegt geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
+Bewust uitgesteld: Wayland layer-shell (eigen change met CI-afhankelijkheid) en OIDC via de `get_headers` seam (wacht op `auth.chefgroep.online`).
+
+Scope blijft strak. Geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
 
 ## Licentie
 

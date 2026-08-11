@@ -18,6 +18,7 @@ pub mod ops_cli;
 pub mod palette;
 pub mod harness;
 pub mod panel;
+pub mod panel_state;
 pub mod policy;
 pub mod sessions;
 pub mod state;

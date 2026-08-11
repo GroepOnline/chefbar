@@ -744,6 +744,44 @@ impl Suggestion {
             .unwrap_or(0);
         now - self.created_unix < ttl_seconds
     }
+
+    /// Toast-ernst per stempel (joep-notify -S).
+    pub fn notify_status(&self) -> &'static str {
+        match self.stamp.as_str() {
+            "KLAAR" => "ok",
+            "HULP" => "warn",
+            _ => "error",
+        }
+    }
+}
+
+/// Vat verse watcher-suggesties samen tot hooguit één toast per poll-cyclus.
+/// Eén suggestie krijgt haar eigen toast; meerdere smelten tot één rustige
+/// melding met de ergste ernst. Geen ticker, geen toast-storm bij een
+/// gelijktijdige agent-wissel.
+pub fn coalesce_toasts(fresh: &[Suggestion]) -> Option<(String, String, &'static str)> {
+    let first = fresh.first()?;
+    if fresh.len() == 1 {
+        return Some((
+            first.title.clone(),
+            first.meta.clone(),
+            first.notify_status(),
+        ));
+    }
+    let worst = if fresh.iter().any(|s| s.stamp == "FOUT") {
+        "error"
+    } else if fresh.iter().any(|s| matches!(s.stamp.as_str(), "HULP" | "LIMIET")) {
+        "warn"
+    } else {
+        "ok"
+    };
+    let mut names: Vec<&str> = fresh.iter().map(|s| s.title.as_str()).collect();
+    names.truncate(3);
+    let mut body = names.join(", ");
+    if fresh.len() > 3 {
+        body.push_str(&format!(" +{} meer", fresh.len() - 3));
+    }
+    Some((format!("ChefGroep · {} meldingen", fresh.len()), body, worst))
 }
 
 pub const SUGGESTION_TTL_SECONDS: i64 = 45;
@@ -868,5 +906,44 @@ mod watcher_tests {
         let events = watcher_events(&prev, &next);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].stamp, "KLAAR");
+    }
+
+    #[test]
+    fn coalesce_geeft_enkele_toast_door() {
+        let prev = snap_with(vec![("a::ws", "running")]);
+        let next = snap_with(vec![("a::ws", "blocked")]);
+        let events = watcher_events(&prev, &next);
+        let (title, _body, status) = coalesce_toasts(&events).unwrap();
+        assert_eq!(title, "a::ws · even jou nodig");
+        assert_eq!(status, "warn");
+    }
+
+    #[test]
+    fn coalesce_bundelt_storm_tot_een_toast() {
+        let prev = snap_with(vec![
+            ("a::ws", "running"),
+            ("b::ws", "running"),
+            ("c::ws", "idle"),
+            ("d::ws", "running"),
+        ]);
+        let next = snap_with(vec![
+            ("a::ws", "blocked"),
+            ("b::ws", "failed"),
+            ("c::ws", "blocked"),
+            ("d::ws", "done"),
+        ]);
+        let events = watcher_events(&prev, &next);
+        assert_eq!(events.len(), 4);
+        let (title, body, status) = coalesce_toasts(&events).unwrap();
+        assert_eq!(title, "ChefGroep · 4 meldingen");
+        // ergste ernst wint: failed → error
+        assert_eq!(status, "error");
+        // body toont de eerste drie + restteller
+        assert!(body.contains("+1 meer"));
+    }
+
+    #[test]
+    fn coalesce_leeg_is_stil() {
+        assert!(coalesce_toasts(&[]).is_none());
     }
 }
