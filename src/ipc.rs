@@ -20,7 +20,7 @@ pub fn socket_path() -> PathBuf {
 
 pub fn parse_command(line: &str) -> Option<UiCommand> {
     match line.trim() {
-        "panel" | "toggle-panel" | "dashboard" | "open" | "show" => {
+        "bar" | "panel" | "toggle-panel" | "dashboard" | "open" | "show" => {
             Some(UiCommand::TogglePanel)
         }
         "refresh" | "reload" => Some(UiCommand::Refresh),
