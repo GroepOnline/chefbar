@@ -85,11 +85,11 @@ fn main() {
     // Single-instance: als er al een bar draait, laat die het paneel shown
     // (idempotent, "openen" — Esc verbergt) i.p.v. een tweede GTK-instantie
     // te starten (on-click/XDG-autostart race).
-    if std::env::var("CHEFBAR_FORCE_NEW").is_err() {
-        if chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok() {
-            println!("chefbar: bestaande instantie getoond via IPC");
-            std::process::exit(0);
-        }
+    if std::env::var("CHEFBAR_FORCE_NEW").is_err()
+        && chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok()
+    {
+        println!("chefbar: bestaande instantie getoond via IPC");
+        std::process::exit(0);
     }
 
     if cli.serve {
@@ -160,6 +160,9 @@ fn run_app(cli: &Cli) {
     // Eén UI-commando-kanaal voor tray + ipc + refresh-loop. De dispatcher
     // draait op de UI-thread (glib-timeout), dus widgets zijn hier veilig.
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<chefbar::tray::UiCommand>();
+    // De closure vangt GTK-widgets (Rc, niet Send/Sync) maar verlaat de
+    // UI-thread nooit: de glib-bridge dispatcht alleen op de main-loop.
+    #[allow(clippy::arc_with_non_send_sync)]
     let dispatcher: std::sync::Arc<dyn Fn(chefbar::tray::UiCommand)> =
         std::sync::Arc::new(move |cmd| match cmd {
             chefbar::tray::UiCommand::ShowPanel => panel.show(),
@@ -183,7 +186,7 @@ fn run_app(cli: &Cli) {
     let tray = chefbar::tray::ChefTray::new(snapshot, ui_tx);
     let tray_service = ksni::TrayService::new(tray);
     chefbar::tray::register_handle(tray_service.handle());
-    let _tray_service = tray_service.spawn();
+    tray_service.spawn();
 
     gtk::main();
 }
