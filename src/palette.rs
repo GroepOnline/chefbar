@@ -54,7 +54,9 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
             .skip_while(|(idx, _)| *idx as i64 <= position)
             .find(|(_, c)| *c == ch)
             .map(|(idx, _)| idx as i64);
-        let next = next?;
+        let Some(next) = next else {
+            return None;
+        };
         if position >= 0 {
             gaps += next - position - 1;
         }
@@ -101,10 +103,24 @@ impl RankContext {
 /// Tier-bewuste boost: recency mag herordenen *binnen* de contains-tier, maar
 /// prefix- en gappy-matches komen nooit boven een contains-match uit.
 fn boosted(score: i32, boost: i32) -> i32 {
-    if score >= 700 {
-        score + boost
+    score + boost
+}
+
+fn match_tier(query: &str, action: &Action) -> u8 {
+    let needle: String = query.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let haystack = format!(
+        "{} {} {} {}",
+        action.title.to_lowercase(), action.meta.to_lowercase(),
+        action.section.to_lowercase(), action.keywords.to_lowercase()
+    );
+    if haystack.contains(&needle) {
+        2 // contains
+    } else if needle.split_whitespace().all(|token| {
+        haystack.split_whitespace().any(|word| word.starts_with(token))
+    }) {
+        1 // prefix
     } else {
-        (score + boost).min(699)
+        0 // gappy
     }
 }
 
@@ -118,23 +134,25 @@ pub fn rank_actions_with(
     limit: usize,
     ctx: Option<&RankContext>,
 ) -> Vec<Action> {
-    let mut ranked: Vec<(i32, usize, &Action)> = Vec::new();
+    let mut ranked: Vec<(u8, i32, usize, &Action)> = Vec::new();
     for (index, action) in actions.iter().enumerate() {
         if let Some(score) = fuzzy_score(query, action) {
             // Pinned acties zweven altijd iets omhoog; context boostet wat
             // dichtbij is. Beide tellen mee bovenop de fuzzy-score.
             let pinned = if action.pinned { 100 } else { 0 };
             let boost = ctx.map(|c| c.boost(action)).unwrap_or(0) + pinned;
-            ranked.push((boosted(score, boost), index, action));
+            ranked.push((match_tier(query, action), boosted(score, boost), index, action));
         }
     }
     ranked.sort_by(|a, b| {
-        b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)) // stabiel, originele volgorde als tiebreak
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| a.2.cmp(&b.2)) // stabiel, originele volgorde als tiebreak
     });
     ranked
         .into_iter()
         .take(limit)
-        .map(|(_, _, a)| a.clone())
+        .map(|(_, _, _, a)| a.clone())
         .collect()
 }
 
