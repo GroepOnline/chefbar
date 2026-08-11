@@ -530,12 +530,19 @@ impl Tokens {
     }
 }
 
-/// Welk thema actief is: donker tenzij de desktop expliciet om light vraagt.
-pub fn detect_theme(settings: &gtk::Settings) -> String {
-    use gtk::prelude::*;
-    if settings.property::<bool>("gtk-application-prefer-dark-theme") {
-        THEME_DARK.into()
-    } else {
-        THEME_LIGHT.into()
+/// Welk thema actief is. Spec (Signaal · Huly, lock 2026-07-23): donker is
+/// de standaard. `gtk-application-prefer-dark-theme` is op GNOME vrijwel
+/// altijd false (GTK3 krijgt dark-pref niet door), dus daarop defaulten zou
+/// de app onbedoeld licht maken. Licht heeft pariteit en is bereikbaar via
+/// CHEFBAR_THEME=light (dev/parity-checks); donker kan expliciet met
+/// CHEFBAR_THEME=dark.
+pub fn detect_theme(_settings: &gtk::Settings) -> String {
+    if let Ok(force) = std::env::var("CHEFBAR_THEME") {
+        match force.trim() {
+            THEME_LIGHT => return THEME_LIGHT.into(),
+            THEME_DARK => return THEME_DARK.into(),
+            _ => {}
+        }
     }
+    THEME_DARK.into()
 }
