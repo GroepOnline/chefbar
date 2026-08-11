@@ -78,7 +78,7 @@ mod tests {
             harness: Some("sync".into()),
             query: Some("fleet".into()),
         };
-        save_to(&path, &state);
+        assert!(save_to(&path, &state));
         assert_eq!(load_from(&path), state);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn tmp_bestand_blijft_niet_staan() {
         let path = temp_path("tmp");
-        save_to(&path, &PanelState::default());
+        assert!(save_to(&path, &PanelState::default()));
         assert!(!path.with_extension("json.tmp").exists());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }

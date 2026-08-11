@@ -238,6 +238,18 @@ mod tests {
     }
 
     #[test]
+    fn prefix_blijft_onder_contains_ondanks_boost() {
+        let contains = action("Open sync dashboard", "status", "open sync dashboard");
+        let prefix = action("Synchroniseer nu", "sync", "sync push");
+        let actions = vec![prefix, contains];
+        let ctx = RankContext {
+            boost_terms: vec!["sync".into()],
+        };
+        let ranked = rank_actions_with(&actions, "sync", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Open sync dashboard");
+    }
+
+    #[test]
     fn pinned_zweeft_boven_onpinned() {
         let mut pinned_a = action("Zzz laatste", "meta", "zzz");
         pinned_a.pinned = true;

@@ -361,6 +361,7 @@ impl Panel {
             if !harnesses.is_empty() && !harnesses.iter().any(|h| h.id == current) {
                 if let Some(first) = harnesses.first() {
                     *self.harness_state.borrow_mut() = first.id.clone();
+                    self.persist_dirty.set(true);
                 }
             }
         }
@@ -588,8 +589,8 @@ fn render_into(
     for agent in snap.agents.iter().filter(|a| a.running).take(4) {
         boost_terms.push(agent.agent.to_lowercase());
     }
-    boost_terms.sort();
-    boost_terms.dedup();
+    let mut seen = std::collections::HashSet::new();
+    boost_terms.retain(|term| seen.insert(term.clone()));
     boost_terms.truncate(16);
     let rank_ctx = RankContext { boost_terms };
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
