@@ -15,7 +15,7 @@ use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions_with, Action, RankContext};
 use crate::state::{Shared, VAULT_POLL_MS};
-use glib::ControlFlow;
+use gtk::glib::ControlFlow;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -208,7 +208,7 @@ impl Panel {
                     event.time(),
                 );
             }
-            glib::Propagation::Proceed
+            gtk::glib::Propagation::Proceed
         });
 
         // "/" → focus search, Esc → verbergen (Raycast-geest).
@@ -220,15 +220,15 @@ impl Panel {
                 let kv = event.keyval();
                 if kv == gdk::keys::constants::Escape {
                     fade_out(&window_esc, PANEL_MS);
-                    return glib::Propagation::Stop;
+                    return gtk::glib::Propagation::Stop;
                 }
                 if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
                     search_focus.grab_focus();
-                    return glib::Propagation::Stop;
+                    return gtk::glib::Propagation::Stop;
                 }
                 // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
                 // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
-                glib::Propagation::Proceed
+                gtk::glib::Propagation::Proceed
             });
         }
 
@@ -387,6 +387,20 @@ impl Panel {
         }
     }
 
+    /// Schrijf gewijzigde panel-state direct weg, bijvoorbeeld bij afsluiten.
+    pub fn flush_panel_state(&self) {
+        if self.persist_dirty.get() {
+            let state = crate::panel_state::PanelState {
+                harness: Some(self.harness_state.borrow().clone()),
+                query: Some(self.search.text().to_string())
+                    .filter(|q: &String| !q.trim().is_empty()),
+            };
+            if crate::panel_state::save(&state) {
+                self.persist_dirty.set(false);
+            }
+        }
+    }
+
     /// Start de periodieke render-loop (één glib-timer, geen eigen polls) plus
     /// een rustige persist-timer: gewijzigde UI-state gaat 1× per 2s naar disk.
     pub fn start_refresh_loop(&self) {
@@ -397,7 +411,7 @@ impl Panel {
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
                 render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
@@ -407,33 +421,19 @@ impl Panel {
         let dirty_persist = self.persist_dirty.clone();
         let harness_persist = self.harness_state.clone();
         let search_persist = self.search.clone();
-        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+        gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             if dirty_persist.get() {
                 let state = crate::panel_state::PanelState {
                     harness: Some(harness_persist.borrow().clone()),
                     query: Some(search_persist.text().to_string())
                         .filter(|q: &String| !q.trim().is_empty()),
                 };
-                if crate::panel_state::save(&state).is_ok() {
+                if crate::panel_state::save(&state) {
                     dirty_persist.set(false);
                 }
             }
             ControlFlow::Continue
         });
-    }
-
-    /// Flush pending UI state before orderly application shutdown.
-    pub fn flush_persist(&self) {
-        if !self.persist_dirty.get() {
-            return;
-        }
-        let state = crate::panel_state::PanelState {
-            harness: Some(self.harness_state.borrow().clone()),
-            query: Some(self.search.text().to_string()).filter(|q| !q.trim().is_empty()),
-        };
-        if crate::panel_state::save(&state).is_ok() {
-            self.persist_dirty.set(false);
-        }
     }
 }
 
@@ -1388,13 +1388,13 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
             let text = entry.text().to_string();
             dialog_keys.close();
             executor_keys.run(&run_keys, &text);
-            return glib::Propagation::Stop;
+            return gtk::glib::Propagation::Stop;
         }
         if event.keyval() == gdk::keys::constants::Escape {
             dialog_keys.close();
-            return glib::Propagation::Stop;
+            return gtk::glib::Propagation::Stop;
         }
-        glib::Propagation::Proceed
+        gtk::glib::Propagation::Proceed
     });
 
     let (x, y) = window.position();
