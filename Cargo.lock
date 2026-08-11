@@ -192,7 +192,6 @@ dependencies = [
  "clap 4.6.6",
  "dirs",
  "gdk",
- "glib",
  "gtk",
  "ksni",
  "pango",
