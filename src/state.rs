@@ -47,6 +47,12 @@ pub struct Shared {
     pub last_error: Arc<RwLock<Option<String>>>,
 }
 
+impl Default for Shared {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Shared {
     pub fn new() -> Self {
         Self {

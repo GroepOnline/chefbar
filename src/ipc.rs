@@ -56,11 +56,10 @@ pub fn spawn_listener(tx: Sender<UiCommand>) {
         // Stale socket opruimen: als er een oude socket ligt maar niemand
         // luistert, is connect_err → veilig verwijderen. Als connect_ok, draait
         // er al een instantie (en is bind EADDRINUSE correct).
-        if path.exists() {
-            if UnixStream::connect(&path).is_err() {
+        if path.exists()
+            && UnixStream::connect(&path).is_err() {
                 let _ = std::fs::remove_file(&path);
             }
-        }
         let listener = match UnixListener::bind(&path) {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => return,

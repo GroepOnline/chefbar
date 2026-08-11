@@ -82,7 +82,7 @@ impl Panel {
         let nav_labels = ["Fleet", "Commerce", "Evaluatie", "Sync"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
-            let btn = gtk::Button::with_label(*label);
+            let btn = gtk::Button::with_label(label);
             btn.set_relief(gtk::ReliefStyle::None);
             btn.style_context().add_class("chefbar-nav-item");
             btn.set_hexpand(true);
@@ -639,15 +639,12 @@ fn render_into(
                 row_btn.set_hexpand(true);
                 row_btn.set_halign(gtk::Align::Fill);
                 row_btn.style_context().add_class("chefbar-row-btn");
-                row_btn.set_tooltip_text(Some(if suggestion.meta.is_empty() {
-                    suggestion.title.as_str()
+                let tip = if suggestion.meta.is_empty() {
+                    suggestion.title.clone()
                 } else {
-                    suggestion.title.as_str()
-                }));
-                if !suggestion.meta.is_empty() {
-                    let tip = format!("{} — {}", suggestion.title, suggestion.meta);
-                    row_btn.set_tooltip_text(Some(tip.as_str()));
-                }
+                    format!("{} — {}", suggestion.title, suggestion.meta)
+                };
+                row_btn.set_tooltip_text(Some(tip.as_str()));
                 let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
                 let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
                 dot.set_size_request(8, 8);
@@ -1033,7 +1030,7 @@ fn render_into(
             let cta_label = spec_and_label.as_ref().map(|(l, _)| l.as_str()).unwrap_or("Open");
             let pill = stamp_label(match session.state.as_str() { "failed" => "FOUT", _ => "HULP" });
             // vervang stamp-text door CTA hint als beschikbaar
-            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text().to_string(), cta_label)); }
+            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text(), cta_label)); }
             inner.pack_end(&pill, false, false, 0);
             row_btn.add(&inner);
             let inner_child = row_btn.child().unwrap();
@@ -1228,8 +1225,8 @@ fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
         meta_label.style_context().add_class("chefbar-card-meta");
         row.pack_end(&meta_label, false, false, 0);
     }
-    let wrap = row_wrap(&row);
-    wrap
+    
+    row_wrap(&row)
 }
 
 fn truncate_q(q: &str, max: usize) -> String {
