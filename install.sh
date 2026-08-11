@@ -20,6 +20,7 @@ CONFIG_DIR="$HOME/.config/chefbar"
 mkdir -p "$BIN_DIR" "$UNIT_DIR" "$CONFIG_DIR"
 
 # Argumenten.
+# Ondersteunt beide volgordes: ./install.sh --systemd [binary]  en  ./install.sh [binary] --systemd
 SYSTEMD=0
 BINARY=""
 for arg in "$@"; do
@@ -29,7 +30,13 @@ for arg in "$@"; do
       sed -n '2,7p' "$0"
       exit 0
       ;;
-    *) BINARY="$arg" ;;
+    --) break ;;
+    -*) echo "fout: onbekende optie $arg (zie --help)" >&2; exit 2 ;;
+    *) 
+      if [ -n "$BINARY" ]; then
+        echo "fout: meerdere binary-paden gegeven: $BINARY en $arg" >&2; exit 2
+      fi
+      BINARY="$arg" ;;
   esac
 done
 
@@ -50,8 +57,19 @@ if [ -z "$BINARY" ]; then
   fi
 fi
 
+# Als er al een user-service draait, stop die kort zodat ETXTBSY bij overschrijven vermeden wordt.
+if systemctl --user cat chefbar.service >/dev/null 2>&1; then
+  systemctl --user stop chefbar.service >/dev/null 2>&1 || true
+fi
+
 install -m 755 "$BINARY" "$BIN_DIR/chefbar"
 echo "binary    $BIN_DIR/chefbar"
+
+# Waarschuw als BIN_DIR niet in PATH staat (on-click draait wel, terminal niet).
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) echo "hint     $BIN_DIR staat niet in PATH — voeg toe aan ~/.profile of open een nieuwe shell" ;;
+esac
 
 # Endpoint-profiel, reflecteert de oude Python-profielen. CHEFBAR_* env-warden
 # lopen direct door naar het binary en winnen per veld van het JSON-profiel.
@@ -69,32 +87,52 @@ if [ "$SYSTEMD" -eq 1 ]; then
   # Global hotkey: Super+Space opent de command-bar (GNOME custom shortcut).
   # Super+Space is standaard geclaimd door input-source switching; met één
   # layout doet die niets, dus we geven de combinatie aan de bar.
-  if command -v gsettings >/dev/null 2>&1; then
+  if command -v gsettings >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
     KB="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/chefbar0/"
-    gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['XF86Keyboard']" || true
-    CUR="$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)"
-    NEW="$(python3 - "$CUR" "$KB" <<'PY'
+    # gsettings kan "@as []" (GVariant) teruggeven; python-snippet is daar robuust tegen.
+    if CUR="$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null)"; then
+      NEW="$(python3 - "$CUR" "$KB" <<'PY' 2>/dev/null || echo "['$KB']"
 import ast, sys
-cur = ast.literal_eval(sys.argv[1])
+raw = sys.argv[1].strip()
 kb = sys.argv[2]
+# "@as []" → []
+if raw.startswith("@as"):
+    raw = raw[3:].strip()
+try:
+    cur = ast.literal_eval(raw)
+    if not isinstance(cur, list):
+        cur = []
+except Exception:
+    cur = []
 if kb not in cur:
     cur.append(kb)
 print(repr(cur))
 PY
 )"
-    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW"
-    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" name 'ChefBar bar'
-    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" command "$BIN_DIR/chefbar --ipc bar"
-    gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" binding '<Super>space'
-    echo "hotkey    Super+Space → chefbar --ipc bar"
+      gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW" 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" name 'ChefBar bar' 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" command "$BIN_DIR/chefbar --ipc bar" 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" binding '<Super>space' 2>/dev/null || true
+      gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['XF86Keyboard']" 2>/dev/null || true
+      echo "hotkey    Super+Space → chefbar --ipc bar"
+    fi
+  else
+    echo "hotkey    overgeslagen (geen gsettings of geen display)"
   fi
 
-  systemctl --user daemon-reload
-  systemctl --user enable --now chefbar.service
-  systemctl --user restart chefbar.service
-  systemctl --user status chefbar.service --no-pager | head -8
-  echo "service   chefbar.service actief in de user-manager"
+  if systemctl --user daemon-reload 2>/dev/null; then
+    systemctl --user enable --now chefbar.service 2>/dev/null || systemctl --user enable chefbar.service 2>/dev/null || true
+    systemctl --user restart chefbar.service 2>/dev/null || systemctl --user start chefbar.service 2>/dev/null || true
+    systemctl --user status chefbar.service --no-pager 2>/dev/null | head -8 || true
+    echo "service   chefbar.service actief in de user-manager (indien beschikbaar)"
+  else
+    echo "service   user-manager niet bereikbaar (geen systemd --user); binary wel geïnstalleerd — start handmatig: $BIN_DIR/chefbar &"
+  fi
 fi
 
 echo "ChefBar (Rust) geïnstalleerd → $BIN_DIR/chefbar"
-echo "Test: chefbar --doctor"
+# Non-blocking quick-check (faalt niet de install als vault offline is).
+if [ -x "$BIN_DIR/chefbar" ]; then
+  echo "doctor    $($BIN_DIR/chefbar --doctor 2>&1 | head -6 | tr '\n' '; ')"
+fi
+echo "Test: $BIN_DIR/chefbar --doctor  ·  Super+Space opent de bar (na --systemd)"

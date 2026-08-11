@@ -44,6 +44,8 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     stream
         .write_all(line.as_bytes())
         .map_err(|e| e.to_string())?;
+    // Zonodig flush zodat de listener het direct ziet (geen buffering-race).
+    stream.flush().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -51,9 +53,18 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
 pub fn spawn_listener(tx: Sender<UiCommand>) {
     std::thread::spawn(move || {
         let path = socket_path();
-        let _ = std::fs::remove_file(&path);
-        let Ok(listener) = UnixListener::bind(&path) else {
-            return;
+        // Stale socket opruimen: als er een oude socket ligt maar niemand
+        // luistert, is connect_err → veilig verwijderen. Als connect_ok, draait
+        // er al een instantie (en is bind EADDRINUSE correct).
+        if path.exists() {
+            if UnixStream::connect(&path).is_err() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        let listener = match UnixListener::bind(&path) {
+            Ok(l) => l,
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => return,
+            Err(_) => return,
         };
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
         for stream in listener.incoming() {
@@ -93,5 +104,14 @@ mod tests {
         assert_eq!(parse_command("refresh"), Some(UiCommand::Refresh));
         assert_eq!(parse_command("quit"), Some(UiCommand::Quit));
         assert_eq!(parse_command("onzin"), None);
+    }
+
+    #[test]
+    fn socket_path_respects_xdg_runtime() {
+        // XDG_RUNTIME_DIR set → socket daar.
+        std::env::set_var("XDG_RUNTIME_DIR", "/tmp/test-xdg-123");
+        assert_eq!(socket_path(), PathBuf::from("/tmp/test-xdg-123/chefbar.sock"));
+        std::env::remove_var("XDG_RUNTIME_DIR");
+        assert_eq!(socket_path(), PathBuf::from("/tmp/chefbar.sock"));
     }
 }

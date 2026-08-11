@@ -8,16 +8,17 @@ PartOf=graphical-session.target
 # niet gezet: systemd weigert User= in user-units (exit 216/GROUP).
 Type=simple
 ExecStart=%h/.local/bin/chefbar
-Restart=always
+# Quit via tray stuurt exit 0; alleen bij crash herstarten (voorkomt loop na bewust afsluiten).
+Restart=on-failure
 RestartSec=5
+TimeoutStopSec=5
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 # Endpoint-profiel is de SSOT voor vault/ops/dashboard/desktop; env-warden
 # winnen per veld (zie src/config.rs).
 Environment=CHEFBAR_ENDPOINT_PROFILE=%h/.config/chefbar/endpoints.json
-# IPC-socket van de app zit op $XDG_RUNTIME_DIR/chefbar.sock; RuntimeDirectory
-# maakt de per-user runtime-map $XDG_RUNTIME_DIR/chefbar.
-RuntimeDirectory=chefbar
-RuntimeDirectoryMode=0755
+# IPC-socket ligt op $XDG_RUNTIME_DIR/chefbar.sock (zie src/ipc.rs). Geen
+# RuntimeDirectory nodig — die zou $XDG_RUNTIME_DIR/chefbar/ aanmaken maar de
+# socket staat daar niet.
 
 [Install]
 WantedBy=graphical-session.target

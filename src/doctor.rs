@@ -3,7 +3,7 @@
 
 use crate::config::{global_profile, EndpointProfile};
 use crate::policy::EndpointPolicy;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub struct DoctorReport {
     pub lines: Vec<String>,
@@ -51,9 +51,15 @@ pub fn run_checks() -> DoctorReport {
     }
 
     // 3. Secrets: token aanwezig? Alleen fingerprint, nooit de waarde.
+    //    Vault-bearer is nodig voor vault/; Cloudflare is optioneel (edge-auth
+    //    als de deploy het gebruikt). Alleen bearer-afwezig telt als failure.
     let (has_bearer, has_cf) = crate::auth::auth_status();
-    if has_bearer || has_cf {
-        lines.push(format!("secrets  credentials aanwezig (bearer={}, cloudflare={})", has_bearer, has_cf));
+    if has_bearer {
+        lines.push(format!("secrets  bearer ok (cloudflare={})", has_cf));
+    } else if has_cf {
+        // CF zonder bearer is in sommige edge-deploys voldoende, maar waarschuw
+        lines.push("secrets  cloudflare aanwezig, bearer ontbreekt (check vault-auth)".into());
+        failures.push("geen bearer-token gevonden (alleen cloudflare)".into());
     } else {
         failures.push("geen bruikbare credentials gevonden".into());
     }
@@ -70,7 +76,7 @@ pub fn run_checks() -> DoctorReport {
                 health.total
             ));
         }
-        _ => lines.push(format!("watchdog ontbreekt: {}", watchdog.display())),
+        _ => lines.push(format!("watchdog ontbreekt: {} (nog geen poll gedraaid?)", watchdog.display())),
     }
 
     // 5. Versie + IPC-socket.
@@ -79,7 +85,7 @@ pub fn run_checks() -> DoctorReport {
     lines.push(if socket.exists() {
         "ipc      socket aanwezig".into()
     } else {
-        "ipc      socket nog niet gestart".into()
+        "ipc      socket nog niet gestart (ook ok voor --doctor)".into()
     });
 
     // 6. Korte netwerk-probe tegen de vault-API (niet blokkerend hier: de
@@ -89,7 +95,7 @@ pub fn run_checks() -> DoctorReport {
     lines.push(if online {
         "netwerk  vault bereikbaar (laatste poll ok)".into()
     } else {
-        "netwerk  vault offline (laatste poll faalde)".into()
+        "netwerk  vault offline (laatste poll faalde of nog geen poll)".into()
     });
 
     DoctorReport { lines, failures }
@@ -97,8 +103,7 @@ pub fn run_checks() -> DoctorReport {
 
 /// Latency-probe in een aparte thread; resultaat gemeld via notify.
 pub fn run_checks_async(report: DoctorReport) {
-    let started = Instant::now();
-    let check_time = started.elapsed();
+    let check_time = Instant::now().elapsed();
     if !report.ok() {
         let joined = report.failures.join("; ");
         crate::notify::notify("ChefBar-doctor", &joined, "error");
@@ -109,8 +114,6 @@ pub fn run_checks_async(report: DoctorReport) {
             "ok",
         );
     }
-    let _: Duration = check_time;
-    let _ = &report;
 }
 
 /// Doctor via CLI: leg het rapport als tekst op stdout.
