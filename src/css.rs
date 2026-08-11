@@ -66,20 +66,6 @@ pub fn styles_css(theme: &str) -> String {
   color: {text};
 }}
 
-/* Status-badge (pill) */
-.chefbar-badge {{
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-family: "Inter", "Cantarell", sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  background-color: {surface_muted};
-  color: {text_muted};
-}}
-.chefbar-badge.ok    {{ background-color: {success_soft}; color: {success}; }}
-.chefbar-badge.warn  {{ background-color: {warm_soft};    color: {warm}; }}
-.chefbar-badge.error {{ background-color: {error_soft};   color: {error}; }}
-.chefbar-badge.info  {{ background-color: {brand_soft};   color: {brand}; }}
 
 /* Ghost icon-knoppen (header controls) */
 .chefbar-gbtn {{
@@ -199,11 +185,11 @@ pub fn styles_css(theme: &str) -> String {
 /* Usage bars */
 .chefbar-bar-track {{
   min-height: 4px;
-  border-radius: 999px;
+  border-radius: 3px;
   background-color: {surface_muted};
 }}
 .chefbar-bar-fill {{
-  border-radius: 999px;
+  border-radius: 3px;
   background-color: {brand};
 }}
 .chefbar-bar-fill.ok    {{ background-color: {success}; }}
@@ -248,7 +234,7 @@ pub fn styles_css(theme: &str) -> String {
 
 /* Stamps (KLAAR/HULP/FOUT/BEZIG) — Inter caps, geen mono-stempel */
 .chefbar-stamp {{
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 2px 8px;
   font-family: "Inter", "Cantarell", sans-serif;
   font-size: 10px;
@@ -378,33 +364,6 @@ pub fn styles_css(theme: &str) -> String {
   border-color: {focus};
 }}
 
-/* Harnas-tabs (room) — pills, actief in Iris */
-.chefbar-harness-row {{
-  padding: 0;
-}}
-.chefbar-harness {{
-  background-color: {surface};
-  border: 1px solid {line};
-  border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: {text_muted};
-  transition: background-color 180ms, color 180ms;
-}}
-.chefbar-harness:hover {{
-  background-color: {surface_muted};
-  color: {text};
-}}
-.chefbar-harness-active {{
-  background-color: {brand};
-  border: 1px solid {brand};
-  border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #FFFFFF;
-}}
 
 /* Scrollbars — dun en stil */
 scrollbar {{
