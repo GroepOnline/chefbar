@@ -68,13 +68,18 @@ impl Panel {
         sidebar_title_wrap.pack_start(&sidebar_sub, false, false, 0);
         sidebar.pack_start(&sidebar_title_wrap, false, false, 0);
 
-        // Nav-lijst (3 dummy items)
+        // Nav-lijst — live gekoppeld aan harness-state (fleet/commerce/eval)
         let nav_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
         nav_box.style_context().add_class("chefbar-nav");
         nav_box.set_margin_start(8);
         nav_box.set_margin_end(8);
-        for (idx, label) in ["Fleet", "Commerce", "Eval"].iter().enumerate() {
-            let btn = gtk::Button::with_label(label);
+        // We bouwen de nav-knoppen hier maar wire pas na harness_state.
+        // Placeholder: wordt direct hieronder gevuld.
+        let nav_ids = ["fleet", "commerce", "eval"];
+        let nav_labels = ["Fleet", "Commerce", "Eval"];
+        let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
+        for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
+            let btn = gtk::Button::with_label(*label);
             btn.set_relief(gtk::ReliefStyle::None);
             btn.style_context().add_class("chefbar-nav-item");
             btn.set_hexpand(true);
@@ -88,8 +93,10 @@ impl Panel {
             if idx == 0 {
                 btn.style_context().add_class("active");
             }
+            nav_buttons.push((id.to_string(), btn.clone()));
             nav_box.pack_start(&btn, false, false, 0);
         }
+        let nav_buttons_rc = Rc::new(nav_buttons);
         sidebar.pack_start(&nav_box, false, false, 0);
 
         // Spacer zodat footer onderaan blijft
@@ -142,7 +149,7 @@ impl Panel {
         title_block.pack_start(&title_sub, false, false, 0);
         header.pack_start(&title_block, false, false, 0);
 
-        // Search in header (hexpand)
+        // Search in header (hexpand) — enige SearchEntry, single source of truth
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies\u{2026}"));
         search.style_context().add_class("chefbar-search");
@@ -201,25 +208,19 @@ impl Panel {
             glib::Propagation::Proceed
         });
 
-        // ---- Zoek-input (filtert de hele surface) ----
-        let search_wrap = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        search_wrap.style_context().add_class("chefbar-search-wrap");
-        let search = gtk::SearchEntry::new();
-        search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies…"));
-        search.style_context().add_class("chefbar-search");
-        search_wrap.pack_start(&search, false, false, 0);
-        root.pack_start(&search_wrap, false, false, 0);
-
-        // "/" → focus search (Devin/Raycast-geest).
+        // "/" → focus search, Esc → verbergen (Raycast-geest).
         {
             let search_focus = search.clone();
+            let window_esc = window.clone();
             window.connect_key_press_event(move |_, event| {
-                if event.keyval() == gdk::keys::constants::slash {
-                    // When search already has focus, let the keystroke type normally.
-                    if !search_focus.has_focus() {
-                        search_focus.grab_focus();
-                        return glib::Propagation::Stop;
-                    }
+                let kv = event.keyval();
+                if kv == gdk::keys::constants::Escape {
+                    fade_out(&window_esc, PANEL_MS);
+                    return glib::Propagation::Stop;
+                }
+                if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
+                    search_focus.grab_focus();
+                    return glib::Propagation::Stop;
                 }
                 glib::Propagation::Proceed
             });
@@ -240,6 +241,33 @@ impl Panel {
         // harnas-state: default naar eerste harnas (fleet)
         let initial = "fleet".to_string();
         let harness_state = Rc::new(RefCell::new(initial.clone()));
+        // Wire sidebar nav → harness_state + content re-render + active-class sync
+        {
+            for (id, btn) in nav_buttons_rc.iter() {
+                let id = id.clone();
+                let harness_state_clone = harness_state.clone();
+                let content_clone = content.clone();
+                let shared_clone = shared.clone();
+                let executor_clone = executor.clone();
+                let window_clone = window.clone();
+                let search_clone = search.clone();
+                let nav_rc = nav_buttons_rc.clone();
+                let id_for_class = id.clone();
+                let btn_clone = btn.clone();
+                btn_clone.connect_clicked(move |_| {
+                    *harness_state_clone.borrow_mut() = id.clone();
+                    for (other_id, other_btn) in nav_rc.iter() {
+                        if *other_id == id_for_class {
+                            other_btn.style_context().add_class("active");
+                        } else {
+                            other_btn.style_context().remove_class("active");
+                        }
+                    }
+                    let q = search_clone.text().to_string();
+                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone);
+                });
+            }
+        }
         let panel = Self {
             window,
             content,
@@ -250,6 +278,7 @@ impl Panel {
             harness_state,
         };
         panel.wire_search();
+        // Initieel ook nav active sync via harness_state
         panel.render("");
         panel
     }
@@ -489,7 +518,7 @@ fn render_into(
 
     // ---- Sectie: Acties (eerste, want interactie eerst) ----
     let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(6).collect();
-    section_title(content, "Acties", "direct uitvoerbaar");
+    section_title(content, "Acties", "zoek of kies — gefilterd op dit harnas");
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
         let empty = gtk::Label::new(Some("Geen acties voor deze zoekterm"));
@@ -584,7 +613,7 @@ fn render_into(
     content.pack_start(&group, false, false, 0);
 
     // ---- Sectie: Providers ----
-    section_title(content, "Providers", "budgets en actief account");
+    section_title(content, "Providers", "accounts, budgets en fleet");
     let group = group_box();
     let mut any_provider = false;
     for row in snap.providers.iter().filter(|r| {
@@ -653,7 +682,7 @@ fn render_into(
     content.pack_start(&group, false, false, 0);
 
     // ---- Sectie: Agents ----
-    section_title(content, "Agents", "lopende werkstromen");
+    section_title(content, "Agents", "herdr en lopende werkstromen");
     let group = group_box();
     let mut any_agent = false;
     for agent in snap.agents.iter().filter(|a| {
