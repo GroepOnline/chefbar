@@ -26,10 +26,9 @@ pub struct Panel {
     search: gtk::SearchEntry,
     shared: Shared,
     executor: Executor,
-    // Backward compat: mirror of harness_state (sidebar/harness tabs drive it)
+    // geselecteerde harnas binnen de room — default naar eerste harnas
     pub active_harness: String,
     harness_state: Rc<RefCell<String>>,
-    nav_buttons: Rc<Vec<(String, gtk::Button)>>,
 }
 
 impl Panel {
@@ -275,9 +274,8 @@ impl Panel {
             search,
             shared,
             executor,
-            active_harness: initial.clone(),
-            harness_state: harness_state.clone(),
-            nav_buttons: nav_buttons_rc.clone(),
+            active_harness: initial,
+            harness_state,
         };
         panel.wire_search();
         // Initieel ook nav active sync via harness_state
@@ -290,7 +288,7 @@ impl Panel {
             fade_out(&self.window, PANEL_MS);
         } else {
             self.render("");
-            self.window.show();
+            self.window.show_all();
             fade_in(&self.window, PANEL_MS);
         }
     }
@@ -328,7 +326,6 @@ impl Panel {
                 }
             }
         }
-        self.sync_sidebar_nav();
         render_into(
             &self.content,
             &self.shared,
@@ -337,17 +334,6 @@ impl Panel {
             query,
             &self.harness_state,
         );
-    }
-
-    fn sync_sidebar_nav(&self) {
-        let active = self.harness_state.borrow().clone();
-        for (id, btn) in self.nav_buttons.iter() {
-            if *id == active {
-                btn.style_context().add_class("active");
-            } else {
-                btn.style_context().remove_class("active");
-            }
-        }
     }
 
     /// Start de periodieke render-loop (één glib-timer, geen eigen polls).
@@ -497,9 +483,10 @@ fn render_into(
     }
 
     let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
-    let ranked = rank_actions(&all_actions, query, 40);
-    // filter op geselecteerde harnas (prefix-match op keywords)
-    let ranked = filter_actions_by_harness(ranked, active_kind.as_ref());
+    // Filter eerst op het geselecteerde harnas, zodat de globale limiet geen
+    // relevante acties van dit harnas wegdrukt.
+    let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
+    let ranked = rank_actions(&filtered, query, 40);
 
     // Status-badge in de header-positie (bovenaan de content-stroom).
     let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -577,7 +564,17 @@ fn render_into(
             if needs_text {
                 prompt_for(&executor, &window, &action);
             } else {
-                executor.run_for_ui(&spec);
+                if let crate::actions::RunSpec::CopyText(text) = &spec {
+                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                    clipboard.set_text(text);
+                    crate::notify::notify(
+                        "Gekopieerd",
+                        &text.chars().take(60).collect::<String>(),
+                        "ok",
+                    );
+                } else {
+                    executor.run_for_ui(&spec);
+                }
             }
         });
         group.pack_start(&row, false, false, 0);
