@@ -299,11 +299,13 @@ impl Panel {
     /// Idempotent tonen — voor tray-/hotkey-/IPC-commando's die "openen"
     /// bedoelen (open/show/bar), nooit verbergen.
     pub fn show(&self) {
+        self.window.deiconify();
         if !self.window.is_visible() {
             self.render("");
             self.window.show_all();
             fade_in(&self.window, PANEL_MS);
         }
+        self.window.present();
     }
 
     pub fn is_visible(&self) -> bool {
