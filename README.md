@@ -1,118 +1,65 @@
 # ChefBar 3.0
 
-Mission-control tray voor ChefGroep OS (GNOME Shell / Wayland), in de
-"Signaal · Huly"-designtaal (`.ulpi/design/DESIGN.md`).
+Mission-control assistant voor ChefGroep OS — **Rust native** (GTK3 + ksni tray), in de
+Devin v2 designtaal (`~/design-system/tokens.css`, warme bg, accent `#317CFF`/`#5C97FF`,
+GTK3-geschoonde CSS-subset, dark default).
 
-## Stackbeslissing
+## Wat het doet
 
-**GTK3 + AyatanaAppIndicator3 in één proces**, met een rijk gestyled
-`Gtk.Window` als command-bar en panel.
+Eén poll-actor (`state.rs`) voedt een gedeeld snapshot; tray, app-window en command-bar
+delen dat beeld. Acties zijn declaratieve data (`actions.rs`), uitvoer loopt door één
+executor met policy-begrensde HTTP-clients (`http.rs` + `policy.rs`).
 
-| Optie | Keuze |
-|-------|--------|
-| Tray | Ayatana AppIndicator (bewezen op deze host + AppIndicator-extensie) |
-| Palette | GTK3 window + CSS provider, fuzzy action registry |
-| Panel | Compacte status + accounts + agents + recente feed |
-| GTK4 / libadwaita | **Niet** in-process — `gi.require_version` kan GTK3 en GTK4 niet mixen |
+- **App-window** — sidebar met live harness-nav (Fleet / Commerce / Sync / Evaluatie),
+  header-zoekveld (één source of truth), content-paneel dat per harness filtert en
+  per poll opnieuw rendert.
+- **Harness-filtering** — acties matchen op harnas via keyword-prefixes (`harness.rs`),
+  met statuskleuren per harnas.
+- **Zoeken** — `/` focust het veld, `Esc` verbergt het venster, typen filtert de hele
+  surface (Raycast-geest).
+- **Tray + IPC** — ksni-tray met command-menu; externe commando's naar een draaiende
+  instantie via Unix-socket (`--ipc panel|bar|refresh|doctor|quit`).
+- **Doctor** — `chefbar --doctor`: profiel, policy, secrets (alleen fingerprints),
+  watchdog; resultaat ook als desktop-melding.
+- **Serve** — `chefbar --serve`: actor-only poll-loop (vault 5s, ops 15s), geen UI.
 
-De bestaande tray-integratie, IPC-hotkey (`Super+Space`) en systemd-unit blijven.
-Een parallelle Electron/Tauri-app zou koude start en dubbele indicators kosten.
+## CLI
 
-## Wat de redesign doet
-
-1. **Command palette core** — één input, fuzzy ranking (`palette.py`), pijltjes/Enter/Escape, mono shortcuts.
-2. **Vault-API als control plane** op `127.0.0.1:8321`:
-   - accounts: `GET /api/accounts/overview` + `POST /api/coding/accounts/switch` (Idempotency-Key + expectedRevision)
-   - commander: create / list / cancel
-   - clipboard: list / add / delete-row
-   - desktop: status / start / stop
-   - share-sync: status / pull / push
-   - status / fleet / agents + `GET /api/agents/events` als recente feed
-3. **Agent-interactief** — watcher-suggesties, recente events, snelle "stuur taak naar Commander".
-4. **Signaal · Huly tokens** — Inter interface, IBM Plex Mono display/data; radius 12/8/14; void OLED donker als standaard.
-
-CRM/deals blijft bewust buiten deze app.
-
-## Tray
-
-Icoonstates volgen `.ulpi/design/chefbar-tray.md`. Regenereer PNG's met:
-
-```bash
-python3 build_icons.py
-python3 build_icons.py --check
+```
+chefbar                              app (GTK)
+chefbar --doctor                     doctor-checks en afsluiten
+chefbar --serve                      actor-only (poll-loop)
+chefbar --ipc panel|bar|refresh|doctor|quit
+chefbar --show-config                profiel + policy-summary (geen secrets)
+chefbar --profile <pad>.json         endpoint-profiel (of CHEFBAR_ENDPOINT_PROFILE)
+chefbar --version
 ```
 
-## Vereisten
+## Configuratie
 
-- `gir1.2-ayatanaappindicator3-0.1` + AppIndicator GNOME-extension (Wayland)
-- Optioneel `CHEF_VAULT_API_TOKEN` (verplicht voor accountswitch)
-- Vault-API op `:8321` (override: `CHEFBAR_VAULT_API`)
-- joep-ops op `:10101` (override: `CHEFBAR_OPS_API`)
+Endpoint-profiel = SSOT (`config.rs`): `name`, `vaultApi`, `opsApi`, `dashboard`,
+`desktop`, `opencodexDashboard`, `katerWorkspace`. Veld voorbeelden in
+`config/endpoints.example.json` en `config/endpoints.tailnet.example.json`.
+
+- `CHEFBAR_ENDPOINT_PROFILE=<pad>` — profielpad (default `~/.config/chefbar/endpoints.json`).
+- `CHEFBAR_*` env-warden — overschrijven per veld (bijv. `CHEFBAR_VAULT_API`); env wint.
 
 ## Installatie
 
 ```bash
-./install.sh
+./install.sh                 # binary → ~/.local/bin/chefbar + endpoints-profiel
+./install.sh --systemd       # + systemd-user-unit, Super+Space-hotkey (→ chefbar --ipc bar)
+./install.sh <pad/binary>    # eigen build/artifact
 ```
 
-```bash
-chefbar                # app starten (tray, panel, command-bar)
-chefbar --show-config  # profiel tonen
-chefbar --ipc bar      # command-bar toggle in de draaiende instantie
-```
+De unit (`chefbar.service`) draait als user-unit voor de ingelogde GUI-gebruiker;
+IPC-socket op `$XDG_RUNTIME_DIR/chefbar.sock`.
 
-De vlaggen hierboven gelden voor het Rust binary; de oude Python-vlaggen
-(`--show-panel`, `--bar`) bestaan niet meer. Zie "Rust build" hieronder.
+## Development
 
-## Tests
-
-```bash
-cd apps/chefbar
-PYTHONPATH=. python3 -m unittest discover -s tests -v
-python3 -m py_compile chefbar/*.py
-```
-
-## Rust build
-
-ChefBar draait op een Rust-kern (`src/`, `Cargo.toml`); de Python-versie in
-`chefbar/` blijft als referentie. Bouwen en testen gebeurt op chef-runner-01
-of in CI (`.github/workflows/ci.yml`), niet op de laptop:
-
-```bash
-cargo test
-cargo build --release
-```
-
-Het binary staat na een release-build in `target/release/chefbar`. CI draait
-op een self-hosted company-control runner en uploadt het artifact
-`chefbar-release`.
-
-### Installatie
-
-```bash
-./install.sh            # binary + endpoints-profiel
-./install.sh --systemd  # + systemd-user-unit, start + Super+Space hotkey
-```
-
-Het binary gaat naar `~/.local/bin/chefbar` (bij root naar `/usr/local/bin`).
-Endpoints staan in `~/.config/chefbar/endpoints.json` (voorbeeld:
-`config/endpoints.example.json`) of via `CHEFBAR_ENDPOINT_PROFILE`.
-`CHEFBAR_*` omgevingsvariabelen lopen direct door naar het binary en winnen
-per veld van het JSON-profiel.
-
-### CLI
-
-```bash
-chefbar                   # app: tray, panel, command-bar
-chefbar --doctor          # gezondheidscheck (exit 0 bij ok)
-chefbar --show-config     # profiel + policy-samenvatting, geen secrets
-chefbar --ipc <cmd>       # commando naar de draaiende instantie
-                          #   cmd: panel, bar, refresh, doctor, quit
-```
-
-### IPC socket
-
-De draaiende instantie luistert op `$XDG_RUNTIME_DIR/chefbar.sock` (zonder
-`XDG_RUNTIME_DIR`: `/tmp/chefbar.sock`). Externe commando's gebruiken
-`chefbar --ipc <cmd>`. De systemd-unit draait met `RuntimeDirectory=chefbar`;
-de socket zelf ligt naast die runtime-map.
+- **Geen lokale Rust-builds op de laptop** (learned rule) — CI is notify-first:
+  `.github/workflows/ci.yml` draait `cargo test --all-targets` + `cargo build --release`
+  op de self-hosted runner en uploadt het release-artifact.
+- `#[test]`-modules inline in `config`, `palette`, `models`, `motion`, `harness`, `ipc`,
+  `policy`, `sessions`.
+- Stack: GTK3 (`gtk 0.18`), `ksni` tray, `ureq` HTTP, declaratieve actions.

@@ -1,47 +1,47 @@
-//! Signaal CSS voor ChefBar — tokens uit `~/design-system/tokens.css`
-//! (skin "strak", dark default), gemapt op de GTK-widget-classes.
+//! Devin-skin CSS voor ChefBar — tokens uit `~/design-system/tokens.css`
+//! (v2 "Devin-richting"), gemapt op GTK3-CSS (beperkte subset).
 //!
-//! Type: General Sans (interface) / IBM Plex Mono (data), headings medium 500,
-//! caps-labels met 0.07em tracking, r4/r6 radii, pills voor badges.
+//! Devin-meetwaarden: warme bg, zachte lijnen, serif display, medium koppen,
+//! pill-badges, accent #317CFF/#5C97FF. Alleen GTK3-compatibele properties.
 
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
+/// Bouwt de volledige stylesheet voor het gekozen thema.
 pub fn styles_css(theme: &str) -> String {
-    // strak-skin tokens (dark default, light als expliciet gevraagd).
     let (
         bg,
         surface,
         sunk,
+        hover,
+        line,
+        line_strong,
         text,
         text_muted,
         text_faint,
-        line,
-        line_strong,
         accent,
-        accent_ink,
-        _accent_soft,
-        hover,
+        _accent_ink,
+        accent_soft,
         green,
-        _green_bg,
+        green_bg,
         red,
         amber,
-        _amber_bg,
-        _amber_line,
+        hold_bg,
+        hold_line,
     ) = if theme == THEME_LIGHT {
         (
-            "#F4F6F9",
+            "#F7F6F5",
             "#FFFFFF",
-            "#EBEEF3",
-            "#131417",
-            "#525860",
-            "#8F96A1",
-            "#E2E6EC",
-            "#C6CDD8",
-            "#2563EB",
-            "#1D4FD7",
-            "rgba(37,99,235,0.09)",
-            "rgba(19,20,23,0.05)",
+            "#EFEFEF",
+            "rgba(0,0,0,0.045)",
+            "rgba(0,0,0,0.08)",
+            "rgba(0,0,0,0.14)",
+            "#191919",
+            "rgba(0,0,0,0.55)",
+            "rgba(0,0,0,0.38)",
+            "#317CFF",
+            "#1D5FD6",
+            "rgba(49,124,255,0.09)",
             "#1F883D",
             "rgba(31,136,61,0.10)",
             "#CF222E",
@@ -51,18 +51,18 @@ pub fn styles_css(theme: &str) -> String {
         )
     } else {
         (
-            "#0F1013",
-            "#16181C",
-            "#1E2126",
-            "#ECEDF0",
-            "#9BA1AB",
-            "#676D78",
-            "#25282E",
-            "#363A43",
-            "#4F8DFF",
-            "#7FA9FF",
-            "rgba(79,141,255,0.12)",
-            "rgba(236,237,240,0.06)",
+            "#121111",
+            "#1B1A19",
+            "#242322",
+            "rgba(255,255,255,0.05)",
+            "rgba(255,255,255,0.09)",
+            "rgba(255,255,255,0.16)",
+            "#F0EEEB",
+            "rgba(240,238,235,0.55)",
+            "rgba(240,238,235,0.35)",
+            "#5C97FF",
+            "#8AB4FF",
+            "rgba(92,151,255,0.12)",
             "#3FB950",
             "rgba(63,185,80,0.12)",
             "#F85149",
@@ -74,88 +74,136 @@ pub fn styles_css(theme: &str) -> String {
 
     format!(
         r#"
-/* ===== Basis ===== */
-.chefbar-panel {{
+/* ============ App-window (Devin-dark) ============ */
+.chefbar-app {{
   background-color: {bg};
   color: {text};
-  font-family: "General Sans", Inter, Cantarell, sans-serif;
+  font-family: "General Sans", "Inter", "Cantarell", sans-serif;
   font-size: 13.5px;
 }}
-.chefbar-panel * {{
-  outline-style: none;
-  background-clip: padding-box;
-}}
 
-/* ===== Header ===== */
+/* Header — custom titlebar (undecorated window) */
 .chefbar-header {{
-  background-color: {surface};
+  background-color: {bg};
+  padding: 16px 20px 10px 20px;
   border-bottom: 1px solid {line};
-  padding: 14px 18px 12px 18px;
 }}
 .chefbar-title {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
-  font-size: 13px;
-  font-weight: 500;               /* devin-meetwaarde: medium, niet bold */
-  letter-spacing: -0.02em;
+  font-family: "Instrument Serif", "General Sans", Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
   color: {text};
 }}
-.chefbar-subtitle {{
-  font-family: "IBM Plex Mono", monospace;
+.chefbar-title-sub {{
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
   font-size: 10.5px;
+  color: {text_faint};
+}}
+
+/* Status-badge (pill) */
+.chefbar-badge {{
+  border-radius: 200px;
+  padding: 3px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: {sunk};
   color: {text_muted};
 }}
+.chefbar-badge.ok    {{ background-color: {green_bg}; color: {green}; }}
+.chefbar-badge.warn  {{ background-color: {hold_bg};  color: {amber}; }}
+.chefbar-badge.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
+.chefbar-badge.info  {{ background-color: {accent_soft}; color: {accent}; }}
 
-/* ===== Sectie-labels (caps, 0.07em tracking) ===== */
-.chefbar-section-label {{
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: {text_faint};
-  padding: 18px 18px 6px 18px;
+/* Ghost icon-knoppen (header controls) */
+.chefbar-gbtn {{
+  background-color: transparent;
+  border: none;
+  border-radius: 6px;
+  color: {text_muted};
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 13px;
+}}
+.chefbar-gbtn:hover {{
+  background-color: {hover};
+  color: {text};
+}}
+.chefbar-gbtn:active {{
+  color: {accent};
 }}
 
-/* ===== Cards (strak r-lg 6px) ===== */
-.chefbar-card {{
+/* Zoek-input met focus-ring */
+.chefbar-search-wrap {{
+  padding: 10px 20px 6px 20px;
+}}
+.chefbar-search, .chefbar-search entry {{
+  background-color: {surface};
+  border: 1px solid {line_strong};
+  border-radius: 6px;
+  color: {text};
+  font-size: 13px;
+  padding: 8px 11px;
+}}
+.chefbar-search:focus,
+.chefbar-search entry:focus {{
+  border-color: {accent};
+  box-shadow: 0 0 0 3px {accent_soft};
+}}
+
+/* Section headers — plain, niet uppercase (Devin-conventie) */
+.chefbar-section-title {{
+  font-size: 14px;
+  font-weight: 500;
+  color: {text};
+  padding: 20px 20px 2px 20px;
+}}
+.chefbar-section-sub {{
+  font-size: 12.5px;
+  color: {text_muted};
+  padding: 0 20px 8px 20px;
+}}
+
+/* Grouped cards: één card per sectie, hairlines tussen rows */
+.chefbar-group {{
   background-color: {surface};
   border: 1px solid {line};
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-radius: 10px;
+  margin: 4px 20px 4px 20px;
 }}
-.chefbar-card:hover {{
-  border-color: {line_strong};
+.chefbar-row {{
+  padding: 10px 2px;
+  border-bottom: 1px solid {line};
+  margin: 0 16px;
 }}
+.chefbar-row:last-child {{ border-bottom: none; }}
+.chefbar-row:hover {{ background-color: {hover}; }}
+
+/* Card-titels en meta */
 .chefbar-card-title {{
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
   color: {text};
 }}
 .chefbar-card-meta {{
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   color: {text_muted};
 }}
 
-/* ===== Status dots (badge-pill) ===== */
+/* Status-dots (pill) */
 .chefbar-dot {{
   min-width: 8px;
   min-height: 8px;
-  border-radius: 200px;           /* pill */
+  border-radius: 200px;
   background-color: {text_faint};
 }}
-.chefbar-dot.ok {{ background-color: {green}; }}
-.chefbar-dot.warn {{ background-color: {amber}; }}
-.chefbar-dot.down {{ background-color: {red}; }}
-.chefbar-dot.info {{ background-color: {accent}; }}
-.chefbar-dot.pulse {{
-  animation: chefbar-pulse 1.6s ease-in-out infinite alternate;
-}}
-@keyframes chefbar-pulse {{
-  from {{ opacity: 0.35; }}
-  to {{ opacity: 1; }}
-}}
+.chefbar-dot.ok    {{ background-color: {green}; }}
+.chefbar-dot.warn  {{ background-color: {amber}; }}
+.chefbar-dot.down  {{ background-color: {red}; }}
+.chefbar-dot.info  {{ background-color: {accent}; }}
 
-/* ===== Usage bars ===== */
+/* Usage bars */
 .chefbar-bar-track {{
   min-height: 4px;
   border-radius: 200px;
@@ -165,144 +213,188 @@ pub fn styles_css(theme: &str) -> String {
   border-radius: 200px;
   background-color: {accent};
 }}
-.chefbar-bar-fill.ok {{ background-color: {green}; }}
-.chefbar-bar-fill.warn {{ background-color: {amber}; }}
-.chefbar-bar-fill.down {{ background-color: {red}; }}
+.chefbar-bar-fill.ok    {{ background-color: {green}; }}
+.chefbar-bar-fill.warn  {{ background-color: {amber}; }}
+.chefbar-bar-fill.down  {{ background-color: {red}; }}
 
-/* ===== Knoppen (strak r-md 4px, shadcn-geest) ===== */
-.chefbar-actions button {{
+/* Knoppen — shadcn/devin-geest */
+.chefbar-btn {{
   background-color: {surface};
   border: 1px solid {line_strong};
-  border-radius: 4px;
+  border-radius: 6px;
   color: {text};
-  padding: 7px 12px;
-  font-size: 12.5px;
+  padding: 6px 13px;
+  font-size: 13px;
   font-weight: 500;
+  min-height: 30px;
 }}
-.chefbar-actions button:hover {{
+.chefbar-btn:hover {{
   background-color: {sunk};
 }}
-.chefbar-actions button:focus {{
+.chefbar-btn:focus {{
   border-color: {accent};
 }}
-.chefbar-actions button:active {{
+.chefbar-btn:active {{
   background-color: {surface};
 }}
-.chefbar-actions button.chefbar-primary {{
+.chefbar-btn.chefbar-primary {{
   background-color: {text};
   border-color: {text};
   color: {bg};
 }}
-
-/* ===== Footer / ghost-knoppen ===== */
-.chefbar-footer {{
-  background-color: {surface};
-  border-top: 1px solid {line};
-  padding: 8px 14px;
-  font-size: 11px;
-  color: {text_muted};
+.chefbar-btn.chefbar-primary:hover {{
+  background-color: {text};
+  opacity: 0.87;
 }}
-.chefbar-switch-btn {{
-  background-color: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: {text_muted};
-  padding: 4px 9px;
-  font-size: 11.5px;
-}}
-.chefbar-switch-btn:hover {{
-  background-color: {hover};
-  border-color: {line};
-  color: {text};
+.chefbar-btn.chefbar-danger {{
+  border-color: {hold_line};
+  color: {amber};
+  background-color: {hold_bg};
 }}
 
-/* ===== Popover / dialog ===== */
-.chefbar-popover contents {{
-  background-color: {bg};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+/* Stamp-badges (KLAAR/HULP/FOUT/BEZIG) */
+.chefbar-stamp {{
+  border-radius: 200px;
+  padding: 2.5px 9px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  background-color: {sunk};
+  color: {text_muted};
 }}
-.chefbar-popover button {{
+.chefbar-stamp.ok    {{ background-color: {green_bg}; color: {green}; }}
+.chefbar-stamp.warn  {{ background-color: {hold_bg};  color: {amber}; }}
+.chefbar-stamp.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
+.chefbar-stamp.info  {{ background-color: {accent_soft}; color: {accent}; }}
+
+/* Actierows (klikbare rijen in een group) */
+.chefbar-row-btn {{
   background-color: transparent;
   border: none;
-  border-radius: 4px;
-  color: {text};
-  padding: 6px 10px;
-  font-size: 12.5px;
+  border-bottom: 1px solid {line};
+  border-radius: 0;
+  min-height: 0;
 }}
-.chefbar-popover button:hover {{
+.chefbar-group .chefbar-row-btn:last-child {{
+  border-bottom: none;
+}}
+.chefbar-row-btn:hover {{
+  background-color: {hover};
+}}
+
+/* Room — sidebar + main canvas (tokens dark: bg #121111, surface #1B1A19, sunk #242322, line 09%, line-strong 16%, accent #5C97FF) */
+.chefbar-sidebar {{
   background-color: {sunk};
+  border-right: 1px solid {line};
 }}
+.chefbar-sidebar-title {{
+  font-family: "Instrument Serif", "General Sans", Georgia, serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: {text};
+}}
+.chefbar-sidebar-sub {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  color: {text_faint};
+}}
+.chefbar-nav-item {{
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  color: {text_muted};
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 10px;
+  min-height: 30px;
+}}
+.chefbar-nav-item:hover {{
+  background-color: {sunk};
+  color: {text};
+}}
+.chefbar-nav-item.active {{
+  background-color: {surface};
+  border: 1px solid {line_strong};
+  border-left: 2px solid {accent};
+  color: {text};
+}}
+.chefbar-nav-item.active:hover {{
+  background-color: {surface};
+}}
+.chefbar-nav-item:active {{
+  background-color: {accent_soft};
+}}
+.chefbar-sidebar-footer {{
+  border-top: 1px solid {line};
+  padding-top: 10px;
+}}
+.chefbar-sidebar-footer-title {{
+  font-size: 11px;
+  font-weight: 600;
+  color: {text_muted};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}}
+.chefbar-sidebar-footer-meta {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: {text_faint};
+}}
+.chefbar-main {{
+  background-color: {bg};
+}}
+
+/* Footer */
+.chefbar-footer {{
+  background-color: {bg};
+  border-top: 1px solid {line};
+  padding: 8px 20px;
+  font-size: 11.5px;
+  color: {text_faint};
+}}
+
+/* Textdialog (acties met needs_text) */
 .chefbar-dialog {{
   background-color: {bg};
-  color: {text};
+  border: 1px solid {line};
+  border-radius: 10px;
 }}
 .chefbar-dialog entry {{
   background-color: {surface};
   border: 1px solid {line_strong};
-  border-radius: 4px;
+  border-radius: 6px;
   color: {text};
   padding: 8px 10px;
 }}
 .chefbar-dialog entry:focus {{
   border-color: {accent};
 }}
-.chefbar-dialog button {{
-  background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 4px;
-  color: {text};
-  padding: 6px 12px;
-  font-size: 12.5px;
-}}
-.chefbar-dialog button:hover {{
-  background-color: {sunk};
-}}
 
-/* ===== Zoek-head / suggesties ===== */
-.chefbar-bar-entry {{
+/* Harnas-tabs (room) */
+.chefbar-harness-row {{
+  padding: 0;
+}}
+.chefbar-harness {{
   background-color: {surface};
   border: 1px solid {line};
-  border-radius: 6px;
-  color: {text};
-  font-size: 13.5px;
-  padding: 9px 12px;
-}}
-.chefbar-bar-entry:focus {{
-  border-color: {accent};
-}}
-.chefbar-bar-suggestion {{
-  background-color: {surface};
-  border-bottom: 1px solid {line};
-  border-radius: 0;
-}}
-.chefbar-bar-suggestion:last-child {{
-  border-bottom: none;
-}}
-.chefbar-bar-suggestion:hover,
-.chefbar-bar-suggestion:selected {{
-  background-color: {sunk};
-}}
-.chefbar-bar-suggestion-act {{
-  background-color: {accent};
-  border: none;
-  border-radius: 4px;
-  color: {bg};
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
-}}
-.chefbar-bar-suggestion-act:hover {{
-  background-color: {accent_ink};
-}}
-.chefbar-bar-row-stamp {{
-  background-color: {sunk};
   border-radius: 200px;
-  padding: 2px 8px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  font-weight: 600;
+  padding: 4px 12px;
+  font-size: 12px;
   color: {text_muted};
+}}
+.chefbar-harness:hover {{
+  background-color: {sunk};
+  color: {text};
+}}
+.chefbar-harness-active {{
+  background-color: {text};
+  border-color: {text};
+  border-radius: 200px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: {bg};
 }}
 "#
     )

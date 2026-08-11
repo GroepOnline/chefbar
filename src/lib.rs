@@ -6,7 +6,6 @@
 
 pub mod actions;
 pub mod auth;
-pub mod bar;
 pub mod config;
 pub mod css;
 pub mod doctor;
@@ -17,6 +16,7 @@ pub mod motion;
 pub mod notify;
 pub mod ops_cli;
 pub mod palette;
+pub mod harness;
 pub mod panel;
 pub mod policy;
 pub mod sessions;
