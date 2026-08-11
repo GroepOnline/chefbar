@@ -29,6 +29,7 @@ pub struct Panel {
     // geselecteerde harnas binnen de room — default naar eerste harnas
     pub active_harness: String,
     harness_state: Rc<RefCell<String>>,
+    nav_buttons: Rc<Vec<(String, gtk::Button)>>,
 }
 
 impl Panel {
@@ -274,8 +275,9 @@ impl Panel {
             search,
             shared,
             executor,
-            active_harness: initial,
-            harness_state,
+            active_harness: initial.clone(),
+            harness_state: harness_state.clone(),
+            nav_buttons: nav_buttons_rc.clone(),
         };
         panel.wire_search();
         // Initieel ook nav active sync via harness_state
@@ -326,6 +328,7 @@ impl Panel {
                 }
             }
         }
+        self.sync_sidebar_nav();
         render_into(
             &self.content,
             &self.shared,
@@ -334,6 +337,17 @@ impl Panel {
             query,
             &self.harness_state,
         );
+    }
+
+    fn sync_sidebar_nav(&self) {
+        let active = self.harness_state.borrow().clone();
+        for (id, btn) in self.nav_buttons.iter() {
+            if *id == active {
+                btn.style_context().add_class("active");
+            } else {
+                btn.style_context().remove_class("active");
+            }
+        }
     }
 
     /// Start de periodieke render-loop (één glib-timer, geen eigen polls).
