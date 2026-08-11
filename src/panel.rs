@@ -228,9 +228,6 @@ impl Panel {
                 // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
                 glib::Propagation::Proceed
             });
-            // Na render: eerste action krijgt focus wanneer search leeg is (typeahead-vibe).
-            // Dit wordt in render_into afgehandeld; hier zetten we alleen de key-chain strak.
-            let _ = search_focus;
         }
 
         // ---- Content ----
