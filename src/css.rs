@@ -82,30 +82,32 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 13.5px;
 }}
 
-/* Header — custom titlebar (undecorated window) */
+/* Header — custom titlebar (undecorated window) — strak en compact */
 .chefbar-header {{
   background-color: {bg};
-  padding: 16px 20px 10px 20px;
+  padding: 12px 16px 10px 16px;
   border-bottom: 1px solid {line};
 }}
 .chefbar-title {{
   font-family: "Instrument Serif", "General Sans", Georgia, serif;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
   color: {text};
 }}
 .chefbar-title-sub {{
   font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   color: {text_faint};
+  letter-spacing: 0.02em;
 }}
 
-/* Status-badge (pill) */
+/* Status-badge (pill) — compact premium */
 .chefbar-badge {{
   border-radius: 200px;
-  padding: 3px 11px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   background-color: {sunk};
   color: {text_muted};
 }}
@@ -133,17 +135,14 @@ pub fn styles_css(theme: &str) -> String {
   color: {accent};
 }}
 
-/* Zoek-input met focus-ring */
-.chefbar-search-wrap {{
-  padding: 10px 20px 6px 20px;
-}}
+/* Zoek-input met focus-ring — strak */
 .chefbar-search, .chefbar-search entry {{
   background-color: {surface};
   border: 1px solid {line_strong};
   border-radius: 6px;
   color: {text};
   font-size: 13px;
-  padding: 8px 11px;
+  padding: 7px 10px;
 }}
 .chefbar-search:focus,
 .chefbar-search entry:focus {{
@@ -151,37 +150,45 @@ pub fn styles_css(theme: &str) -> String {
   box-shadow: 0 0 0 3px {accent_soft};
 }}
 
-/* Section headers — plain, niet uppercase (Devin-conventie) */
+/* Section headers — strak, consistente 16px zijkanten */
 .chefbar-section-title {{
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13.5px;
+  font-weight: 600;
   color: {text};
-  padding: 20px 20px 2px 20px;
+  padding: 16px 16px 2px 16px;
 }}
 .chefbar-section-sub {{
-  font-size: 12.5px;
+  font-size: 11.5px;
   color: {text_muted};
-  padding: 0 20px 8px 20px;
+  padding: 0 16px 6px 16px;
 }}
 
-/* Grouped cards: één card per sectie, hairlines tussen rows */
+/* Grouped cards: één card per sectie, hairlines tussen rows — strak 16px */
 .chefbar-group {{
   background-color: {surface};
   border: 1px solid {line};
   border-radius: 10px;
-  margin: 4px 20px 4px 20px;
+  margin: 2px 16px 6px 16px;
 }}
 .chefbar-row {{
-  padding: 10px 2px;
+  padding: 8px 2px;
   border-bottom: 1px solid {line};
-  margin: 0 16px;
+  margin: 0 12px;
 }}
 .chefbar-row:last-child {{ border-bottom: none; }}
 .chefbar-row:hover {{ background-color: {hover}; }}
+.chefbar-group-attention {{
+  background-color: {surface};
+  border: 1px solid {hold_line};
+  border-left: 2px solid {amber};
+  border-radius: 10px;
+  margin: 2px 16px 6px 16px;
+}}
 
 /* Card-titels en meta */
+/* Card-titels en meta — strak, geen overflow-bleed */
 .chefbar-card-title {{
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: {text};
 }}
@@ -189,6 +196,28 @@ pub fn styles_css(theme: &str) -> String {
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
   color: {text_muted};
+}}
+.chefbar-empty {{
+  padding: 14px 16px;
+  margin: 0 12px;
+}}
+.chefbar-empty-title {{
+  font-size: 13px;
+  font-weight: 500;
+  color: {text};
+}}
+.chefbar-empty-sub {{
+  font-size: 12px;
+  color: {text_muted};
+  padding-top: 3px;
+}}
+.chefbar-empty-icon {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: {text_faint};
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }}
 
 /* Status-dots (pill) */
@@ -255,10 +284,11 @@ pub fn styles_css(theme: &str) -> String {
 /* Stamp-badges (KLAAR/HULP/FOUT/BEZIG) */
 .chefbar-stamp {{
   border-radius: 200px;
-  padding: 2.5px 9px;
+  padding: 2px 8px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.04em;
   background-color: {sunk};
   color: {text_muted};
 }}
@@ -276,6 +306,9 @@ pub fn styles_css(theme: &str) -> String {
   min-height: 0;
 }}
 .chefbar-group .chefbar-row-btn:last-child {{
+  border-bottom: none;
+}}
+.chefbar-group-attention .chefbar-row-btn:last-child {{
   border-bottom: none;
 }}
 .chefbar-row-btn:hover {{
@@ -345,12 +378,18 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {bg};
 }}
 
-/* Footer */
+/* Footer — strak, mono, niet overheersend */
 .chefbar-footer {{
   background-color: {bg};
   border-top: 1px solid {line};
-  padding: 8px 20px;
-  font-size: 11.5px;
+  padding: 7px 16px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  color: {text_faint};
+}}
+.chefbar-footer-label {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
   color: {text_faint};
 }}
 
@@ -371,7 +410,7 @@ pub fn styles_css(theme: &str) -> String {
   border-color: {accent};
 }}
 
-/* Harnas-tabs (room) */
+/* Harnas-tabs (room) — compact pills */
 .chefbar-harness-row {{
   padding: 0;
 }}
@@ -379,8 +418,9 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {surface};
   border: 1px solid {line};
   border-radius: 200px;
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: 3px 11px;
+  font-size: 11.5px;
+  font-weight: 500;
   color: {text_muted};
 }}
 .chefbar-harness:hover {{
@@ -391,9 +431,9 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {text};
   border-color: {text};
   border-radius: 200px;
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 3px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
   color: {bg};
 }}
 "#

@@ -76,8 +76,8 @@ impl Panel {
         nav_box.set_margin_end(8);
         // We bouwen de nav-knoppen hier maar wire pas na harness_state.
         // Placeholder: wordt direct hieronder gevuld.
-        let nav_ids = ["fleet", "commerce", "eval"];
-        let nav_labels = ["Fleet", "Commerce", "Eval"];
+        let nav_ids = ["fleet", "commerce", "sync", "eval"];
+        let nav_labels = ["Fleet", "Commerce", "Sync", "Evaluatie"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
             let btn = gtk::Button::with_label(*label);
@@ -210,6 +210,7 @@ impl Panel {
         });
 
         // "/" → focus search, Esc → verbergen (Raycast-geest).
+        // Pijltjes ↑/↓ gaan naar de zoek-input terug als je eruit springt.
         {
             let search_focus = search.clone();
             let window_esc = window.clone();
@@ -223,8 +224,13 @@ impl Panel {
                     search_focus.grab_focus();
                     return glib::Propagation::Stop;
                 }
+                // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
+                // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
                 glib::Propagation::Proceed
             });
+            // Na render: eerste action krijgt focus wanneer search leeg is (typeahead-vibe).
+            // Dit wordt in render_into afgehandeld; hier zetten we alleen de key-chain strak.
+            let _ = search_focus;
         }
 
         // ---- Content ----
