@@ -76,8 +76,8 @@ impl Panel {
         nav_box.set_margin_end(8);
         // We bouwen de nav-knoppen hier maar wire pas na harness_state.
         // Placeholder: wordt direct hieronder gevuld.
-        let nav_ids = ["fleet", "commerce", "sync", "eval"];
-        let nav_labels = ["Fleet", "Commerce", "Sync", "Evaluatie"];
+        let nav_ids = ["fleet", "commerce", "eval", "sync"];
+        let nav_labels = ["Fleet", "Commerce", "Evaluatie", "Sync"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
             let btn = gtk::Button::with_label(*label);
@@ -292,10 +292,21 @@ impl Panel {
         if self.window.is_visible() {
             fade_out(&self.window, PANEL_MS);
         } else {
-            self.render("");
+            self.show();
+        }
+    }
+
+    /// Idempotent tonen — voor tray-/hotkey-/IPC-commando's die "openen"
+    /// bedoelen (open/show/bar), nooit verbergen.
+    pub fn show(&self) {
+        self.window.deiconify();
+        if !self.window.is_visible() {
+            let query = self.search.text().to_string();
+            self.render(&query);
             self.window.show_all();
             fade_in(&self.window, PANEL_MS);
         }
+        self.window.present();
     }
 
     pub fn is_visible(&self) -> bool {
@@ -638,11 +649,7 @@ fn render_into(
                         if let crate::actions::RunSpec::CopyText(text) = &spec {
                             let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                             cb.set_text(text);
-                            crate::notify::notify(
-                                "Gekopieerd",
-                                &text.chars().take(60).collect::<String>(),
-                                "ok",
-                            );
+                            notify_copied();
                         } else {
                             executor_clone.run_for_ui(&spec);
                         }
@@ -700,11 +707,7 @@ fn render_into(
                 if let crate::actions::RunSpec::CopyText(text) = &spec {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                     clipboard.set_text(text);
-                    crate::notify::notify(
-                        "Gekopieerd",
-                        &text.chars().take(60).collect::<String>(),
-                        "ok",
-                    );
+                    notify_copied();
                 } else {
                     executor.run_for_ui(&spec);
                 }
@@ -984,7 +987,7 @@ fn render_into(
                     if let crate::actions::RunSpec::CopyText(ref text) = spec {
                         let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                         cb.set_text(text);
-                        crate::notify::notify("Gekopieerd", &text.chars().take(60).collect::<String>(), "ok");
+                        notify_copied();
                     } else {
                         executor_clone.run_for_ui(&spec);
                     }
@@ -1039,6 +1042,11 @@ fn render_into(
     content.pack_start(&footer, false, false, 0);
 
     content.show_all();
+}
+
+/// Privacy-safe kopie-melding: nooit klembord-inhoud in notificaties.
+fn notify_copied() {
+    crate::notify::notify("Gekopieerd", "Tekst staat op het klembord.", "ok");
 }
 
 fn state_label(health: &crate::models::HealthInfo) -> String {

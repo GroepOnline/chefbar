@@ -82,11 +82,12 @@ fn main() {
         std::process::exit(0);
     }
 
-    // Single-instance: als er al een bar draait, stuur TogglePanel in plaats
-    // van een tweede GTK-instantie te starten (on-click/XDG-autostart race).
+    // Single-instance: als er al een bar draait, laat die het paneel shown
+    // (idempotent, "openen" — Esc verbergt) i.p.v. een tweede GTK-instantie
+    // te starten (on-click/XDG-autostart race).
     if std::env::var("CHEFBAR_FORCE_NEW").is_err() {
-        if chefbar::ipc::send_command(chefbar::tray::UiCommand::TogglePanel).is_ok() {
-            println!("chefbar: bestaande instantie getoggled via IPC");
+        if chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok() {
+            println!("chefbar: bestaande instantie getoond via IPC");
             std::process::exit(0);
         }
     }
@@ -161,6 +162,7 @@ fn run_app(cli: &Cli) {
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<chefbar::tray::UiCommand>();
     let dispatcher: std::sync::Arc<dyn Fn(chefbar::tray::UiCommand)> =
         std::sync::Arc::new(move |cmd| match cmd {
+            chefbar::tray::UiCommand::ShowPanel => panel.show(),
             chefbar::tray::UiCommand::TogglePanel => panel.toggle(),
             chefbar::tray::UiCommand::Refresh => chefbar::state::refresh_global(),
             chefbar::tray::UiCommand::Doctor => {

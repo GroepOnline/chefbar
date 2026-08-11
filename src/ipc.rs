@@ -20,9 +20,8 @@ pub fn socket_path() -> PathBuf {
 
 pub fn parse_command(line: &str) -> Option<UiCommand> {
     match line.trim() {
-        "bar" | "panel" | "toggle-panel" | "dashboard" | "open" | "show" => {
-            Some(UiCommand::TogglePanel)
-        }
+        "bar" | "panel" | "open" | "show" | "dashboard" => Some(UiCommand::ShowPanel),
+        "toggle-panel" => Some(UiCommand::TogglePanel),
         "refresh" | "reload" => Some(UiCommand::Refresh),
         "doctor" | "check" => Some(UiCommand::Doctor),
         "quit" | "exit" | "stop" => Some(UiCommand::Quit),
@@ -34,7 +33,8 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     let path = socket_path();
     let stream = UnixStream::connect(&path).map_err(|e| e.to_string())?;
     let line = match command {
-        UiCommand::TogglePanel => "panel\n",
+        UiCommand::ShowPanel => "show\n",
+        UiCommand::TogglePanel => "toggle-panel\n",
         UiCommand::Refresh => "refresh\n",
         UiCommand::Doctor => "doctor\n",
         UiCommand::Quit => "quit\n",
@@ -99,8 +99,9 @@ mod tests {
 
     #[test]
     fn parses_known_commands() {
-        assert_eq!(parse_command("panel"), Some(UiCommand::TogglePanel));
-        assert_eq!(parse_command("open"), Some(UiCommand::TogglePanel));
+        assert_eq!(parse_command("panel"), Some(UiCommand::ShowPanel));
+        assert_eq!(parse_command("open"), Some(UiCommand::ShowPanel));
+        assert_eq!(parse_command("toggle-panel"), Some(UiCommand::TogglePanel));
         assert_eq!(parse_command("refresh"), Some(UiCommand::Refresh));
         assert_eq!(parse_command("quit"), Some(UiCommand::Quit));
         assert_eq!(parse_command("onzin"), None);
