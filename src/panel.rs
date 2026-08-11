@@ -15,7 +15,7 @@ use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions_with, Action, RankContext};
 use crate::state::{Shared, VAULT_POLL_MS};
-use glib::ControlFlow;
+use gtk::glib::ControlFlow;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -208,7 +208,7 @@ impl Panel {
                     event.time(),
                 );
             }
-            glib::Propagation::Proceed
+            gtk::glib::Propagation::Proceed
         });
 
         // "/" → focus search, Esc → verbergen (Raycast-geest).
@@ -220,15 +220,15 @@ impl Panel {
                 let kv = event.keyval();
                 if kv == gdk::keys::constants::Escape {
                     fade_out(&window_esc, PANEL_MS);
-                    return glib::Propagation::Stop;
+                    return gtk::glib::Propagation::Stop;
                 }
                 if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
                     search_focus.grab_focus();
-                    return glib::Propagation::Stop;
+                    return gtk::glib::Propagation::Stop;
                 }
                 // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
                 // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
-                glib::Propagation::Proceed
+                gtk::glib::Propagation::Proceed
             });
         }
 
@@ -397,7 +397,7 @@ impl Panel {
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
                 render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
@@ -407,7 +407,7 @@ impl Panel {
         let dirty_persist = self.persist_dirty.clone();
         let harness_persist = self.harness_state.clone();
         let search_persist = self.search.clone();
-        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+        gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             if dirty_persist.replace(false) {
                 crate::panel_state::save(&crate::panel_state::PanelState {
                     harness: Some(harness_persist.borrow().clone()),
@@ -1371,13 +1371,13 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
             let text = entry.text().to_string();
             dialog_keys.close();
             executor_keys.run(&run_keys, &text);
-            return glib::Propagation::Stop;
+            return gtk::glib::Propagation::Stop;
         }
         if event.keyval() == gdk::keys::constants::Escape {
             dialog_keys.close();
-            return glib::Propagation::Stop;
+            return gtk::glib::Propagation::Stop;
         }
-        glib::Propagation::Proceed
+        gtk::glib::Propagation::Proceed
     });
 
     let (x, y) = window.position();
