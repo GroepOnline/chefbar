@@ -292,6 +292,14 @@ impl Panel {
         if self.window.is_visible() {
             fade_out(&self.window, PANEL_MS);
         } else {
+            self.show();
+        }
+    }
+
+    /// Idempotent tonen — voor tray-/hotkey-/IPC-commando's die "openen"
+    /// bedoelen (open/show/bar), nooit verbergen.
+    pub fn show(&self) {
+        if !self.window.is_visible() {
             self.render("");
             self.window.show_all();
             fade_in(&self.window, PANEL_MS);
@@ -984,7 +992,7 @@ fn render_into(
                     if let crate::actions::RunSpec::CopyText(ref text) = spec {
                         let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                         cb.set_text(text);
-                        crate::notify::notify("Gekopieerd", &text.chars().take(60).collect::<String>(), "ok");
+                        crate::notify::notify("Gekopieerd", "naar klembord gezet", "ok");
                     } else {
                         executor_clone.run_for_ui(&spec);
                     }

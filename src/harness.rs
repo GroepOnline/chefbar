@@ -139,14 +139,15 @@ impl Harness {
 // Bouwer — pure functie, geen I/O
 // ---------------------------------------------------------------------------
 
-/// Bouw de drie harnassen uit bestaande snapshot-data.
+/// Bouw de vier harnassen uit bestaande snapshot-data.
 /// - fleet: uit fleet-info (online/total/host/stale)
 /// - commerce: uit actieve agents met "commerce" cwd of provider "vault"
 /// - eval: uit day_score + health
+/// - sync: uit share_sync-status (gedeelde bestanden pull/push)
 ///
 /// Geen nieuwe netwerk-calls; alles komt uit `snapshot` en `ops`.
 pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
-    let mut out: Vec<Harness> = Vec::with_capacity(3);
+    let mut out: Vec<Harness> = Vec::with_capacity(4);
 
     // ---- Fleet harnas -----------------------------------------------------
     // Afgeleid uit FleetInfo: total/online/host/stale.
@@ -164,7 +165,7 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         HarnessStatus::Running
     };
     let fleet_label = if fleet.total > 0 {
-        format!("Fleet · {}/{} online", fleet.online, fleet.total)
+        "Fleet".to_string()
     } else {
         "Fleet · onbekend".to_string()
     };
@@ -266,6 +267,38 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         day_score.source.clone(),
     ));
 
+    // ---- Sync harnas ------------------------------------------------------
+    // Afgeleid uit share-sync/status: gedeelde bestanden (pull/push-aware).
+    let share_sync = &snapshot.share_sync;
+    let sync_error = share_sync.contains_key("error")
+        || share_sync.get("status").and_then(|v| v.as_str()) == Some("error")
+        || share_sync.get("status").and_then(|v| v.as_str()) == Some("blocked");
+    let sync_status = if sync_error {
+        HarnessStatus::Blocked
+    } else if !share_sync.is_empty() {
+        HarnessStatus::Idle
+    } else {
+        HarnessStatus::Idle
+    };
+    let sync_pending = share_sync
+        .get("pending")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let sync_active = share_sync
+        .get("last_sync")
+        .or_else(|| share_sync.get("updated_at"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    out.push(Harness::new(
+        HarnessKind::Sync.id(),
+        "Sync",
+        HarnessKind::Sync,
+        sync_status,
+        sync_pending,
+        sync_active,
+        None,
+    ));
+
     out
 }
 
@@ -279,14 +312,23 @@ mod tests {
     }
 
     #[test]
-    fn bouwt_drie_harnassen() {
+    fn bouwt_vier_harnassen() {
         let snap = empty_snapshot();
         let ops = OpsSnapshot::default();
         let h = build_harnesses(&snap, &ops);
-        assert_eq!(h.len(), 3);
+        assert_eq!(h.len(), 4);
         assert_eq!(h[0].id, "fleet");
         assert_eq!(h[1].id, "commerce");
         assert_eq!(h[2].id, "eval");
+        assert_eq!(h[3].id, "sync");
+    }
+
+    #[test]
+    fn sync_harnas_blocked_bij_error() {
+        let mut snap = empty_snapshot();
+        snap.share_sync.insert("status".into(), serde_json::Value::String("error".into()));
+        let h = build_harnesses(&snap, &OpsSnapshot::default());
+        assert_eq!(h[3].status, HarnessStatus::Blocked);
     }
 
     #[test]

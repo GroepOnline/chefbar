@@ -424,13 +424,10 @@ impl Executor {
     pub fn run(&self, spec: &RunSpec, query: &str) {
         match spec {
             RunSpec::Noop => {}
-            RunSpec::CopyText(text) => {
-                // GTK-clipboard pad wordt in de UI afgehandeld; hier alleen toast.
-                crate::notify::notify(
-                    "Gekopieerd",
-                    &text.chars().take(60).collect::<String>(),
-                    "ok",
-                );
+            RunSpec::CopyText(_text) => {
+                // GTK-clipboard pad wordt in de UI afgehandeld (panel.rs); hier
+                // alleen toast — zonder inhoud (privacy, niks in notificaties).
+                crate::notify::notify("Gekopieerd", "naar klembord gezet", "ok");
             }
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
             RunSpec::Refresh => self.request_refresh(),
