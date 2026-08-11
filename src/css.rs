@@ -1,173 +1,140 @@
-//! Devin-skin CSS voor ChefBar — tokens uit `~/design-system/tokens.css`
-//! (v2 "Devin-richting"), gemapt op GTK3-CSS (beperkte subset).
+//! Signaal · Huly CSS voor ChefBar — tokens uit `.ulpi/design/DESIGN.md`
+//! (lock 2026-07-23), gemapt op de GTK3-CSS subset.
 //!
-//! Devin-meetwaarden: warme bg, zachte lijnen, serif display, medium koppen,
-//! pill-badges, accent #317CFF/#5C97FF. Alleen GTK3-compatibele properties.
+//! Huly-meetwaarden: OLED-canvas #090A0C, charcoal surfaces, Electric Iris
+//! #5683DA + Ember Pulse #FF8964, dual-font (IBM Plex Mono display/data,
+//! Inter interface), radius 8/12/14, pure-black schaduwen, één signature:
+//! de verticale CG-statuslijn. Donker is standaard; licht = inset-island
+//! met volledige pariteit. Geen serif-display, geen gradients, geen glow.
 
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
+#[allow(clippy::too_many_arguments)]
 pub fn styles_css(theme: &str) -> String {
-    let (
-        bg,
-        surface,
-        sunk,
-        hover,
-        line,
-        line_strong,
-        text,
-        text_muted,
-        text_faint,
-        accent,
-        _accent_ink,
-        accent_soft,
-        green,
-        green_bg,
-        red,
-        amber,
-        hold_bg,
-        hold_line,
-    ) = if theme == THEME_LIGHT {
-        (
-            "#F7F6F5",
-            "#FFFFFF",
-            "#EFEFEF",
-            "rgba(0,0,0,0.045)",
-            "rgba(0,0,0,0.08)",
-            "rgba(0,0,0,0.14)",
-            "#191919",
-            "rgba(0,0,0,0.55)",
-            "rgba(0,0,0,0.38)",
-            "#317CFF",
-            "#1D5FD6",
-            "rgba(49,124,255,0.09)",
-            "#1F883D",
-            "rgba(31,136,61,0.10)",
-            "#CF222E",
-            "#BF5B00",
-            "rgba(191,91,0,0.06)",
-            "rgba(191,91,0,0.35)",
-        )
-    } else {
-        (
-            "#121111",
-            "#1B1A19",
-            "#242322",
-            "rgba(255,255,255,0.05)",
-            "rgba(255,255,255,0.09)",
-            "rgba(255,255,255,0.16)",
-            "#F0EEEB",
-            "rgba(240,238,235,0.55)",
-            "rgba(240,238,235,0.35)",
-            "#5C97FF",
-            "#8AB4FF",
-            "rgba(92,151,255,0.12)",
-            "#3FB950",
-            "rgba(63,185,80,0.12)",
-            "#F85149",
-            "#D9A038",
-            "rgba(217,160,56,0.08)",
-            "rgba(217,160,56,0.40)",
-        )
-    };
-
+    let t = if theme == THEME_LIGHT { Tokens::light() } else { Tokens::dark() };
     format!(
         r#"
-/* ============ App-window (Devin-dark) ============ */
+/* ============ App-window (Huly OLED) ============ */
 .chefbar-app {{
-  background-color: {bg};
+  background-color: {canvas};
   color: {text};
-  font-family: "General Sans", "Inter", "Cantarell", sans-serif;
-  font-size: 13.5px;
+  font-family: "Inter", "Cantarell", "Noto Sans", sans-serif;
+  font-size: 13px;
 }}
 
-/* Header — custom titlebar (undecorated window) — strak en compact */
+/* Header — custom titlebar (undecorated window) */
 .chefbar-header {{
-  background-color: {bg};
-  padding: 12px 16px 10px 16px;
+  background-color: {canvas};
+  padding: 14px 16px 12px 16px;
   border-bottom: 1px solid {line};
 }}
 .chefbar-title {{
-  font-family: "Instrument Serif", "General Sans", Georgia, serif;
-  font-size: 22px;
-  font-weight: 500;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 19px;
+  font-weight: 600;
   color: {text};
 }}
 .chefbar-title-sub {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   color: {text_faint};
-  letter-spacing: 0.02em;
 }}
 
-/* Status-badge (pill) — compact premium */
+/* ============ Signature: de CG-statuslijn ============ */
+/* 2px verticale lijn in statuskleur + één compacte statusregel. */
+.chefbar-signature {{
+  background-color: {text_faint};
+  min-width: 2px;
+  border-radius: 1px;
+}}
+.chefbar-signature.ok    {{ background-color: {success}; }}
+.chefbar-signature.warn  {{ background-color: {warm}; }}
+.chefbar-signature.error {{ background-color: {error}; }}
+.chefbar-signature.info  {{ background-color: {brand}; }}
+.chefbar-statuslijn {{
+  background-color: {surface};
+  border: 1px solid {line};
+  border-radius: 8px;
+  padding: 8px 12px;
+}}
+.chefbar-statuslijn-text {{
+  font-family: "Inter", "Cantarell", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: {text};
+}}
+
+/* Status-badge (pill) */
 .chefbar-badge {{
-  border-radius: 200px;
+  border-radius: 999px;
   padding: 2px 10px;
+  font-family: "Inter", "Cantarell", sans-serif;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  background-color: {sunk};
+  background-color: {surface_muted};
   color: {text_muted};
 }}
-.chefbar-badge.ok    {{ background-color: {green_bg}; color: {green}; }}
-.chefbar-badge.warn  {{ background-color: {hold_bg};  color: {amber}; }}
-.chefbar-badge.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
-.chefbar-badge.info  {{ background-color: {accent_soft}; color: {accent}; }}
+.chefbar-badge.ok    {{ background-color: {success_soft}; color: {success}; }}
+.chefbar-badge.warn  {{ background-color: {warm_soft};    color: {warm}; }}
+.chefbar-badge.error {{ background-color: {error_soft};   color: {error}; }}
+.chefbar-badge.info  {{ background-color: {brand_soft};   color: {brand}; }}
 
 /* Ghost icon-knoppen (header controls) */
 .chefbar-gbtn {{
   background-color: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   color: {text_muted};
   min-width: 28px;
   min-height: 28px;
   padding: 2px 6px;
   font-size: 13px;
+  transition: background-color 180ms, color 180ms;
 }}
 .chefbar-gbtn:hover {{
   background-color: {hover};
   color: {text};
 }}
 .chefbar-gbtn:active {{
-  color: {accent};
+  color: {brand};
 }}
 
-/* Zoek-input met focus-ring — strak */
+/* Zoek-input — pill affordance, focus-ring in Iris */
 .chefbar-search, .chefbar-search entry {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+  border: 1px solid {control_border};
+  border-radius: 999px;
   color: {text};
   font-size: 13px;
-  padding: 7px 10px;
+  padding: 7px 14px;
 }}
 .chefbar-search:focus,
 .chefbar-search entry:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
+  border-color: {focus};
+  box-shadow: 0 0 0 3px {focus_soft};
 }}
 
-/* Section headers — strak, consistente 16px zijkanten */
+/* Section eyebrows — Inter caps, kort en rustig */
 .chefbar-section-title {{
-  font-size: 13.5px;
+  font-family: "Inter", "Cantarell", sans-serif;
+  font-size: 11px;
   font-weight: 600;
-  color: {text};
-  padding: 16px 16px 2px 16px;
+  color: {text_muted};
+  padding: 18px 16px 4px 16px;
 }}
 .chefbar-section-sub {{
   font-size: 11.5px;
-  color: {text_muted};
+  color: {text_faint};
   padding: 0 16px 6px 16px;
 }}
 
-/* Grouped cards: één card per sectie, hairlines tussen rows — strak 16px */
+/* Zones: één surface per sectie, hairlines tussen rows, radius 12 */
 .chefbar-group {{
   background-color: {surface};
   border: 1px solid {line};
-  border-radius: 10px;
+  border-radius: 12px;
   margin: 2px 16px 6px 16px;
 }}
 .chefbar-row {{
@@ -179,16 +146,15 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-row:hover {{ background-color: {hover}; }}
 .chefbar-group-attention {{
   background-color: {surface};
-  border: 1px solid {hold_line};
-  border-left: 2px solid {amber};
-  border-radius: 10px;
+  border: 1px solid {line};
+  border-left: 3px solid {warm};
+  border-radius: 12px;
   margin: 2px 16px 6px 16px;
 }}
 
-/* Card-titels en meta */
-/* Card-titels en meta — strak, geen overflow-bleed */
+/* Rij-titels en meta (data in Plex Mono) */
 .chefbar-card-title {{
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: {text};
 }}
@@ -198,7 +164,7 @@ pub fn styles_css(theme: &str) -> String {
   color: {text_muted};
 }}
 .chefbar-empty {{
-  padding: 14px 16px;
+  padding: 16px 16px;
   margin: 0 12px;
 }}
 .chefbar-empty-title {{
@@ -216,93 +182,93 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 10px;
   font-weight: 600;
   color: {text_faint};
-  letter-spacing: 0.06em;
 }}
 
-/* Status-dots (pill) */
+/* Status-dots — status = kleur + vorm + tekst (dot naast label) */
 .chefbar-dot {{
   min-width: 8px;
   min-height: 8px;
-  border-radius: 200px;
+  border-radius: 999px;
   background-color: {text_faint};
 }}
-.chefbar-dot.ok    {{ background-color: {green}; }}
-.chefbar-dot.warn  {{ background-color: {amber}; }}
-.chefbar-dot.down  {{ background-color: {red}; }}
-.chefbar-dot.info  {{ background-color: {accent}; }}
+.chefbar-dot.ok    {{ background-color: {success}; }}
+.chefbar-dot.warn  {{ background-color: {warm}; }}
+.chefbar-dot.down  {{ background-color: {error}; }}
+.chefbar-dot.info  {{ background-color: {brand}; }}
 
 /* Usage bars */
 .chefbar-bar-track {{
   min-height: 4px;
-  border-radius: 200px;
-  background-color: {sunk};
+  border-radius: 999px;
+  background-color: {surface_muted};
 }}
 .chefbar-bar-fill {{
-  border-radius: 200px;
-  background-color: {accent};
+  border-radius: 999px;
+  background-color: {brand};
 }}
-.chefbar-bar-fill.ok    {{ background-color: {green}; }}
-.chefbar-bar-fill.warn  {{ background-color: {amber}; }}
-.chefbar-bar-fill.down  {{ background-color: {red}; }}
+.chefbar-bar-fill.ok    {{ background-color: {success}; }}
+.chefbar-bar-fill.warn  {{ background-color: {warm}; }}
+.chefbar-bar-fill.down  {{ background-color: {error}; }}
 
-/* Knoppen — shadcn/devin-geest */
+/* Knoppen — Huly: primary = Iris fill, witte tekst */
 .chefbar-btn {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+  border: 1px solid {control_border};
+  border-radius: 8px;
   color: {text};
   padding: 6px 13px;
   font-size: 13px;
   font-weight: 500;
   min-height: 30px;
+  transition: background-color 180ms, border-color 180ms;
 }}
 .chefbar-btn:hover {{
-  background-color: {sunk};
+  background-color: {surface_muted};
 }}
 .chefbar-btn:focus {{
-  border-color: {accent};
+  border-color: {focus};
 }}
 .chefbar-btn:active {{
   background-color: {surface};
 }}
 .chefbar-btn.chefbar-primary {{
-  background-color: {text};
-  border-color: {text};
-  color: {bg};
+  background-color: {brand};
+  border-color: {brand};
+  color: #FFFFFF;
 }}
 .chefbar-btn.chefbar-primary:hover {{
-  background-color: {text};
-  opacity: 0.87;
+  background-color: {brand_hover};
+  border-color: {brand_hover};
 }}
 .chefbar-btn.chefbar-danger {{
-  border-color: {hold_line};
-  color: {amber};
-  background-color: {hold_bg};
+  border-color: {warm_line};
+  color: {warm};
+  background-color: {warm_soft};
 }}
 
-/* Stamp-badges (KLAAR/HULP/FOUT/BEZIG) */
+/* Stamps (KLAAR/HULP/FOUT/BEZIG) — Inter caps, geen mono-stempel */
 .chefbar-stamp {{
-  border-radius: 200px;
+  border-radius: 999px;
   padding: 2px 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "Inter", "Cantarell", sans-serif;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  background-color: {sunk};
+  background-color: {surface_muted};
   color: {text_muted};
 }}
-.chefbar-stamp.ok    {{ background-color: {green_bg}; color: {green}; }}
-.chefbar-stamp.warn  {{ background-color: {hold_bg};  color: {amber}; }}
-.chefbar-stamp.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
-.chefbar-stamp.info  {{ background-color: {accent_soft}; color: {accent}; }}
+.chefbar-stamp.ok    {{ background-color: {success_soft}; color: {success}; }}
+.chefbar-stamp.warn  {{ background-color: {warm_soft};    color: {warm}; }}
+.chefbar-stamp.error {{ background-color: {error_soft};   color: {error}; }}
+.chefbar-stamp.info  {{ background-color: {brand_soft};   color: {brand}; }}
 
-/* Actierows (klikbare rijen in een group) */
+/* Actierows (klikbare rijen in een zone) */
 .chefbar-row-btn {{
   background-color: transparent;
   border: none;
   border-bottom: 1px solid {line};
   border-radius: 0;
   min-height: 0;
+  transition: background-color 180ms;
 }}
 .chefbar-group .chefbar-row-btn:last-child {{
   border-bottom: none;
@@ -313,49 +279,53 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-row-btn:hover {{
   background-color: {hover};
 }}
+.chefbar-row-btn:focus {{
+  box-shadow: inset 2px 0 0 {focus};
+}}
 
-/* Room — sidebar + main canvas (tokens dark: bg #121111, surface #1B1A19, sunk #242322, line 09%, line-strong 16%, accent #5C97FF) */
+/* Room — sidebar + main canvas */
 .chefbar-sidebar {{
-  background-color: {sunk};
+  background-color: {surface_muted};
   border-right: 1px solid {line};
 }}
 .chefbar-sidebar-title {{
-  font-family: "Instrument Serif", "General Sans", Georgia, serif;
-  font-size: 15px;
-  font-weight: 500;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 14px;
+  font-weight: 600;
   color: {text};
 }}
 .chefbar-sidebar-sub {{
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   color: {text_faint};
 }}
 .chefbar-nav-item {{
   background-color: transparent;
   border: 1px solid transparent;
   border-left: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   color: {text_muted};
   font-size: 13px;
   font-weight: 500;
   padding: 7px 10px;
   min-height: 30px;
+  transition: background-color 180ms, color 180ms;
 }}
 .chefbar-nav-item:hover {{
-  background-color: {sunk};
+  background-color: {hover};
   color: {text};
 }}
 .chefbar-nav-item.active {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-left: 2px solid {accent};
+  border: 1px solid {line};
+  border-left: 2px solid {brand};
   color: {text};
 }}
 .chefbar-nav-item.active:hover {{
   background-color: {surface};
 }}
 .chefbar-nav-item:active {{
-  background-color: {accent_soft};
+  background-color: {brand_soft};
 }}
 .chefbar-sidebar-footer {{
   border-top: 1px solid {line};
@@ -365,7 +335,6 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 11px;
   font-weight: 600;
   color: {text_muted};
-  letter-spacing: 0.04em;
 }}
 .chefbar-sidebar-footer-meta {{
   font-family: "IBM Plex Mono", monospace;
@@ -373,69 +342,192 @@ pub fn styles_css(theme: &str) -> String {
   color: {text_faint};
 }}
 .chefbar-main {{
-  background-color: {bg};
+  background-color: {canvas};
 }}
 
-/* Footer — strak, mono, niet overheersend */
+/* Footer — mono microcopy, niet overheersend */
 .chefbar-footer {{
-  background-color: {bg};
+  background-color: {canvas};
   border-top: 1px solid {line};
   padding: 7px 16px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   color: {text_faint};
 }}
 .chefbar-footer-label {{
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   color: {text_faint};
 }}
 
-/* Textdialog (acties met needs_text) */
+/* Textdialog (acties met needs_text) — radius 14, diepe schaduw */
 .chefbar-dialog {{
-  background-color: {bg};
+  background-color: {canvas};
   border: 1px solid {line};
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
 }}
 .chefbar-dialog entry {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+  border: 1px solid {control_border};
+  border-radius: 8px;
   color: {text};
   padding: 8px 10px;
 }}
 .chefbar-dialog entry:focus {{
-  border-color: {accent};
+  border-color: {focus};
 }}
 
-/* Harnas-tabs (room) — compact pills */
+/* Harnas-tabs (room) — pills, actief in Iris */
 .chefbar-harness-row {{
   padding: 0;
 }}
 .chefbar-harness {{
   background-color: {surface};
   border: 1px solid {line};
-  border-radius: 200px;
+  border-radius: 999px;
   padding: 3px 11px;
   font-size: 11.5px;
   font-weight: 500;
   color: {text_muted};
+  transition: background-color 180ms, color 180ms;
 }}
 .chefbar-harness:hover {{
-  background-color: {sunk};
+  background-color: {surface_muted};
   color: {text};
 }}
 .chefbar-harness-active {{
-  background-color: {text};
-  border-color: {text};
-  border-radius: 200px;
+  background-color: {brand};
+  border: 1px solid {brand};
+  border-radius: 999px;
   padding: 3px 11px;
   font-size: 11.5px;
   font-weight: 600;
-  color: {bg};
+  color: #FFFFFF;
+}}
+
+/* Scrollbars — dun en stil */
+scrollbar {{
+  background-color: transparent;
+}}
+scrollbar slider {{
+  background-color: {surface_raised};
+  border-radius: 999px;
+  min-width: 6px;
+  min-height: 6px;
+}}
+scrollbar slider:hover {{
+  background-color: {control_border};
 }}
 "#
+        ,
+        canvas = t.canvas,
+        surface = t.surface,
+        surface_muted = t.surface_muted,
+        surface_raised = t.surface_raised,
+        line = t.line,
+        control_border = t.control_border,
+        text = t.text,
+        text_muted = t.text_muted,
+        text_faint = t.text_faint,
+        brand = t.brand,
+        brand_hover = t.brand_hover,
+        brand_soft = t.brand_soft,
+        warm = t.warm,
+        warm_soft = t.warm_soft,
+        warm_line = t.warm_line,
+        focus = t.focus,
+        focus_soft = t.focus_soft,
+        success = t.success,
+        success_soft = t.success_soft,
+        error = t.error,
+        error_soft = t.error_soft,
+        hover = t.hover,
     )
+}
+
+/// Huly-tokenwaarden per thema (DESIGN.md kleurcontract).
+struct Tokens {
+    canvas: &'static str,
+    surface: &'static str,
+    surface_muted: &'static str,
+    surface_raised: &'static str,
+    line: &'static str,
+    control_border: &'static str,
+    text: &'static str,
+    text_muted: &'static str,
+    text_faint: &'static str,
+    brand: &'static str,
+    brand_hover: &'static str,
+    brand_soft: &'static str,
+    warm: &'static str,
+    warm_soft: &'static str,
+    warm_line: &'static str,
+    focus: &'static str,
+    focus_soft: &'static str,
+    success: &'static str,
+    success_soft: &'static str,
+    error: &'static str,
+    error_soft: &'static str,
+    hover: &'static str,
+}
+
+impl Tokens {
+    /// Donker (Huly OLED — standaard).
+    fn dark() -> Self {
+        Self {
+            canvas: "#090A0C",
+            surface: "#111111",
+            surface_muted: "#1A1B1E",
+            surface_raised: "#303236",
+            line: "#4A4B50",
+            control_border: "#6B6C6D",
+            text: "#FFFFFF",
+            text_muted: "#95979E",
+            text_faint: "#6B6C6D",
+            brand: "#5683DA",
+            brand_hover: "#6B93E3",
+            brand_soft: "rgba(86,131,218,0.14)",
+            warm: "#FF8964",
+            warm_soft: "rgba(255,137,100,0.12)",
+            warm_line: "rgba(255,137,100,0.40)",
+            focus: "#7BA3F0",
+            focus_soft: "rgba(123,163,240,0.16)",
+            success: "#47D18C",
+            success_soft: "rgba(71,209,140,0.12)",
+            error: "#FF4D4D",
+            error_soft: "rgba(255,77,77,0.12)",
+            hover: "rgba(255,255,255,0.045)",
+        }
+    }
+
+    /// Licht (inset island — volledige pariteit).
+    fn light() -> Self {
+        Self {
+            canvas: "#EFEFF0",
+            surface: "#FAFAFA",
+            surface_muted: "#F6F6F6",
+            surface_raised: "#FFFFFF",
+            line: "#D1D1D1",
+            control_border: "#95979E",
+            text: "#090A0C",
+            text_muted: "#6B6C6D",
+            text_faint: "#95979E",
+            brand: "#3D7EFF",
+            brand_hover: "#5C97FF",
+            brand_soft: "rgba(61,126,255,0.10)",
+            warm: "#E56A3F",
+            warm_soft: "rgba(229,106,63,0.10)",
+            warm_line: "rgba(229,106,63,0.35)",
+            focus: "#0B5FFF",
+            focus_soft: "rgba(11,95,255,0.14)",
+            success: "#1F8A65",
+            success_soft: "rgba(31,138,101,0.10)",
+            error: "#CF2D56",
+            error_soft: "rgba(207,45,86,0.10)",
+            hover: "rgba(9,10,12,0.045)",
+        }
+    }
 }
 
 /// Welk thema actief is: donker tenzij de desktop expliciet om light vraagt.

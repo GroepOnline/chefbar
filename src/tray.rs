@@ -169,47 +169,88 @@ impl ksni::Tray for ChefTray {
     }
 }
 
-/// Programmatisch gegenereerd 22x22 ARGB-pictogram; dot-kleur volgt de
-/// tray-status (parity met de Python-indicator, alleen data, geen assets).
+/// Programmatisch gegenereerd 22x22 ARGB-pictogram: de CG-statuslijn —
+/// een verticale lijn met drie segmentmarkeringen (spec: chefbar-tray.md).
+/// States via vorm + badge, nooit alleen kleur:
+/// stil = lijn in outline, bezig = gevuld middensegment, hulp = ember-dot
+/// rechtsboven, fout = !-badge, offline = gestreepte lijn.
 fn tray_icon_for(state: &str) -> ksni::Icon {
     const SIZE: usize = 22;
-    let bg: (u8, u8, u8) = (0x16, 0x18, 0x1C);
-    let accent: (u8, u8, u8) = match state {
-        "offline" | "fout" => (0xF8, 0x51, 0x49), // red
-        "hulp" => (0xD9, 0xA0, 0x38),              // amber
-        "bezig" => (0x4F, 0x8D, 0xFF),             // accent
-        _ => (0x3F, 0xB9, 0x50),                   // green
-    };
-    let mut pixels: Vec<u8> = Vec::with_capacity(SIZE * SIZE * 4);
+    // Kleuren uit de Huly-tokenlijst (pixmap kan niet meekleuren met het
+    // panel-thema; lichtgrijs leest op donker én licht).
+    const LINE: (u8, u8, u8) = (0xC8, 0xCA, 0xD0);
+    const IRIS: (u8, u8, u8) = (0x56, 0x83, 0xDA);
+    const EMBER: (u8, u8, u8) = (0xFF, 0x89, 0x64);
+    const RED: (u8, u8, u8) = (0xFF, 0x4D, 0x4D);
 
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            // Afgeronde rechthoek (pill 5px radius).
-            let cx = x as f64 - 10.5;
-            let cy = y as f64 - 10.5;
-            let rx = (cx.abs() - 7.5).max(0.0);
-            let ry = (cy.abs() - 7.5).max(0.0);
-            let outside = (rx * rx + ry * ry).sqrt() > 5.0;
-            let (r, g, b, a) = if outside {
-                (0, 0, 0, 0)
-            } else {
-                // Accent-dot linksonder, status-dot rechtsboven.
-                let dx = (x as f64 - 6.5).hypot(y as f64 - 15.0);
-                let gx2 = (x as f64 - 15.0).hypot(y as f64 - 6.5);
-                if dx <= 3.2 || gx2 <= 2.5 {
-                    (accent.0, accent.1, accent.2, 255)
-                } else {
-                    (bg.0, bg.1, bg.2, 255)
+    let mut px = vec![0u8; SIZE * SIZE * 4];
+    let rect = |px: &mut Vec<u8>, x0: usize, y0: usize, w: usize, h: usize, c: (u8, u8, u8), a: u8| {
+        for y in y0..(y0 + h) {
+            for x in x0..(x0 + w) {
+                if x < SIZE && y < SIZE {
+                    let i = (y * SIZE + x) * 4;
+                    px[i] = a;
+                    px[i + 1] = c.0;
+                    px[i + 2] = c.1;
+                    px[i + 3] = c.2;
                 }
-            };
-            // ARGB32, netwerk-byte-volgorde (ksni contract).
-            pixels.extend_from_slice(&[a, r, g, b]);
+            }
         }
+    };
+    let disc = |px: &mut Vec<u8>, cx: f64, cy: f64, r: f64, c: (u8, u8, u8), a: u8| {
+        for y in 0..SIZE {
+            for x in 0..SIZE {
+                let d = (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy);
+                if d <= r {
+                    let i = (y * SIZE + x) * 4;
+                    px[i] = a;
+                    px[i + 1] = c.0;
+                    px[i + 2] = c.1;
+                    px[i + 3] = c.2;
+                }
+            }
+        }
+    };
+
+    let alpha_line: u8 = match state {
+        "offline" => 70,
+        "stil" => 150,
+        _ => 235,
+    };
+    // Verticale lijn x=9..11; offline = gestreept (dashes met gaten).
+    if state == "offline" {
+        for (y0, h) in [(4usize, 3usize), (9, 3), (14, 3)] {
+            rect(&mut px, 9, y0, 2, h, LINE, alpha_line);
+        }
+    } else {
+        rect(&mut px, 9, 4, 2, 13, LINE, alpha_line);
+    }
+    // Drie segmentmarkeringen (ticks over de lijn).
+    for y in [5usize, 10, 15] {
+        rect(&mut px, 8, y, 4, 2, LINE, alpha_line);
+    }
+    match state {
+        "bezig" => {
+            // Gevuld middensegment in Iris.
+            rect(&mut px, 7, 9, 6, 4, IRIS, 255);
+        }
+        "hulp" => {
+            // Gevuld topsegment + Ember brand-dot rechtsboven.
+            rect(&mut px, 7, 4, 6, 4, IRIS, 255);
+            disc(&mut px, 16.0, 6.0, 3.0, EMBER, 255);
+        }
+        "fout" => {
+            // !-badge rechts: staaf + dot in rood.
+            rect(&mut px, 15, 4, 2, 6, RED, 255);
+            disc(&mut px, 16.0, 13.0, 1.6, RED, 255);
+            rect(&mut px, 7, 14, 6, 4, RED, 255);
+        }
+        _ => {}
     }
     ksni::Icon {
         width: SIZE as i32,
         height: SIZE as i32,
-        data: pixels,
+        data: px,
     }
 }
 

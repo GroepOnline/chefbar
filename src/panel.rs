@@ -82,7 +82,7 @@ impl Panel {
         let nav_labels = ["Fleet", "Commerce", "Evaluatie", "Sync"];
         let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
         for (idx, (id, label)) in nav_ids.iter().zip(nav_labels.iter()).enumerate() {
-            let btn = gtk::Button::with_label(*label);
+            let btn = gtk::Button::with_label(label);
             btn.set_relief(gtk::ReliefStyle::None);
             btn.style_context().add_class("chefbar-nav-item");
             btn.set_hexpand(true);
@@ -118,7 +118,7 @@ impl Panel {
         footer_title.set_xalign(0.0);
         footer_title.style_context().add_class("chefbar-sidebar-footer-title");
         status_footer.pack_start(&footer_title, false, false, 0);
-        let footer_meta = gtk::Label::new(Some("online \u{00b7} devin-skin"));
+        let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal\u{00b7}huly"));
         footer_meta.set_halign(gtk::Align::Start);
         footer_meta.set_xalign(0.0);
         footer_meta.style_context().add_class("chefbar-sidebar-footer-meta");
@@ -143,8 +143,12 @@ impl Panel {
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
         title.style_context().add_class("chefbar-title");
+        // Huly display-tracking: agressief negatief op grote mono-maten.
+        let attrs = pango::AttrList::new();
+        attrs.insert(pango::AttrInt::new_letter_spacing(-380));
+        title.set_attributes(Some(&attrs));
         title_block.pack_start(&title, false, false, 0);
-        let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} devin-skin"));
+        let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} signaal\u{00b7}huly"));
         title_sub.set_halign(gtk::Align::Start);
         title_sub.set_xalign(0.0);
         title_sub.set_ellipsize(pango::EllipsizeMode::End);
@@ -285,7 +289,7 @@ impl Panel {
                         }
                     }
                     let q = search_clone.text().to_string();
-                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone, &dirty_clone);
+                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone);
                 });
             }
         }
@@ -344,7 +348,7 @@ impl Panel {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state);
             }
         });
     }
@@ -373,13 +377,28 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
-            &self.persist_dirty,
         );
     }
 
     fn sync_sidebar_nav(&self) {
         let active = self.harness_state.borrow().clone();
+        // Queue-depth in het label (was eerder de pill-rij): "Fleet · 3".
+        let (snap, ops) = {
+            let snap = self.shared.snapshot.read().unwrap().clone();
+            let ops = self.shared.ops.read().unwrap().clone();
+            (snap, ops)
+        };
+        let harnesses = build_harnesses(&snap, &ops);
         for (id, btn) in self.nav_buttons.iter() {
+            if let Some(h) = harnesses.iter().find(|h| &h.id == id) {
+                let text = if h.queue_depth > 0 {
+                    format!("{} · {}", h.label, h.queue_depth)
+                } else {
+                    h.label.clone()
+                };
+                btn.set_label(&text);
+                btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
+            }
             if *id == active {
                 btn.style_context().add_class("active");
             } else {
@@ -411,11 +430,10 @@ impl Panel {
         let window = self.window.clone();
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
-        let dirty = self.persist_dirty.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(&content, &shared, &executor, &window, &query, &harness_state, &dirty);
+                render_into(&content, &shared, &executor, &window, &query, &harness_state);
             }
             ControlFlow::Continue
         });
@@ -483,7 +501,6 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
-    persist_dirty: &Rc<Cell<bool>>,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -522,53 +539,7 @@ fn render_into(
         .find(|h| h.id == active_id)
         .map(|h| h.kind.clone());
 
-    // harnas-tabs: room-navigatie — strak 16px
-    if !harnesses.is_empty() {
-        let harness_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        harness_row.style_context().add_class("chefbar-harness-row");
-        harness_row.set_margin_top(8);
-        harness_row.set_margin_start(16);
-        harness_row.set_margin_end(16);
-        for h in &harnesses {
-            let label_text = if h.queue_depth > 0 {
-                format!("{} · {}", h.label, h.queue_depth)
-            } else {
-                h.label.clone()
-            };
-            let btn = gtk::Button::with_label(&label_text);
-            btn.set_relief(gtk::ReliefStyle::None);
-            if h.id == active_id {
-                btn.style_context().add_class("chefbar-harness-active");
-            } else {
-                btn.style_context().add_class("chefbar-harness");
-            }
-            // kleur-accent als tooltip/status
-            btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
-            let harness_state_clone = harness_state.clone();
-            let content_clone = content.clone();
-            let shared_clone = shared.clone();
-            let executor_clone = executor.clone();
-            let window_clone = window.clone();
-            let query_clone = query.to_string();
-            let id_clone = h.id.clone();
-            let dirty_clone = persist_dirty.clone();
-            btn.connect_clicked(move |_| {
-                *harness_state_clone.borrow_mut() = id_clone.clone();
-                dirty_clone.set(true);
-                render_into(
-                    &content_clone,
-                    &shared_clone,
-                    &executor_clone,
-                    &window_clone,
-                    &query_clone,
-                    &harness_state_clone,
-                    &dirty_clone,
-                );
-            });
-            harness_row.pack_start(&btn, false, false, 0);
-        }
-        content.pack_start(&harness_row, false, false, 0);
-    }
+    // Harnas-navigatie loopt via de sidebar (één weg, geen dubbele pill-rij).
 
     let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
     // Filter eerst op het geselecteerde harnas, zodat de globale limiet geen
@@ -595,25 +566,31 @@ fn render_into(
     let rank_ctx = RankContext { boost_terms };
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
-    // Status-badge — strak, 16px
-    let badge_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    badge_row.set_margin_top(6);
-    badge_row.set_margin_start(16);
-    badge_row.set_margin_end(16);
-    let badge = gtk::Label::new(Some(&line));
-    badge.set_xalign(0.0);
-    badge.set_ellipsize(pango::EllipsizeMode::End);
-    badge.set_line_wrap(false);
-    badge.set_max_width_chars(34);
-    let badge_class = match state.as_str() {
+    // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
+    let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    status_row.set_margin_top(10);
+    status_row.set_margin_start(16);
+    status_row.set_margin_end(16);
+    status_row.style_context().add_class("chefbar-statuslijn");
+    let status_class = match state.as_str() {
         "offline" | "fout" => "error",
         "hulp" => "warn",
         "bezig" => "info",
         _ => "ok",
     };
-    badge.style_context().add_class("chefbar-badge");
-    badge.style_context().add_class(badge_class);
-    badge_row.pack_start(&badge, false, false, 0);
+    let signature = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    signature.set_valign(gtk::Align::Fill);
+    signature.style_context().add_class("chefbar-signature");
+    signature.style_context().add_class(status_class);
+    status_row.pack_start(&signature, false, false, 0);
+    let lijn_text = gtk::Label::new(Some(&line));
+    lijn_text.set_xalign(0.0);
+    lijn_text.set_halign(gtk::Align::Start);
+    lijn_text.set_ellipsize(pango::EllipsizeMode::End);
+    lijn_text.set_line_wrap(false);
+    lijn_text.set_max_width_chars(40);
+    lijn_text.style_context().add_class("chefbar-statuslijn-text");
+    status_row.pack_start(&lijn_text, true, true, 0);
     let updated = gtk::Label::new(Some(&format!(
         "{} · {}",
         vault_label,
@@ -625,8 +602,8 @@ fn render_into(
     updated.set_line_wrap(false);
     updated.set_max_width_chars(28);
     updated.style_context().add_class("chefbar-card-meta");
-    badge_row.pack_end(&updated, false, false, 0);
-    content.pack_start(&badge_row, false, false, 0);
+    status_row.pack_end(&updated, false, false, 0);
+    content.pack_start(&status_row, false, false, 0);
 
     // ---- Sectie: Acties (eerste, want interactie eerst) ----
     let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(6).collect();
@@ -657,15 +634,12 @@ fn render_into(
                 row_btn.set_hexpand(true);
                 row_btn.set_halign(gtk::Align::Fill);
                 row_btn.style_context().add_class("chefbar-row-btn");
-                row_btn.set_tooltip_text(Some(if suggestion.meta.is_empty() {
-                    suggestion.title.as_str()
+                let tip = if suggestion.meta.is_empty() {
+                    suggestion.title.clone()
                 } else {
-                    suggestion.title.as_str()
-                }));
-                if !suggestion.meta.is_empty() {
-                    let tip = format!("{} — {}", suggestion.title, suggestion.meta);
-                    row_btn.set_tooltip_text(Some(tip.as_str()));
-                }
+                    format!("{} — {}", suggestion.title, suggestion.meta)
+                };
+                row_btn.set_tooltip_text(Some(tip.as_str()));
                 let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
                 let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
                 dot.set_size_request(8, 8);
@@ -1051,7 +1025,7 @@ fn render_into(
             let cta_label = spec_and_label.as_ref().map(|(l, _)| l.as_str()).unwrap_or("Open");
             let pill = stamp_label(match session.state.as_str() { "failed" => "FOUT", _ => "HULP" });
             // vervang stamp-text door CTA hint als beschikbaar
-            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text().to_string(), cta_label)); }
+            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text(), cta_label)); }
             inner.pack_end(&pill, false, false, 0);
             row_btn.add(&inner);
             let inner_child = row_btn.child().unwrap();
@@ -1137,7 +1111,9 @@ fn state_label(health: &crate::models::HealthInfo) -> String {
 }
 
 fn section_title(content: &gtk::Box, title: &str, sub: &str) {
-    let label = gtk::Label::new(Some(title));
+    // Huly-eyebrow: korte caps in de interface-face. GTK3 kent geen
+    // text-transform, dus de caps gebeuren hier.
+    let label = gtk::Label::new(Some(&title.to_uppercase()));
     label.set_halign(gtk::Align::Start);
     label.set_xalign(0.0);
     label.set_ellipsize(pango::EllipsizeMode::End);
@@ -1246,8 +1222,7 @@ fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
         meta_label.style_context().add_class("chefbar-card-meta");
         row.pack_end(&meta_label, false, false, 0);
     }
-    let wrap = row_wrap(&row);
-    wrap
+    row_wrap(&row)
 }
 
 fn truncate_q(q: &str, max: usize) -> String {
