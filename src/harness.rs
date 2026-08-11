@@ -234,16 +234,12 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     // Evaluatie = health + day_score.
     let health = &snapshot.health;
     let day_score = &snapshot.day_score;
-    let eval_status = if health.level == "down" {
-        HarnessStatus::Blocked
-    } else if health.level == "warn" {
+    let eval_status = if health.level == "down" || health.level == "warn" {
         HarnessStatus::Blocked
     } else if health.total == 0 && day_score.score.is_none() {
         HarnessStatus::Idle
     } else if day_score.score.is_some() && health.level == "ok" {
         HarnessStatus::Running
-    } else if health.level == "ok" {
-        HarnessStatus::Idle
     } else {
         HarnessStatus::Idle
     };
@@ -275,8 +271,6 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         || share_sync.get("status").and_then(|v| v.as_str()) == Some("blocked");
     let sync_status = if sync_error {
         HarnessStatus::Blocked
-    } else if !share_sync.is_empty() {
-        HarnessStatus::Idle
     } else {
         HarnessStatus::Idle
     };

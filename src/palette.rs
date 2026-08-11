@@ -36,7 +36,9 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
     );
     let needle = needle.to_lowercase();
     if haystack.contains(&needle) {
-        return Some(1000 - haystack.find(&needle).unwrap_or(0) as i32);
+        // Keep contains matches in their own tier: contextual boosts must
+        // never allow a prefix match to outrank them.
+        return Some(1000 + (1000 - haystack.find(&needle).unwrap_or(0) as i32).max(0));
     }
     let words: Vec<&str> = haystack.split_whitespace().collect();
     let tokens: Vec<&str> = needle.split_whitespace().collect();
@@ -65,11 +67,69 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
     Some((500 - gaps).max(1) as i32)
 }
 
+/// Context die "dichtbij" definieert: recente sessies, lopende agents, het
+/// harnas dat open staat. Ranking gebruikt dit als boost bovenop de
+/// fuzzy-score — zoeken kiest wat je net aanraakte.
+#[derive(Debug, Clone, Default)]
+pub struct RankContext {
+    /// Kleine set lowercase termen (sessie-titels, agent-namen, harnas-prefixen).
+    pub boost_terms: Vec<String>,
+}
+
+impl RankContext {
+    /// Boost-score voor een actie: +150 als een boost-term in de haystack
+    /// voorkomt.
+    fn boost(&self, action: &Action) -> i32 {
+        if self.boost_terms.is_empty() {
+            return 0;
+        }
+        let haystack = format!(
+            "{} {} {} {}",
+            action.title.to_lowercase(),
+            action.meta.to_lowercase(),
+            action.section.to_lowercase(),
+            action.keywords.to_lowercase()
+        );
+        if self
+            .boost_terms
+            .iter()
+            .any(|term| !term.is_empty() && haystack.contains(term))
+        {
+            150
+        } else {
+            0
+        }
+    }
+}
+
+/// Tier-bewuste boost: recency mag herordenen *binnen* de contains-tier, maar
+/// prefix- en gappy-matches komen nooit boven een contains-match uit.
+fn boosted(score: i32, boost: i32) -> i32 {
+    if score >= 700 {
+        score + boost
+    } else {
+        (score + boost).min(699)
+    }
+}
+
 pub fn rank_actions(actions: &[Action], query: &str, limit: usize) -> Vec<Action> {
+    rank_actions_with(actions, query, limit, None)
+}
+
+pub fn rank_actions_with(
+    actions: &[Action],
+    query: &str,
+    limit: usize,
+    ctx: Option<&RankContext>,
+) -> Vec<Action> {
     let mut ranked: Vec<(i32, usize, &Action)> = Vec::new();
     for (index, action) in actions.iter().enumerate() {
         if let Some(score) = fuzzy_score(query, action) {
-            ranked.push((score, index, action));
+            // Pinned acties zweven altijd iets omhoog; context boostet wat
+            // dichtbij is. Beide tellen mee bovenop de fuzzy-score.
+            let pinned = if action.pinned { 100 } else { 0 };
+            let boost = ctx.map(|c| c.boost(action)).unwrap_or(0) + pinned;
+            ranked.push((boosted(score, boost), index, action));
         }
     }
     ranked.sort_by(|a, b| {
@@ -147,5 +207,56 @@ mod tests {
         // limiet snijdt ook bij breed matchen op een meer generieke query
         let ranked2 = rank_actions(&actions, "a", 2);
         assert!(ranked2.len() <= 2);
+    }
+
+    #[test]
+    fn context_boost_tilt_recente_sessie_omhoog() {
+        // Twee gappy matches op "sync": gelijkwaardig zonder context.
+        let ver = action("Ververs status", "haal status op", "ververs refresh status");
+        let deel = action("Deel lokale bestanden", "push naar gedeelde map", "share sync push");
+        let actions = vec![ver.clone(), deel.clone()];
+        let ctx = RankContext {
+            boost_terms: vec!["share".into()],
+        };
+        let ranked = rank_actions_with(&actions, "s", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Deel lokale bestanden");
+        // Zonder context blijft de oorspronkelijke volgorde winnen (stabiel).
+        let plain = rank_actions(&actions, "s", 10);
+        assert_eq!(plain[0].title, "Ververs status");
+    }
+
+    #[test]
+    fn exact_match_wint_altijd_nog_van_boost() {
+        let exact = action("Focus agent", "herdr", "focus herdr");
+        let boosted = action("Fleet overzicht", "nodes", "fleet status");
+        let actions = vec![boosted, exact];
+        let ctx = RankContext {
+            boost_terms: vec!["fleet".into()],
+        };
+        let ranked = rank_actions_with(&actions, "focus", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Focus agent");
+    }
+
+    #[test]
+    fn prefix_blijft_onder_contains_ondanks_boost() {
+        let contains = action("fl ex dashboard", "status", "open");
+        let prefix = action("fleet extra ops", "status", "run");
+        assert!(fuzzy_score("fl ex", &contains).unwrap() >= 1000);
+        assert_eq!(fuzzy_score("fl ex", &prefix), Some(700));
+        let actions = vec![prefix, contains];
+        let ctx = RankContext {
+            boost_terms: vec!["fleet".into()],
+        };
+        let ranked = rank_actions_with(&actions, "fl ex", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "fl ex dashboard");
+    }
+
+    #[test]
+    fn pinned_zweeft_boven_onpinned() {
+        let mut pinned_a = action("Zzz laatste", "meta", "zzz");
+        pinned_a.pinned = true;
+        let plain_b = action("Zzz eerste", "meta", "zzz");
+        let ranked = rank_actions(&[plain_b, pinned_a], "zzz", 10);
+        assert_eq!(ranked[0].title, "Zzz laatste");
     }
 }

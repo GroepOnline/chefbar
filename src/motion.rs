@@ -4,7 +4,7 @@
 //! Alleen opacity-fades: geen bounce, pulse-loops of scroll-theater.
 //! Respecteert gtk-enable-animations (reduced-motion proxy).
 
-use glib::ControlFlow;
+use gtk::glib::ControlFlow;
 use gtk::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -41,8 +41,7 @@ fn is_current(window: &gtk::Window, generation: u32) -> bool {
 }
 
 pub fn motion_enabled() -> bool {
-    gtk::Settings::default()
-        .and_then(|settings| Some(settings.property::<bool>("gtk-enable-animations")))
+    gtk::Settings::default().map(|settings| settings.property::<bool>("gtk-enable-animations"))
         .unwrap_or(true)
 }
 
@@ -59,7 +58,7 @@ pub fn fade_in(window: &gtk::Window, duration_ms: u32) {
     let step_ms = std::cmp::max(1, duration_ms / FADE_STEPS);
     let window = window.clone();
     let mut step = 0u32;
-    glib::timeout_add_local(
+    gtk::glib::timeout_add_local(
         std::time::Duration::from_millis(step_ms as u64),
         move || {
             if !is_current(&window, generation) {
@@ -94,7 +93,7 @@ pub fn fade_out(window: &gtk::Window, duration_ms: u32) {
     }
     let step_ms = std::cmp::max(1, duration_ms / FADE_STEPS);
     let mut step = 0u32;
-    glib::timeout_add_local(
+    gtk::glib::timeout_add_local(
         std::time::Duration::from_millis(step_ms as u64),
         move || {
             if !is_current(&window_clone, generation) {

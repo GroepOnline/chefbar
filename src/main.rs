@@ -170,6 +170,7 @@ fn run_app(cli: &Cli) {
                 chefbar::doctor::run_checks_async(report);
             }
             chefbar::tray::UiCommand::Quit => {
+                panel.flush_panel_state();
                 gtk::main_quit();
             }
         });

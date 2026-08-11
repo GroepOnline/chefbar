@@ -47,6 +47,12 @@ pub struct Shared {
     pub last_error: Arc<RwLock<Option<String>>>,
 }
 
+impl Default for Shared {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Shared {
     pub fn new() -> Self {
         Self {
@@ -251,16 +257,11 @@ impl Poller {
             any_ok = true;
         }
 
-        // Watcher-suggesties (parity): transities → toasts + snapshot-feed.
+        // Watcher-suggesties (parity): transities → één rustige toast + snapshot-feed.
         let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap);
         if !fresh.is_empty() {
-            for suggestion in &fresh {
-                let status = match suggestion.stamp.as_str() {
-                    "KLAAR" => "ok",
-                    "HULP" => "warn",
-                    _ => "error",
-                };
-                crate::notify::notify(&suggestion.title, &suggestion.meta, status);
+            if let Some((title, body, status)) = crate::models::coalesce_toasts(&fresh) {
+                crate::notify::notify(&title, &body, status);
             }
             snap.suggestions.retain(|s| {
                 s.fresh(SUGGESTION_TTL_SECONDS) && !fresh.iter().any(|n| n.key == s.key)

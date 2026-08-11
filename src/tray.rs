@@ -4,7 +4,7 @@
 //! mpsc-kanaal die de glib-mainloop om de zoveel tijd leegt (idle dispatch).
 
 use crate::models::Snapshot;
-use glib::ControlFlow;
+use gtk::glib::ControlFlow;
 use ksni::menu::StandardItem;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, RwLock};
@@ -24,7 +24,7 @@ pub fn start_command_bridge(
     rx: std::sync::mpsc::Receiver<UiCommand>,
     dispatcher: Arc<dyn Fn(UiCommand)>,
 ) {
-    glib::timeout_add_local(std::time::Duration::from_millis(60), move || {
+    gtk::glib::timeout_add_local(std::time::Duration::from_millis(60), move || {
         while let Ok(cmd) = rx.try_recv() {
             dispatcher(cmd);
         }
