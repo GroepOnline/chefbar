@@ -281,9 +281,11 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         HarnessStatus::Idle
     };
     let sync_pending = share_sync
-        .get("pending")
+        .get("pendingFiles")
+        .or_else(|| share_sync.get("pending"))
         .and_then(|v| v.as_u64())
-        .unwrap_or(0) as usize;
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(0);
     let sync_active = share_sync
         .get("last_sync")
         .or_else(|| share_sync.get("updated_at"))
