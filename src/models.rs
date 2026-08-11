@@ -322,13 +322,15 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
             || refresh.and_then(|r| r.get("error")).is_some();
-        let (level, text) = if unavailable {
+        let (level, text) = (|| {
+            if unavailable {
                 ("down".to_string(), text)
             } else if stale {
                 ("warn".to_string(), text)
         } else {
             (level, text)
-        };
+        }
+    })();
         let refresh_at = refresh
             .and_then(|r| r.get("updatedAt"))
             .and_then(|v| v.as_str())
@@ -747,7 +749,7 @@ impl Suggestion {
     pub fn notify_status(&self) -> &'static str {
         match self.stamp.as_str() {
             "KLAAR" => "ok",
-            "HULP" => "warn",
+            "HULP" | "LIMIET" => "warn",
             _ => "error",
         }
     }
@@ -856,7 +858,9 @@ mod watcher_tests {
     use serde_json::json;
 
     fn snap_with(agents: Vec<(&str, &str)>) -> Snapshot {
-        let agents = agents
+        let mut snap = Snapshot::default();
+        snap.raw = json!({});
+        snap.agents = agents
             .into_iter()
             .map(|(key, status)| AgentRow {
                 key: key.into(),
@@ -868,11 +872,7 @@ mod watcher_tests {
                 running: status == "running",
             })
             .collect();
-        Snapshot {
-            agents,
-            raw: json!({}),
-            ..Default::default()
-        }
+        snap
     }
 
     #[test]
