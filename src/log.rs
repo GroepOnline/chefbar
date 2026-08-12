@@ -45,9 +45,15 @@ fn hhmmss() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // De tests muteren dezelfde CHEFBAR_LOG-env-var; rust draait tests parallel,
+    // dus één lock serialiseert ze (anders flaky: remove_var tijdens een andere test).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn pad_respecteert_chefbar_log() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("CHEFBAR_LOG", "/tmp/chefbar-test-log/x.log");
         assert_eq!(log_path(), PathBuf::from("/tmp/chefbar-test-log/x.log"));
         std::env::remove_var("CHEFBAR_LOG");
@@ -55,6 +61,7 @@ mod tests {
 
     #[test]
     fn default_pad_is_onder_state_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("CHEFBAR_LOG");
         let path = log_path();
         assert!(path.ends_with("chefbar/chefbar.log"));
@@ -62,6 +69,7 @@ mod tests {
 
     #[test]
     fn log_schrijft_een_regel_naar_bestand() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let path = "/tmp/chefbar-test-log/x.log";
         std::env::set_var("CHEFBAR_LOG", path);
         let _ = std::fs::remove_file(path);

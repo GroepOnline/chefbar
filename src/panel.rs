@@ -297,8 +297,9 @@ impl Panel {
                     search_focus.grab_focus();
                     return gtk::glib::Propagation::Stop;
                 }
+                // Ctrl+K op Linux, Super(Cmd)+K op andere toetsenborden (MOD4).
                 let ctrl = event.state().contains(gdk::ModifierType::CONTROL_MASK)
-                    || event.state().contains(gdk::ModifierType::MOD1_MASK);
+                    || event.state().contains(gdk::ModifierType::MOD4_MASK);
                 if ctrl && kv == gdk::keys::constants::k {
                     search_focus.grab_focus();
                     return gtk::glib::Propagation::Stop;
@@ -306,7 +307,9 @@ impl Panel {
                 if kv == gdk::keys::constants::Down || kv == gdk::keys::constants::Up {
                     let rows = rows_rc.borrow();
                     if rows.is_empty() {
-                        return gtk::glib::Propagation::Stop;
+                        // Geen navigeerbare rijen: doorgeven zodat de scroller
+                        // zelf kan scrollen (geen keyboard-blokkade).
+                        return gtk::glib::Propagation::Proceed;
                     }
                     let idx =
                         next_selection(sel_rc.get(), rows.len(), kv == gdk::keys::constants::Down);
