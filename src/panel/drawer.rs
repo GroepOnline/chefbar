@@ -65,8 +65,14 @@ impl Drawer {
         actions.style_context().add_class("chefbar-drawer-actions");
         actions.set_margin_start(12);
         actions.set_margin_end(12);
-        actions.set_margin_bottom(12);
+        actions.set_margin_bottom(6);
         inner.pack_start(&actions, false, false, 0);
+
+        let hint = gtk::Label::new(Some("\u{21b5} uitvoeren \u{00b7} esc sluit"));
+        hint.set_halign(gtk::Align::Start);
+        hint.set_xalign(0.0);
+        hint.style_context().add_class("chefbar-drawer-hint");
+        inner.pack_start(&hint, false, false, 0);
 
         let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         inner.pack_start(&spacer, true, true, 0);
@@ -109,9 +115,18 @@ impl Drawer {
         execute.style_context().add_class("chefbar-primary");
         execute.connect_clicked(move |_| on_activate());
         self.actions.pack_start(&execute, false, false, 0);
+        let cancel = gtk::Button::with_label("Annuleren");
+        cancel.style_context().add_class("chefbar-btn");
+        let revealer_cancel = self.container.clone();
+        let open_cancel = self.open.clone();
+        cancel.connect_clicked(move |_| {
+            slide_drawer(&revealer_cancel, false);
+            open_cancel.set(false);
+        });
+        self.actions.pack_end(&cancel, false, false, 0);
         self.actions.show_all();
-        self.title.set_can_focus(true);
-        self.title.grab_focus();
+        // Enter voert uit (focused button), Esc zit al op het window.
+        execute.grab_focus();
         slide_drawer(&self.container, true);
         self.open.set(true);
     }

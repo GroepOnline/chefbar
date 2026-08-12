@@ -31,7 +31,7 @@ impl Overlay {
 
         let results = gtk::Box::new(gtk::Orientation::Vertical, 2);
         results.style_context().add_class("chefbar-palette-results");
-        let hint = gtk::Label::new(Some("Typ om te filteren · Esc sluit overlay"));
+        let hint = gtk::Label::new(Some("Typ om te filteren \u{00b7} esc sluit"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
         hint.set_ellipsize(pango::EllipsizeMode::End);
@@ -79,13 +79,41 @@ impl Overlay {
             self.results.show_all();
             return;
         }
+        let cap = gtk::Label::new(Some(&format!("ACTIES · {}", actions.len())));
+        cap.set_halign(gtk::Align::Start);
+        cap.set_xalign(0.0);
+        cap.style_context().add_class("chefbar-palette-section");
+        self.results.pack_start(&cap, false, false, 0);
         for action in actions.iter().take(8) {
-            let button = gtk::Button::with_label(&format!("{}  ·  {}", action.title, action.stamp));
+            let button = gtk::Button::new();
             button.set_relief(gtk::ReliefStyle::None);
             button.set_halign(gtk::Align::Fill);
             button.set_hexpand(true);
             button.set_tooltip_text(Some(&action.meta));
-            button.style_context().add_class("chefbar-row-btn");
+            button.style_context().add_class("chefbar-palette-row");
+            let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+            let title = gtk::Label::new(Some(&action.title));
+            title.set_halign(gtk::Align::Start);
+            title.set_xalign(0.0);
+            title.set_ellipsize(pango::EllipsizeMode::End);
+            title.style_context().add_class("chefbar-card-title");
+            text.pack_start(&title, false, false, 0);
+            if !action.meta.is_empty() {
+                let meta = gtk::Label::new(Some(&action.meta));
+                meta.set_halign(gtk::Align::Start);
+                meta.set_xalign(0.0);
+                meta.set_line_wrap(true);
+                meta.set_lines(1);
+                meta.set_ellipsize(pango::EllipsizeMode::End);
+                meta.set_max_width_chars(58);
+                meta.style_context().add_class("chefbar-card-meta");
+                text.pack_start(&meta, false, false, 0);
+            }
+            inner.pack_start(&text, true, true, 0);
+            let stamp = super::zones::stamp_label(&action.stamp);
+            inner.pack_end(&stamp, false, false, 0);
+            button.add(&inner);
             let action = action.clone();
             let callback = on_activate.clone();
             button.connect_clicked(move |_| callback(action.clone()));

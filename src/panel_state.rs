@@ -16,8 +16,25 @@ use std::path::PathBuf;
 pub const DENSITY_COMFORTABLE: &str = "comfortable";
 pub const DENSITY_COMPACT: &str = "compact";
 
+/// Thema-keuze voor de skin (Signaal v2: donker default).
+pub const THEME_DARK: &str = "dark";
+pub const THEME_LIGHT: &str = "light";
+
 fn default_density() -> String {
     DENSITY_COMFORTABLE.to_string()
+}
+
+fn default_theme() -> String {
+    THEME_DARK.to_string()
+}
+
+/// Normaliseert theme naar één van de twee toegestane waarden.
+pub fn normalize_theme(raw: &str) -> String {
+    if raw.trim() == THEME_LIGHT {
+        THEME_LIGHT.to_string()
+    } else {
+        THEME_DARK.to_string()
+    }
 }
 
 fn is_compact(d: &str) -> bool {
@@ -61,6 +78,10 @@ pub struct PanelState {
     #[serde(default = "default_density")]
     pub density: String,
 
+    /// `dark` | `light` (Signaal v2 skin).
+    #[serde(default = "default_theme")]
+    pub theme: String,
+
     /// Recent bezochte domeinen/groepen, MRU, capped 20.
     #[serde(default)]
     pub recent_domains: Vec<String>,
@@ -74,6 +95,7 @@ impl Default for PanelState {
             query: None,
             drawer_open: false,
             density: default_density(),
+            theme: default_theme(),
             recent_domains: Vec::new(),
         }
     }
@@ -97,6 +119,8 @@ impl<'de> Deserialize<'de> for PanelState {
             #[serde(default)]
             density: Option<String>,
             #[serde(default)]
+            theme: Option<String>,
+            #[serde(default)]
             recent_domains: Option<Vec<String>>,
         }
 
@@ -105,6 +129,7 @@ impl<'de> Deserialize<'de> for PanelState {
 
         let density_raw = raw.density.unwrap_or_else(default_density);
         let density = normalize_density(&density_raw);
+        let theme = normalize_theme(&raw.theme.unwrap_or_else(default_theme));
 
         let mut recent = raw.recent_domains.unwrap_or_default();
         // deduplicate behoudend volgorde, cap 20
@@ -126,6 +151,7 @@ impl<'de> Deserialize<'de> for PanelState {
             query: raw.query.filter(|q| !q.trim().is_empty()),
             drawer_open: raw.drawer_open.unwrap_or(false),
             density,
+            theme,
             recent_domains: recent,
         })
     }
@@ -200,6 +226,7 @@ pub fn save_to(path: &std::path::Path, state: &PanelState) -> bool {
     // Zorg dat density genormaliseerd is en recent_domains gecapped.
     let mut normalized = state.clone();
     normalized.density = normalize_density(&normalized.density);
+    normalized.theme = normalize_theme(&normalized.theme);
     if normalized.recent_domains.len() > RECENT_DOMAINS_CAP {
         normalized.recent_domains.truncate(RECENT_DOMAINS_CAP);
     }
@@ -235,6 +262,7 @@ mod tests {
             query: Some("fleet".into()),
             drawer_open: false,
             density: DENSITY_COMFORTABLE.into(),
+            theme: THEME_DARK.into(),
             recent_domains: vec!["fleet".into()],
         };
         assert!(save_to(&path, &state));
@@ -309,6 +337,23 @@ mod tests {
         s.push_recent_domain("d5");
         assert_eq!(s.recent_domains[0], "d5");
         assert_eq!(s.recent_domains.iter().filter(|x| *x == "d5").count(), 1);
+    }
+
+    #[test]
+    fn theme_normalizes_en_persists() {
+        let path = temp_path("theme");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"theme":"light"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        std::fs::write(&path, r#"{"theme":"onzin"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_DARK);
+        let state = PanelState {
+            theme: THEME_LIGHT.into(),
+            ..Default::default()
+        };
+        assert!(save_to(&path, &state));
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

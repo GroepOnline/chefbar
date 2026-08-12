@@ -34,7 +34,7 @@ impl HarnessGroup {
 
     pub fn label(&self) -> &'static str {
         match self {
-            HarnessGroup::Fleet => "Vastgoed",
+            HarnessGroup::Fleet => "Fleet",
             HarnessGroup::Commerce => "Commerce",
             HarnessGroup::Sync => "Sync",
             HarnessGroup::Work => "Werk",

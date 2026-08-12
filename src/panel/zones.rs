@@ -121,15 +121,86 @@ pub fn stamp_label(text: &str) -> gtk::Label {
     label.set_halign(gtk::Align::End);
     label.set_valign(gtk::Align::Center);
     let cls = match text {
-        "KLAAR" | "STIL" => "ok",
+        "KLAAR" => "ok",
         "HULP" => "warn",
         "FOUT" | "LIMIET" => "error",
         "BEZIG" | "TAAK" => "info",
-        _ => "ok",
+        _ => "",
     };
     label.style_context().add_class("chefbar-stamp");
-    label.style_context().add_class(cls);
+    if !cls.is_empty() {
+        label.style_context().add_class(cls);
+    }
     label
+}
+
+/// Status-string → dot-klasse (één mapping voor alle domein-rijen).
+/// live/bezig = accent, ok/klaar/online = groen, wacht/blok = amber,
+/// fout/offline = rood, rest = neutraal.
+pub fn status_dot_cls(status: &str) -> &'static str {
+    match status.to_ascii_lowercase().as_str() {
+        "running" | "bezig" | "active" | "working" | "live" => "live",
+        "ok" | "klaar" | "done" | "healthy" | "online" | "up" | "completed"
+        | "success" | "merged" | "stil" => "ok",
+        "blocked" | "waiting" | "needs_input" | "input" | "attention" | "hulp"
+        | "hold" | "pending" | "warn" | "warning" | "stale" | "limiet" => "warn",
+        "failed" | "error" | "crashed" | "down" | "offline" | "fout"
+        | "unhealthy" | "kapot" => "down",
+        _ => "",
+    }
+}
+
+/// Generieke domein-rij: dot + titel (+ optionele meta-regel) + stamp rechts.
+/// Teruggeven als gewrapte rij voor `.chefbar-group` (hairlines + hover).
+pub fn domain_row(
+    dot_cls: &str,
+    title: &str,
+    meta: Option<&str>,
+    stamp: Option<(&str, &str)>,
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 9);
+    let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    dot.set_size_request(8, 8);
+    dot.set_halign(gtk::Align::Start);
+    dot.set_valign(gtk::Align::Center);
+    dot.style_context().add_class("chefbar-dot");
+    if !dot_cls.is_empty() {
+        dot.style_context().add_class(dot_cls);
+    }
+    row.pack_start(&dot, false, false, 0);
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    let title_l = gtk::Label::new(Some(title));
+    title_l.set_halign(gtk::Align::Start);
+    title_l.set_xalign(0.0);
+    title_l.set_ellipsize(pango::EllipsizeMode::End);
+    title_l.set_line_wrap(false);
+    title_l.set_max_width_chars(40);
+    title_l.set_tooltip_text(Some(title));
+    title_l.style_context().add_class("chefbar-card-title");
+    text.pack_start(&title_l, false, false, 0);
+    if let Some(meta) = meta {
+        if !meta.is_empty() {
+            let meta_l = gtk::Label::new(Some(meta));
+            meta_l.set_halign(gtk::Align::Start);
+            meta_l.set_xalign(0.0);
+            meta_l.set_line_wrap(true);
+            meta_l.set_lines(1);
+            meta_l.set_ellipsize(pango::EllipsizeMode::End);
+            meta_l.set_max_width_chars(56);
+            meta_l.set_tooltip_text(Some(meta));
+            meta_l.style_context().add_class("chefbar-card-meta");
+            text.pack_start(&meta_l, false, false, 0);
+        }
+    }
+    row.pack_start(&text, true, true, 0);
+    if let Some((stamp_text, stamp_cls)) = stamp {
+        let stamp_label = stamp_label(stamp_text);
+        if !stamp_cls.is_empty() {
+            stamp_label.style_context().add_class(stamp_cls);
+        }
+        row.pack_end(&stamp_label, false, false, 0);
+    }
+    row_wrap(&row)
 }
 
 pub fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
@@ -163,11 +234,6 @@ pub fn truncate_q(q: &str, max: usize) -> String {
 pub fn empty_state(title: &str, sub: &str) -> gtk::Box {
     let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     outer.style_context().add_class("chefbar-empty");
-    let icon = gtk::Label::new(Some("—"));
-    icon.set_halign(gtk::Align::Start);
-    icon.set_xalign(0.0);
-    icon.style_context().add_class("chefbar-empty-icon");
-    outer.pack_start(&icon, false, false, 0);
     let t = gtk::Label::new(Some(title));
     t.set_halign(gtk::Align::Start);
     t.set_xalign(0.0);

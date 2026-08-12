@@ -175,17 +175,20 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     let (vault, ops, shared) = build_runtime(cli);
     let profile = global_profile().clone();
 
-    // Signaal CSS op het hele proces (strak-skin, dark default).
+    // Signaal CSS op het hele proces (v2 devin-skin, dark default).
+    // CHEFBAR_THEME env wint; anders de persisted keuze uit panel-state
+    // (footer-toggle), anders dark.
     let settings = gtk::Settings::default().expect("GTK-settings");
-    let theme = css::detect_theme(&settings);
+    let theme = match std::env::var("CHEFBAR_THEME") {
+        Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_LIGHT) => css::THEME_LIGHT.to_string(),
+        Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_DARK) => css::THEME_DARK.to_string(),
+        _ => chefbar::panel_state::load().theme,
+    };
     chefbar::tray::set_theme(&theme);
-    let provider = gtk::CssProvider::new();
-    if let Err(err) = provider.load_from_data(css::styles_css(&theme).as_bytes()) {
-        eprintln!("[chefbar] CSS-load mislukt (fallback naar systeemthema): {err}");
-    }
+    let provider = css::theme_provider(&theme);
     gtk::StyleContext::add_provider_for_screen(
         &gdk::Screen::default().expect("geen scherm"),
-        &provider,
+        provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
@@ -263,6 +266,9 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             }
             chefbar::tray::UiCommand::OpenInbox => {
                 panel.open_inbox();
+            }
+            chefbar::tray::UiCommand::DrawerPreview => {
+                panel.preview_drawer();
             }
         });
 
