@@ -112,6 +112,7 @@ mod tests {
     fn coalesced_picks_worst() {
         let mk = |stamp: &str| Suggestion {
             key: "k".into(),
+            agent: String::new(),
             title: "t".into(),
             meta: "m".into(),
             stamp: stamp.into(),

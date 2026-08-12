@@ -89,6 +89,18 @@ fn main() {
         println!("vault    {}", profile.label("vaultApi"));
         println!("ops      {}", profile.label("opsApi"));
         println!("kater    {}", profile.label("katerWorkspace"));
+        match chefbar::quiet::quiet_window() {
+            Some(window) => println!(
+                "rustig   {} ({})",
+                chefbar::quiet::window_label(&window),
+                if chefbar::quiet::in_quiet_hours(&window) {
+                    "actief"
+                } else {
+                    "stil"
+                }
+            ),
+            None => println!("rustig   uit"),
+        }
         println!("vastzet  {}", profile.dashboard);
         std::process::exit(0);
     }
@@ -235,6 +247,10 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             }
             chefbar::tray::UiCommand::DesktopAction(verb) => {
                 executor.run(&chefbar::actions::RunSpec::DesktopAction(verb), "");
+            }
+            chefbar::tray::UiCommand::ToggleMute(key) => {
+                let _ = chefbar::mutes::toggle(&key);
+                chefbar::state::refresh_global();
             }
             chefbar::tray::UiCommand::ForceState(state) => {
                 chefbar::tray::force_state(&state);

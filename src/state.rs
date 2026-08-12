@@ -16,7 +16,7 @@ use crate::models::{
     OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
@@ -29,6 +29,14 @@ pub const LINEAR_POLL_MS: u64 = 60_000;
 pub const KATER_POLL_MS: u64 = 30_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
 const PER_ENDPOINT_TIMEOUT_MS: u64 = 2_000;
+
+fn suggestion_allowed(suggestion: &crate::models::Suggestion, mutes: &HashSet<String>) -> bool {
+    suggestion.agent.is_empty() || !mutes.contains(&suggestion.agent)
+}
+
+fn toast_allowed_during_quiet(quiet: bool, status: &str) -> bool {
+    !quiet || status == "error"
+}
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
 pub static REFRESH_TX: Mutex<Option<Sender<ActorCommand>>> = Mutex::new(None);
@@ -279,16 +287,35 @@ impl Poller {
             any_ok = true;
         }
 
-        let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap);
+        // Per-agent mute: gedempte agents leveren geen toast en hun oude
+        // inbox-suggesties worden direct uit de snapshot verwijderd.
+        let mutes = crate::mutes::load();
+        let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap)
+            .into_iter()
+            .filter(|suggestion| suggestion_allowed(suggestion, &mutes))
+            .collect();
         if !fresh.is_empty() {
             if let Some((title, body, status)) = crate::models::coalesce_toasts(&fresh) {
-                crate::notify::notify(&title, &body, status);
+                // Rustige uren dempen alleen niet-kritieke meldingen; FOUT
+                // blijft altijd zichtbaar. De inbox blijft gevuld.
+                let quiet = crate::quiet::quiet_window()
+                    .map(|window| crate::quiet::in_quiet_hours(&window))
+                    .unwrap_or(false);
+                if toast_allowed_during_quiet(quiet, status) {
+                    crate::notify::notify(&title, &body, status);
+                }
             }
-            snap.suggestions.retain(|s| {
-                s.fresh(SUGGESTION_TTL_SECONDS) && !fresh.iter().any(|n| n.key == s.key)
+            snap.suggestions.retain(|suggestion| {
+                suggestion.fresh(SUGGESTION_TTL_SECONDS)
+                    && !mutes.contains(&suggestion.agent)
+                    && !fresh.iter().any(|new| new.key == suggestion.key)
             });
             snap.suggestions.extend(fresh.clone());
             snap.suggestions.truncate(6);
+        } else {
+            snap.suggestions.retain(|suggestion| {
+                suggestion.fresh(SUGGESTION_TTL_SECONDS) && suggestion_allowed(suggestion, &mutes)
+            });
         }
 
         snap.fetched_at_unix = SystemTime::now()
@@ -620,5 +647,40 @@ impl Poller {
             let mut snap = self.shared.snapshot.write().unwrap();
             snap.last_poll_at.insert("ops".into(), iso_now());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Suggestion, SuggestionKind};
+
+    fn suggestion(agent: &str) -> Suggestion {
+        Suggestion {
+            key: "agent-status".into(),
+            agent: agent.into(),
+            title: "status".into(),
+            meta: String::new(),
+            stamp: "HULP".into(),
+            action_label: "Open".into(),
+            kind: SuggestionKind::FocusAgent(agent.into()),
+            created_unix: 0,
+        }
+    }
+
+    #[test]
+    fn mute_filter_laat_niet_agent_meldingen_door() {
+        let mutes = HashSet::from(["cursor::commerce".to_string()]);
+        assert!(suggestion_allowed(&suggestion(""), &mutes));
+        assert!(suggestion_allowed(&suggestion("codex::vault"), &mutes));
+        assert!(!suggestion_allowed(&suggestion("cursor::commerce"), &mutes));
+    }
+
+    #[test]
+    fn quiet_hours_laten_alleen_fouten_door() {
+        assert!(toast_allowed_during_quiet(false, "ok"));
+        assert!(toast_allowed_during_quiet(true, "error"));
+        assert!(!toast_allowed_during_quiet(true, "warn"));
+        assert!(!toast_allowed_during_quiet(true, "ok"));
     }
 }
