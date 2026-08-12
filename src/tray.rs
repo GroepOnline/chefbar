@@ -192,7 +192,9 @@ fn tray_icon_for(state: &str) -> ksni::Icon {
     let light = *THEME.read().unwrap() == "light";
     let (line_c, iris_c, ember_c, red_c) = if light {
         (
-            (0x6B, 0x6C, 0x6D), // control-border licht
+            // Licht: bewust text-muted (#6B6C6D, 5.9:1 op een witte tray) —
+            // control_border (#95979E) haalt daar maar 2.9:1.
+            (0x6B, 0x6C, 0x6D),
             (0x2E, 0x5B, 0x8F), // info licht
             (0x9A, 0x57, 0x00), // warning licht
             (0xCF, 0x2D, 0x56), // error licht

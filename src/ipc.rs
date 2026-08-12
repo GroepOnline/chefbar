@@ -63,11 +63,22 @@ pub fn acquire() -> Acquire {
 }
 
 fn acquire_at(path: &std::path::Path) -> Acquire {
-    // Stale socket opruimen: als er een oude socket ligt maar niemand
-    // luistert, is connect_err → veilig verwijderen. Bij connect_ok is
-    // Occupied het correcte antwoord (bind zou EADDRINUSE geven).
-    if path.exists() && UnixStream::connect(path).is_err() {
-        let _ = std::fs::remove_file(path);
+    use std::os::unix::fs::FileTypeExt;
+    if path.exists() {
+        let is_socket = std::fs::metadata(path)
+            .map(|m| m.file_type().is_socket())
+            .unwrap_or(false);
+        match UnixStream::connect(path) {
+            // Levende luisteraar: netjes Occupied, nooit aan de file komen.
+            Ok(_) => return Acquire::Occupied,
+            // ECONNREFUSED op een socket = niemand luistert (stale): opruimen.
+            Err(e) if is_socket && e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                let _ = std::fs::remove_file(path);
+            }
+            // Elke andere fout (permissies, transiënt): niet stelen — liever
+            // geen nieuwe instantie dan een tweede eigenaar.
+            Err(_) => return Acquire::Occupied,
+        }
     }
     match UnixListener::bind(path) {
         Ok(listener) => {
@@ -124,11 +135,11 @@ mod tests {
         assert!(matches!(eerste, Acquire::Owner(_)), "eerste bind moet lukken");
         assert!(matches!(acquire_at(&path), Acquire::Occupied), "tweede bind is Occupied");
 
-        // Stale-cleanup: socket-file zonder luisteraar wordt opgeruimd.
+        // Stale-cleanup: na drop blijft de socket-file liggen zonder
+        // luisteraar; acquire moet die opruimen (ECONNREFUSED-branch).
         drop(eerste);
-        UnixStream::connect(&path).ok();
-        let _ = std::fs::remove_file(&path);
-        assert!(matches!(acquire_at(&path), Acquire::Owner(_)), "na cleanup weer bindbaar");
+        assert!(path.exists(), "socket-file blijft liggen na drop");
+        assert!(matches!(acquire_at(&path), Acquire::Owner(_)), "stale socket wordt opgeruimd en gebonden");
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
