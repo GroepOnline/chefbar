@@ -222,7 +222,7 @@ impl ksni::Tray for ChefTray {
 
         // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
         let snap = self.shared.read().ok();
-        let events = snap.map(|s| s.events.clone()).unwrap_or_default();
+        let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
         let sessions = crate::sessions::load_ranked_sessions(&events);
         let mut shown = 0;
         for session in sessions.iter().take(6) {
@@ -327,6 +327,7 @@ impl ksni::Tray for ChefTray {
 
         // Desktop starten/stoppen.
         let desktop_running = snap
+            .as_ref()
             .map(|s| s.desktop.get("state").and_then(|v| v.as_str()) == Some("running"))
             .unwrap_or(false);
         let (dlabel, dicon) = if desktop_running {
@@ -337,7 +338,7 @@ impl ksni::Tray for ChefTray {
         items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
             label: dlabel,
             icon_name: dicon,
-            activate: Box::new(|tray: &mut Self| {
+            activate: Box::new(move |tray: &mut Self| {
                 tray.send(UiCommand::DesktopAction(
                     if desktop_running { "stop" } else { "start" }.into(),
                 ));
