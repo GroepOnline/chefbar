@@ -221,176 +221,236 @@ impl ksni::Tray for ChefTray {
         }
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        // Q3: alle menu-inhoud komt uit de pure builder (data, geen closures) —
+        // deze methode is alleen nog de dunne ksni-adapter. De builder is
+        // unit-testbaar zonder ksni/GTK (hier zat de E0382/E0597-breuk).
+        let snap = self.shared.read().map(|s| s.clone()).unwrap_or_default();
         let profile = crate::config::global_profile();
+        let specs = menu_items(&snap, profile, crate::tray::autostart_enabled());
+        specs.into_iter().map(MenuItemSpec::into_ksni).collect()
+    }
+}
 
-        // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
-        let snap = self.shared.read().ok();
-        let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
-        let sessions = crate::sessions::load_ranked_sessions(&events);
-        // Max 3 live eventregels, nieuwste eerst (clippy: geen counter-loop).
-        for session in sessions.iter().take(3) {
-            let stamp = match session.state.as_str() {
-                "working" | "starting" => "BEZIG",
-                "done" | "ok" => "KLAAR",
-                "waiting" | "blocked" | "failed" => "JOUW",
-                _ => "…",
-            };
-            let label = if session.title.len() > 38 {
-                format!("{}…", &session.title[..38])
-            } else {
-                session.title.clone()
-            };
-            let focus = session
-                .attach
-                .focus
-                .clone()
-                .unwrap_or_else(|| session.id.clone());
-            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: format!("{label}  [{stamp}]"),
-                icon_name: "system-run-symbolic".into(),
-                activate: Box::new(move |tray: &mut Self| {
-                    tray.send(UiCommand::FocusAgent(focus.clone()));
-                }),
-                ..Default::default()
-            }));
+// ---------------------------------------------------------------------------
+// Q3: pure tray-menu-builder — inhoud als data, geen ksni-types/closures.
+// ---------------------------------------------------------------------------
+
+/// Één tray-menu-regel als pure data (Q3). `menu()` vertaalt dit naar
+/// ksni-items; de logica (welke rijen, welke commando's) is hier testbaar
+/// zonder ksni-closures en zonder GTK.
+#[derive(Debug, Clone, PartialEq)]
+enum MenuItemSpec {
+    Separator,
+    /// Eén actie: klik → UiCommand naar de UI-thread.
+    Action {
+        label: String,
+        icon: String,
+        cmd: UiCommand,
+    },
+    /// Aanvinkbare rij (autostart).
+    Checkmark {
+        label: String,
+        checked: bool,
+        cmd: UiCommand,
+    },
+    /// Submenu met eigen rijen (account wisselen).
+    Submenu {
+        label: String,
+        icon: String,
+        items: Vec<MenuItemSpec>,
+    },
+    /// Uitgegrijsde info-rij (bijv. geen accounts om te wisselen).
+    Disabled(String),
+}
+
+impl MenuItemSpec {
+    /// Label voor tests/overzicht (separator krijgt een placeholder).
+    #[cfg(test)]
+    fn label(&self) -> &str {
+        match self {
+            MenuItemSpec::Separator => "──",
+            MenuItemSpec::Action { label, .. }
+            | MenuItemSpec::Checkmark { label, .. }
+            | MenuItemSpec::Submenu { label, .. }
+            | MenuItemSpec::Disabled(label) => label,
         }
-        if !items.is_empty() {
-            items.push(ksni::MenuItem::Separator);
-        }
+    }
 
-        // Acties: Open Thuis / Open Ploeg.
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Thuis".into(),
-            icon_name: "go-home-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.dashboard.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Ploeg".into(),
-            icon_name: "x-office-document-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.ops_api.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Separator);
-
-        // Account-submenu (zelfde data als Vault Accounts).
-        let mut account_items: Vec<ksni::MenuItem<Self>> = Vec::new();
-        if let Ok(snap) = self.shared.read() {
-            for row in &snap.providers {
-                for acc in &row.accounts {
-                    let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                    if Some(acc_id) == row.active_id.as_deref() {
-                        continue;
-                    }
-                    let label = acc
-                        .get("label")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(acc_id)
-                        .to_string();
-                    let source = row.source.clone();
-                    let driver = row.driver.clone();
-                    let account_id = acc_id.to_string();
-                    account_items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-                        label: format!("Werk als {label}"),
-                        icon_name: "avatar-default-symbolic".into(),
-                        activate: Box::new(move |tray: &mut Self| {
-                            tray.send(UiCommand::SwitchAccount {
-                                account_id: account_id.clone(),
-                                source: source.clone(),
-                                driver: driver.clone(),
-                            });
-                        }),
-                        ..Default::default()
-                    }));
-                }
+    /// Dunne ksni-adapter: één spec → ksni-menu-item. Geen beslislogica hier.
+    fn into_ksni(self) -> ksni::MenuItem<ChefTray> {
+        match self {
+            MenuItemSpec::Separator => ksni::MenuItem::Separator,
+            MenuItemSpec::Action { label, icon, cmd } => {
+                ksni::MenuItem::Standard(StandardItem::<ChefTray> {
+                    label,
+                    icon_name: icon,
+                    activate: Box::new(move |tray: &mut ChefTray| tray.send(cmd.clone())),
+                    ..Default::default()
+                })
             }
-        }
-        if account_items.is_empty() {
-            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Account: niks om te wisselen".into(),
+            MenuItemSpec::Checkmark {
+                label,
+                checked,
+                cmd,
+            } => ksni::MenuItem::Checkmark(ksni::menu::CheckmarkItem::<ChefTray> {
+                label,
+                checked,
+                activate: Box::new(move |tray: &mut ChefTray| tray.send(cmd.clone())),
+                ..Default::default()
+            }),
+            MenuItemSpec::Submenu { label, icon, items } => {
+                let submenu: Vec<ksni::MenuItem<ChefTray>> =
+                    items.into_iter().map(MenuItemSpec::into_ksni).collect();
+                ksni::MenuItem::SubMenu(ksni::menu::SubMenu::<ChefTray> {
+                    label,
+                    icon_name: icon,
+                    submenu,
+                    ..Default::default()
+                })
+            }
+            MenuItemSpec::Disabled(label) => ksni::MenuItem::Standard(StandardItem::<ChefTray> {
+                label,
                 enabled: false,
                 ..Default::default()
-            }));
-        } else {
-            items.push(ksni::MenuItem::SubMenu(ksni::menu::SubMenu::<Self> {
-                label: "Account wisselen".into(),
-                icon_name: "avatar-default-symbolic".into(),
-                submenu: account_items,
-                ..Default::default()
-            }));
-        }
-
-        // Desktop starten/stoppen.
-        let desktop_running = snap
-            .as_ref()
-            .map(|s| s.desktop.get("state").and_then(|v| v.as_str()) == Some("running"))
-            .unwrap_or(false);
-        let (dlabel, dicon) = if desktop_running {
-            (
-                "Desktop stoppen".to_string(),
-                "system-shutdown-symbolic".to_string(),
-            )
-        } else {
-            (
-                "Desktop starten".to_string(),
-                "computer-symbolic".to_string(),
-            )
-        };
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: dlabel,
-            icon_name: dicon,
-            activate: Box::new(move |tray: &mut Self| {
-                tray.send(UiCommand::DesktopAction(
-                    if desktop_running { "stop" } else { "start" }.into(),
-                ));
             }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Separator);
-
-        // Notificaties pauzeren + meelopen vanaf login.
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Notificaties pauzeren (1u)".into(),
-            icon_name: "notification-disabled-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::PauseNotifications)),
-            ..Default::default()
-        }));
-        let autostart = crate::tray::autostart_enabled();
-        items.push(ksni::MenuItem::Checkmark(
-            ksni::menu::CheckmarkItem::<Self> {
-                label: "Meelopen vanaf login".into(),
-                checked: autostart,
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ToggleAutostart)),
-                ..Default::default()
-            },
-        ));
-        items.push(ksni::MenuItem::Separator);
-
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Ververs".into(),
-            icon_name: "view-refresh-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Refresh)),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Doctor".into(),
-            icon_name: "diagnostics-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Doctor)),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Afsluiten".into(),
-            icon_name: "application-exit-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Quit)),
-            ..Default::default()
-        }));
-        items
+        }
     }
+}
+
+/// Bouw de volledige tray-menu-inhoud als pure data (Q3). Eén plek met alle
+/// beslislogica: eventregels → acties → accounts → desktop → notificaties →
+/// systeemrijen. Geen I/O (autostart wordt als flag meegegeven).
+fn menu_items(
+    snap: &Snapshot,
+    profile: &crate::config::EndpointProfile,
+    autostart: bool,
+) -> Vec<MenuItemSpec> {
+    let mut items: Vec<MenuItemSpec> = Vec::new();
+
+    // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
+    let sessions = crate::sessions::load_ranked_sessions(&snap.events);
+    for session in sessions.iter().take(3) {
+        let stamp = match session.state.as_str() {
+            "working" | "starting" => "BEZIG",
+            "done" | "ok" => "KLAAR",
+            "waiting" | "blocked" | "failed" => "JOUW",
+            _ => "…",
+        };
+        let label = if session.title.len() > 38 {
+            format!("{}…", &session.title[..38])
+        } else {
+            session.title.clone()
+        };
+        let focus = session
+            .attach
+            .focus
+            .clone()
+            .unwrap_or_else(|| session.id.clone());
+        items.push(MenuItemSpec::Action {
+            label: format!("{label}  [{stamp}]"),
+            icon: "system-run-symbolic".into(),
+            cmd: UiCommand::FocusAgent(focus),
+        });
+    }
+    if !items.is_empty() {
+        items.push(MenuItemSpec::Separator);
+    }
+
+    // Acties: Open Thuis / Open Ploeg.
+    items.push(MenuItemSpec::Action {
+        label: "Open Thuis".into(),
+        icon: "go-home-symbolic".into(),
+        cmd: UiCommand::OpenUrl(profile.dashboard.clone()),
+    });
+    items.push(MenuItemSpec::Action {
+        label: "Open Ploeg".into(),
+        icon: "x-office-document-symbolic".into(),
+        cmd: UiCommand::OpenUrl(profile.ops_api.clone()),
+    });
+    items.push(MenuItemSpec::Separator);
+
+    // Account-submenu (zelfde data als Vault Accounts).
+    let mut account_items: Vec<MenuItemSpec> = Vec::new();
+    for row in &snap.providers {
+        for acc in &row.accounts {
+            let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if Some(acc_id) == row.active_id.as_deref() {
+                continue;
+            }
+            let label = acc
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or(acc_id)
+                .to_string();
+            account_items.push(MenuItemSpec::Action {
+                label: format!("Werk als {label}"),
+                icon: "avatar-default-symbolic".into(),
+                cmd: UiCommand::SwitchAccount {
+                    account_id: acc_id.to_string(),
+                    source: row.source.clone(),
+                    driver: row.driver.clone(),
+                },
+            });
+        }
+    }
+    if account_items.is_empty() {
+        items.push(MenuItemSpec::Disabled(
+            "Account: niks om te wisselen".into(),
+        ));
+    } else {
+        items.push(MenuItemSpec::Submenu {
+            label: "Account wisselen".into(),
+            icon: "avatar-default-symbolic".into(),
+            items: account_items,
+        });
+    }
+
+    // Desktop starten/stoppen.
+    let desktop_running = snap.desktop.get("state").and_then(|v| v.as_str()) == Some("running");
+    items.push(MenuItemSpec::Action {
+        label: if desktop_running {
+            "Desktop stoppen".into()
+        } else {
+            "Desktop starten".into()
+        },
+        icon: if desktop_running {
+            "system-shutdown-symbolic".into()
+        } else {
+            "computer-symbolic".into()
+        },
+        cmd: UiCommand::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
+    });
+    items.push(MenuItemSpec::Separator);
+
+    // Notificaties pauzeren + meelopen vanaf login.
+    items.push(MenuItemSpec::Action {
+        label: "Notificaties pauzeren (1u)".into(),
+        icon: "notification-disabled-symbolic".into(),
+        cmd: UiCommand::PauseNotifications,
+    });
+    items.push(MenuItemSpec::Checkmark {
+        label: "Meelopen vanaf login".into(),
+        checked: autostart,
+        cmd: UiCommand::ToggleAutostart,
+    });
+    items.push(MenuItemSpec::Separator);
+
+    items.push(MenuItemSpec::Action {
+        label: "Ververs".into(),
+        icon: "view-refresh-symbolic".into(),
+        cmd: UiCommand::Refresh,
+    });
+    items.push(MenuItemSpec::Action {
+        label: "Doctor".into(),
+        icon: "diagnostics-symbolic".into(),
+        cmd: UiCommand::Doctor,
+    });
+    items.push(MenuItemSpec::Action {
+        label: "Afsluiten".into(),
+        icon: "application-exit-symbolic".into(),
+        cmd: UiCommand::Quit,
+    });
+    items
 }
 
 /// Het opgeloste thema ("dark"/"light") voor de tray-pixmap: een pixmap
@@ -509,4 +569,123 @@ fn tray_icon_for(state: &str) -> ksni::Icon {
 
 pub fn tray_icon() -> ksni::Icon {
     tray_icon_for("stil")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EndpointProfile;
+    use crate::models::{ProviderRow, Snapshot};
+
+    fn labels(items: &[MenuItemSpec]) -> Vec<&str> {
+        items.iter().map(MenuItemSpec::label).collect()
+    }
+
+    #[test]
+    fn basis_rijen_zijn_aanwezig() {
+        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        let labels = labels(&items);
+        for expected in [
+            "Open Thuis",
+            "Open Ploeg",
+            "Notificaties pauzeren (1u)",
+            "Meelopen vanaf login",
+            "Ververs",
+            "Doctor",
+            "Afsluiten",
+        ] {
+            assert!(labels.contains(&expected), "rij ontbreekt: {expected}");
+        }
+        // Afsluiten is de laatste rij.
+        assert_eq!(labels.last(), Some(&"Afsluiten"));
+    }
+
+    #[test]
+    fn zonder_accounts_is_de_rij_disabled() {
+        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        assert!(items.iter().any(|i| matches!(i, MenuItemSpec::Disabled(_))));
+    }
+
+    #[test]
+    fn account_submenu_bouwt_switchacties_voor_niet_actieve_accounts() {
+        let mut snap = Snapshot::default();
+        snap.providers.push(ProviderRow {
+            label: "Vault".into(),
+            source: "vault".into(),
+            active_id: Some("acc-1".into()),
+            accounts: vec![
+                serde_json::json!({"id": "acc-1", "label": "Hoofd"}),
+                serde_json::json!({"id": "acc-2", "label": "Zakelijk"}),
+            ],
+            ..Default::default()
+        });
+        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let submenu = items.iter().find_map(|i| match i {
+            MenuItemSpec::Submenu { label, items, .. } if label == "Account wisselen" => {
+                Some(items)
+            }
+            _ => None,
+        });
+        let submenu = submenu.expect("account-submenu aanwezig");
+        // Alleen acc-2 (acc-1 is actief en wordt overgeslagen).
+        assert_eq!(labels(submenu), vec!["Werk als Zakelijk"]);
+        let cmds: Vec<&UiCommand> = submenu
+            .iter()
+            .filter_map(|i| match i {
+                MenuItemSpec::Action { cmd, .. } => Some(cmd),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            cmds,
+            vec![&UiCommand::SwitchAccount {
+                account_id: "acc-2".into(),
+                source: "vault".into(),
+                driver: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn desktop_actie_volgt_snapshot_state() {
+        let mut snap = Snapshot::default();
+        snap.desktop
+            .insert("state".into(), serde_json::Value::String("running".into()));
+        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let desktop = items.iter().find_map(|i| match i {
+            MenuItemSpec::Action { label, cmd, .. } if label.starts_with("Desktop") => {
+                Some((label.as_str(), cmd.clone()))
+            }
+            _ => None,
+        });
+        assert_eq!(desktop.as_ref().map(|(l, _)| *l), Some("Desktop stoppen"));
+        assert_eq!(
+            desktop.map(|(_, cmd)| cmd),
+            Some(UiCommand::DesktopAction("stop".into()))
+        );
+    }
+
+    #[test]
+    fn autostart_checkmark_reflecteert_flag() {
+        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), true);
+        assert!(items
+            .iter()
+            .any(|i| matches!(i, MenuItemSpec::Checkmark { checked: true, .. })));
+        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        assert!(items
+            .iter()
+            .any(|i| matches!(i, MenuItemSpec::Checkmark { checked: false, .. })));
+    }
+
+    #[test]
+    fn zonder_events_geen_focus_rijen() {
+        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        assert!(!items.iter().any(|i| matches!(
+            i,
+            MenuItemSpec::Action {
+                cmd: UiCommand::FocusAgent(_),
+                ..
+            }
+        )));
+    }
 }
