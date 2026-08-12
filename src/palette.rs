@@ -546,9 +546,14 @@ mod tests {
     fn tier_invariant_prefix_nooit_onder_gappy_met_boost() {
         // prefix 700 vs gappy ~500: gappy met max boost mag nooit boven prefix komen.
         // "stu pro" is prefix voor "Stuur prompt" (tokens stu→stuur, pro→prompt) maar
-        // niet als aaneengesloten substring, dus tier 700. Voor gappy-actie is het gappy.
+        // niet als aaneengesloten substring, dus tier 700. Voor gappy-actie is het gappy
+        // (ordered chars verspreid, geen prefix-match, wel gappy-match).
         let prefix = action("Stuur prompt", "herdr", "stuur prompt");
-        let gappy = action("Snel terug uur", "overzicht", "snel terug uur");
+        let gappy = action(
+            "Setup tunnel report overview",
+            "meta",
+            "setup tunnel report",
+        );
         let score_prefix = fuzzy_score("stu pro", &prefix).unwrap();
         let score_gappy = fuzzy_score("stu pro", &gappy).unwrap();
         assert_eq!(
@@ -560,10 +565,10 @@ mod tests {
             "gappy score {score_gappy:?} moet 1..699 zijn"
         );
         let mut frecency = HashMap::new();
-        frecency.insert("snel".into(), (3, format_now_rfc3339()));
+        frecency.insert("setup".into(), (3, format_now_rfc3339()));
         let ctx_gappy = RankContext {
-            boost_terms: vec!["snel".into()],
-            active_group: Some("snel".into()),
+            boost_terms: vec!["setup".into()],
+            active_group: Some("setup".into()),
             frecency,
         };
         let mut gappy_pinned = gappy.clone();
