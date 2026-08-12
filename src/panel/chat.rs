@@ -234,11 +234,7 @@ fn paint_combo(
 ) {
     let ops = shared.ops.read().unwrap().clone();
     let targets = list_targets(&ops);
-    let pinned = if log.pinned {
-        log.target.clone()
-    } else {
-        None
-    };
+    let pinned = if log.pinned { log.target.clone() } else { None };
     let current = log
         .target
         .clone()
