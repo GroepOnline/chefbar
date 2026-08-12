@@ -300,6 +300,39 @@ mod cli_tests {
     }
 
     #[test]
+    fn ipc_state_variant_parses() {
+        // W4-testhook: `--ipc "state <glyph>"` forceert de tray-glyph.
+        let cli = parse(&["--ipc", "state bezig"]);
+        assert_eq!(cli.ipc.as_deref(), Some("state bezig"));
+    }
+
+    #[test]
+    fn ipc_state_roundtrip_naar_force_state() {
+        // Golden: van CLI-vlag tot UiCommand, zonder socket.
+        let cli = parse(&["--ipc", "state fout"]);
+        let cmd = cli.ipc.as_deref().and_then(chefbar::ipc::parse_command);
+        assert_eq!(
+            cmd,
+            Some(chefbar::tray::UiCommand::ForceState("fout".into()))
+        );
+    }
+
+    #[test]
+    fn ipc_switch_account_variant_parses() {
+        let cli = parse(&["--ipc", "switch-account acc-1 vault"]);
+        assert_eq!(cli.ipc.as_deref(), Some("switch-account acc-1 vault"));
+        let cmd = cli.ipc.as_deref().and_then(chefbar::ipc::parse_command);
+        assert_eq!(
+            cmd,
+            Some(chefbar::tray::UiCommand::SwitchAccount {
+                account_id: "acc-1".into(),
+                source: "vault".into(),
+                driver: None,
+            })
+        );
+    }
+
+    #[test]
     fn doctor_flag_parses() {
         let cli = parse(&["--doctor"]);
         assert!(cli.doctor);

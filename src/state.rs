@@ -4,22 +4,24 @@
 //! met een kort afnamebudget, en publiceert één gedeelde Snapshot. UI leest
 //! onder een korte read-lock; mislukte secties behouden hun laatste goede waarde.
 
-use crate::http::{ApiError, Client};
+use crate::http::{ApiError, Client, HttpClient};
 use crate::models::{
     build_agents, build_fleet, build_ops_snapshot, build_providers, day_score_from_agent_summary,
     load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo, OpsSnapshot,
     Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const VAULT_POLL_MS: u64 = 5_000;
 pub const OPS_POLL_MS: u64 = 15_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
+/// P1: vaste worker-pool voor de vault fan-out (i.p.v. thread-per-endpoint).
+pub const POOL_WORKERS: usize = 4;
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
 pub static REFRESH_TX: Mutex<Option<Sender<ActorCommand>>> = Mutex::new(None);
@@ -96,7 +98,7 @@ pub fn refresh_global() {
 pub fn spawn_actor(shared: Shared, vault: Client, ops: Client) -> ActorHandle {
     let (tx, rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
     *REFRESH_TX.lock().unwrap() = Some(tx.clone());
-    let poller = Poller { shared, vault, ops };
+    let poller = Poller::new(shared, vault, ops);
     let handle = std::thread::spawn(move || poller.run(rx));
     ActorHandle {
         tx,
@@ -116,13 +118,86 @@ impl ActorHandle {
     }
 }
 
-struct Poller {
-    shared: Shared,
-    vault: Client,
-    ops: Client,
+/// P1: vaste kleine worker-pool. N threads wachten op een werk-queue en leven
+/// zolang de actor leeft — thread-churn → 0 (was 10 threads per poll). Elke
+/// job draagt zijn eigen results-sender, zodat batches geïsoleerd blijven
+/// (geen kruisende resultaten na een budget-timeout van de vorige poll).
+struct Job<C: HttpClient> {
+    key: String,
+    path: String,
+    client: C,
+    results: Sender<(String, Result<Value, ApiError>)>,
 }
 
-impl Poller {
+struct WorkerPool<C: HttpClient> {
+    queue: Mutex<VecDeque<Job<C>>>,
+    cond: Condvar,
+    stop: AtomicBool,
+}
+
+impl<C: HttpClient> WorkerPool<C> {
+    fn spawn(workers: usize) -> Arc<Self> {
+        let pool = Arc::new(Self {
+            queue: Mutex::new(VecDeque::new()),
+            cond: Condvar::new(),
+            stop: AtomicBool::new(false),
+        });
+        for _ in 0..workers.max(1) {
+            let pool = pool.clone();
+            std::thread::spawn(move || pool.worker_loop());
+        }
+        pool
+    }
+
+    fn submit(&self, job: Job<C>) {
+        let mut queue = self.queue.lock().unwrap();
+        queue.push_back(job);
+        self.cond.notify_one();
+    }
+
+    /// Stop-signaal: bevrijdt blokkerende workers (actor-shutdown).
+    fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.cond.notify_all();
+    }
+
+    fn worker_loop(&self) {
+        loop {
+            let job = {
+                let mut queue = self.queue.lock().unwrap();
+                loop {
+                    if self.stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    if let Some(job) = queue.pop_front() {
+                        break job;
+                    }
+                    queue = self.cond.wait(queue).unwrap();
+                }
+            };
+            let result = job.client.get_json(&job.path);
+            let _ = job.results.send((job.key, result));
+        }
+    }
+}
+
+struct Poller<C: HttpClient> {
+    shared: Shared,
+    vault: C,
+    ops: C,
+    pool: Arc<WorkerPool<C>>,
+}
+
+impl<C: HttpClient> Poller<C> {
+    fn new(shared: Shared, vault: C, ops: C) -> Self {
+        Self {
+            shared,
+            vault,
+            ops,
+            pool: WorkerPool::spawn(POOL_WORKERS),
+        }
+    }
+
     fn run(self, rx: Receiver<ActorCommand>) {
         let mut next_vault = Instant::now();
         let mut next_ops = Instant::now();
@@ -152,9 +227,15 @@ impl Poller {
                     self.poll_vault();
                     next_vault = Instant::now() + Duration::from_millis(VAULT_POLL_MS);
                 }
-                Ok(ActorCommand::Shutdown) => break,
+                Ok(ActorCommand::Shutdown) => {
+                    self.pool.stop();
+                    break;
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    self.pool.stop();
+                    break;
+                }
             }
         }
     }
@@ -356,20 +437,16 @@ impl Poller {
             ("share-sync/status", "/share-sync/status"),
             ("sessions", "/sessions"),
         ];
-        // Fan-out over een klein threaddeel: per endpoint kort, alles binnen budget.
+        // P1: jobs naar de vaste worker-pool (geen thread-per-endpoint);
+        // resultaten per batch via een eigen kanaal, alles binnen budget.
         let (tx, rx): (Sender<(String, Result<Value, ApiError>)>, _) = channel();
-        let client = self.vault.clone();
         let started = Instant::now();
         for (key, path) in paths {
-            let (key, path, tx, client) = (
-                key.to_string(),
-                path.to_string(),
-                tx.clone(),
-                client.clone(),
-            );
-            std::thread::spawn(move || {
-                let result = client.get_json(&path);
-                let _ = tx.send((key, result));
+            self.pool.submit(Job {
+                key: key.to_string(),
+                path: path.to_string(),
+                client: self.vault.clone(),
+                results: tx.clone(),
             });
         }
         drop(tx);
@@ -377,15 +454,21 @@ impl Poller {
             .iter()
             .map(|(key, _)| (key.to_string(), None))
             .collect();
+        let total = paths.len();
+        let mut received = 0usize;
         loop {
             if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
+                break;
+            }
+            if received >= total {
                 break;
             }
             match rx.recv_timeout(Duration::from_millis(200)) {
                 Ok((key, Ok(value))) => {
                     results.insert(key, Some(value));
+                    received += 1;
                 }
-                Ok((_, Err(_))) => {}
+                Ok((_, Err(_))) => received += 1,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
@@ -428,5 +511,245 @@ impl Poller {
         }
         OPS_ONLINE.store(ops_ok, Ordering::Relaxed);
         *OPS_STATUS.lock().unwrap() = ops_status;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::ApiError;
+    use serde_json::json;
+
+    /// De tien vault-paden die fetch_all ophaalt (parity met fetch_all).
+    const ALL_PATHS: [&str; 10] = [
+        "/status",
+        "/accounts/overview",
+        "/agents",
+        "/agents/events?limit=8",
+        "/fleet",
+        "/commander/tasks?limit=12",
+        "/clipboard",
+        "/desktop/status",
+        "/share-sync/status",
+        "/sessions",
+    ];
+
+    /// Q3: mock-HTTP-client zonder netwerk; responses zijn per pad stubbaar
+    /// (Arc<Mutex> zodat een test tussen polls de responses kan wisselen).
+    #[derive(Clone)]
+    struct MockClient {
+        responses: Arc<Mutex<HashMap<String, Result<Value, ApiError>>>>,
+    }
+
+    impl MockClient {
+        fn new() -> Self {
+            Self {
+                responses: Arc::new(Mutex::new(HashMap::new())),
+            }
+        }
+        fn stub(&self, path: &str, result: Result<Value, ApiError>) {
+            self.responses
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), result);
+        }
+        fn stub_ok(&self, path: &str, value: Value) {
+            self.stub(path, Ok(value));
+        }
+        fn stub_err(&self, path: &str) {
+            self.stub(path, Err(ApiError::Transport("offline".into())));
+        }
+        fn stub_all_ok(&self) {
+            for path in ALL_PATHS {
+                self.stub(path, Ok(json!({"ok": true})));
+            }
+        }
+        fn stub_all_err(&self) {
+            for path in ALL_PATHS {
+                self.stub_err(path);
+            }
+        }
+    }
+
+    impl HttpClient for MockClient {
+        fn get_json(&self, path: &str) -> Result<Value, ApiError> {
+            self.responses
+                .lock()
+                .unwrap()
+                .get(path)
+                .cloned()
+                .unwrap_or_else(|| Err(ApiError::Transport(format!("niet gestubbed: {path}"))))
+        }
+    }
+
+    fn poller_met() -> Poller<MockClient> {
+        Poller::new(Shared::new(), MockClient::new(), MockClient::new())
+    }
+
+    fn agents_payload(status: &str) -> Value {
+        json!({"agents": [{"key": "a1", "agent": "cursor", "workspace": "commerce", "status": status, "summary": "werkt"}]})
+    }
+
+    #[test]
+    fn fetch_all_populeert_snapshot_bij_succes() {
+        let poller = poller_met();
+        poller.vault.stub_all_ok();
+        poller.vault.stub_ok(
+            "/accounts/overview",
+            json!({"revision": 7, "providers": []}),
+        );
+        poller.vault.stub_ok("/agents", agents_payload("running"));
+        poller.vault.stub_ok(
+            "/fleet",
+            json!({"online": 2, "total": 2, "host": "r1", "stale": false}),
+        );
+        poller.vault.stub_ok(
+            "/commander/tasks?limit=12",
+            json!({"tasks": [{"id": "t1", "prompt": "bouw", "status": "queued"}]}),
+        );
+
+        poller.poll_vault();
+
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        assert_eq!(snap.revision, 7);
+        assert_eq!(snap.agents.len(), 1);
+        assert_eq!(snap.tasks.len(), 1);
+        assert_eq!(snap.error, None);
+        assert!(snap.poll.vault_ok);
+    }
+
+    #[test]
+    fn fetch_all_meldt_vault_offline_bij_alle_fouten() {
+        let poller = poller_met();
+        poller.vault.stub_all_err();
+        poller.poll_vault();
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        assert_eq!(snap.error.as_deref(), Some("vault offline"));
+        assert!(!snap.poll.vault_ok);
+    }
+
+    #[test]
+    fn fetch_all_meldt_gedeeltelijk_bij_deels_fouten() {
+        let poller = poller_met();
+        poller.vault.stub_all_ok();
+        poller.vault.stub_err("/agents");
+        poller.poll_vault();
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        let err = snap.error.as_deref().unwrap_or("");
+        assert!(err.starts_with("gedeeltelijk: "), "fout: {err}");
+        assert!(err.contains("agents"));
+        // /status ok → deels goed → poll-gezondheid vault ok.
+        assert!(snap.poll.vault_ok);
+    }
+
+    #[test]
+    fn watcher_meldt_statusovergang_eenmalig() {
+        // Coalescing: transitie → één suggestie; zelfde status → geen nieuwe.
+        let poller = poller_met();
+        poller.vault.stub_all_ok();
+        poller.vault.stub_ok("/agents", agents_payload("running"));
+        poller.poll_vault();
+        assert!(
+            poller
+                .shared
+                .snapshot
+                .read()
+                .unwrap()
+                .suggestions
+                .is_empty(),
+            "eerste poll (nieuwe agent) mag geen suggestie geven"
+        );
+
+        poller.vault.stub_ok("/agents", agents_payload("blocked"));
+        poller.poll_vault();
+        assert_eq!(
+            poller.shared.snapshot.read().unwrap().suggestions.len(),
+            1,
+            "transitie running→blocked geeft één suggestie"
+        );
+
+        poller.vault.stub_ok("/agents", agents_payload("blocked"));
+        poller.poll_vault();
+        assert_eq!(
+            poller.shared.snapshot.read().unwrap().suggestions.len(),
+            1,
+            "zelfde status geeft geen nieuwe suggestie"
+        );
+    }
+
+    #[test]
+    fn poll_ops_vult_snapshot_en_status() {
+        let poller = poller_met();
+        poller.ops.stub_ok(
+            "/api/snapshot",
+            json!({"ok": true, "agents": [{"terminal_id": "t1", "agent": "cursor", "agent_status": "working", "terminal_title_stripped": "commerce"}]}),
+        );
+        poller.poll_ops();
+        let ops = poller.shared.ops.read().unwrap().clone();
+        assert!(ops.ok);
+        assert_eq!(ops.agents.len(), 1);
+        assert_eq!(ops.agents[0].terminal_id, "t1");
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        assert!(snap.poll.ops_ok);
+        assert_eq!(snap.poll.ops_status.as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn poll_ops_meldt_http_fout_in_status() {
+        let poller = poller_met();
+        poller
+            .ops
+            .stub("/api/snapshot", Err(ApiError::Http(302, "redirect".into())));
+        poller.poll_ops();
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        assert!(!snap.poll.ops_ok);
+        assert_eq!(snap.poll.ops_status.as_deref(), Some("302"));
+    }
+
+    #[test]
+    fn worker_pool_beperkt_gelijktijdigheid() {
+        // P1: de pool draait nooit meer dan N jobs tegelijk (hier 2 workers).
+        #[derive(Clone)]
+        struct CountingMock {
+            active: Arc<AtomicI64>,
+            max_seen: Arc<AtomicI64>,
+        }
+        impl HttpClient for CountingMock {
+            fn get_json(&self, _path: &str) -> Result<Value, ApiError> {
+                let now = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                self.max_seen.fetch_max(now, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(40));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+                Ok(json!({}))
+            }
+        }
+
+        // De atomics zijn al gedeeld (Arc); de mock zelf is goedkoop te klonen.
+        let counters = CountingMock {
+            active: Arc::new(AtomicI64::new(0)),
+            max_seen: Arc::new(AtomicI64::new(0)),
+        };
+        let pool = WorkerPool::<CountingMock>::spawn(2);
+        let (tx, rx) = channel();
+        for i in 0..6 {
+            pool.submit(Job {
+                key: format!("k{i}"),
+                path: "/x".into(),
+                client: counters.clone(),
+                results: tx.clone(),
+            });
+        }
+        drop(tx);
+        let mut done = 0;
+        while done < 6 {
+            match rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(_) => done += 1,
+                Err(_) => break,
+            }
+        }
+        assert_eq!(done, 6, "alle jobs moeten afkomen");
+        let max = counters.max_seen.load(Ordering::SeqCst);
+        assert!(max <= 2, "max gelijktijdigheid {max} > 2");
+        pool.stop();
     }
 }

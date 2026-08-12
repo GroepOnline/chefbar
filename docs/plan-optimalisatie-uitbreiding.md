@@ -44,6 +44,12 @@ Principe: **eerst meten, dan optimaliseren.** Per werkstroom een kleine
 meetstap (timings loggen via doctor/`--debug`), daarna pas schroeven.
 
 ### P1 — poll-actor: thread-per-endpoint → vaste worker-pool
+✅ Gedaan (2026-08-12): `WorkerPool` in `src/state.rs` — 4 vaste workers op een
+Mutex/VecDeque + Condvar wachten op jobs en leven zolang de actor leeft
+(thread-churn → 0). Elke job draagt een eigen results-sender, zodat batches
+geïsoleerd blijven. `fetch_all` stuurt de 10 endpoint-jobs naar de pool en
+wacht met hetzelfde `FETCH_BUDGET_MS`-budget; unit-test bewijst dat de pool
+nooit meer dan N jobs tegelijk draait.
 `src/state.rs::fetch_all()` spawns per poll (elke 5s) **10 `std::thread`s**
 (één per endpoint) met een channel + 200ms-recv-loop binnen een 8s-budget.
 Dat is ~2 threads/s thread-churn voor tien lokale HTTP-calls.
@@ -136,8 +142,11 @@ volgorde.
 ### E5 — nieuwe acties & oppervlakken
 ✅ Deel gedaan (2026-08-12): **Herdr-agents in het panel** — eigen Herdr-sectie
 (naast Agents) met pane/focus-status en inline prompt-sturen (klik op een rij →
-tekst-dialog → SendPrompt). Commander-queue, rustige meldingen en deep-links
-blijven open (M5-staart).
+tekst-dialog → SendPrompt). **Commander-queue** ✅ — eigen sectie met taak-lijst
+(positie + korte id), status-stamps en per-taak **Stop** (CancelTask via de
+existing executor-route; queued/running). *Prioriteit verzetten* blijft open:
+de vault-API exposeert geen priority-endpoint (geen verzonnen endpoint).
+Rustige meldingen en deep-links blijven open (M5-staart).
 - **Herdr-agents in het panel:** herdr-agent-rijen tonen pane/focus-status
   (`OpsSnapshot.agents` heeft `pane_id`/`focused` al) + inline prompt-sturen
   (nu alleen via de actie "Stuur naar …").
@@ -185,9 +194,12 @@ alle inhoud komt uit de pure data-builder `menu_items(snap, profile, autostart)
 -> Vec<MenuItemSpec>` (geen ksni-types/closures). 7 unit-tests dekken de
 rijlogica (basisrijen, account-submenu, desktop-state, autostart-checkmark,
 geen-events, char-veilige titel-truncatie) — precies waar de E0382/E0597-breuk zat.
-- **state.rs testbaar maken:** `http::Client` achter een trait of mock-`Client`
-  zodat `fetch_all`/`poll_vault` (fan-out, budget, coalescing) zonder netwerk
-  getest kunnen worden (nog open).
+✅ **state.rs testbaar maken** (2026-08-12): `http::Client` achter de
+`HttpClient`-trait (get_json); `Poller<C>` is er generiek over. Mock-`Client`
+(Arc<Mutex>-stubs per pad) test fan-out-succes, totale/partiële foutafhandeling
+("vault offline" / "gedeeltelijk"), watcher-coalescing (transitie → één
+suggestie), ops-poll-status (ok/HTTP-code) en de pool-concurrency — 7 nieuwe
+tests, zonder netwerk.
 - **Golden CLI-tests uitbreiden:** de bestaande clap-tests (`src/main.rs`)
   blijven; voeg `--ipc state <x>` en `switch-account`-varianten toe (nog open).
 

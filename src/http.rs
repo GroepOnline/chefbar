@@ -97,11 +97,24 @@ fn build_agent(timeout: Duration) -> ureq::Agent {
         .build()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ApiError {
     Blocked(String),
     Http(u16, String),
     Transport(String),
+}
+
+/// Het HTTP-vlak dat de poll-actor nodig heeft (Q3): zodat `Poller` met een
+/// mock zonder netwerk getest kan worden (fan-out, budget, coalescing).
+/// `Client` is de echte implementatie; tests gebruiken een stub.
+pub trait HttpClient: Clone + Send + 'static {
+    fn get_json(&self, path: &str) -> Result<serde_json::Value, ApiError>;
+}
+
+impl HttpClient for Client {
+    fn get_json(&self, path: &str) -> Result<serde_json::Value, ApiError> {
+        Client::get_json(self, path)
+    }
 }
 
 impl From<String> for ApiError {

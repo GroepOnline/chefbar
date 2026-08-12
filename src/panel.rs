@@ -626,6 +626,7 @@ fn render_signature(shared: &Shared) -> u64 {
         day_score: Option<i64>,
         providers: Vec<(&'a str, bool)>, // label, available
         events_len: usize,
+        tasks: Vec<(&'a str, &'a str)>,             // id, status
         ops: (bool, Vec<(&'a str, &'a str, bool)>), // ok, (terminal_id, status, focused)
     }
 
@@ -659,6 +660,16 @@ fn render_signature(shared: &Shared) -> u64 {
                 .map(|p| (p.label.as_str(), p.available))
                 .collect(),
             events_len: snap.events.len(),
+            tasks: snap
+                .tasks
+                .iter()
+                .map(|t| {
+                    (
+                        t.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                        t.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                    )
+                })
+                .collect(),
             ops: (
                 ops.ok,
                 ops.agents
@@ -1215,6 +1226,86 @@ fn render_into(
         }
     }
     content.pack_start(&group, false, false, 0);
+
+    // ---- Sectie: Commander — taak-queue met per-taak acties (E5-staart) ----
+    let tasks: Vec<_> = snap
+        .tasks
+        .iter()
+        .filter(|t| {
+            q.is_empty()
+                || t.get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&q)
+        })
+        .collect();
+    if !tasks.is_empty() {
+        section_title(content, "Commander", "taak-queue · stop per taak");
+        let group = group_box();
+        for (position, task) in tasks.iter().take(8).enumerate() {
+            let task_id = task.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let status = task
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("queued");
+            let prompt: String = task
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Taak zonder omschrijving")
+                .chars()
+                .take(52)
+                .collect();
+            let (cls, stamp) = match status {
+                "running" => ("info", "BEZIG"),
+                "queued" => ("ok", "WACHT"),
+                "failed" | "error" => ("down", "FOUT"),
+                _ => ("ok", "KLAAR"),
+            };
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 9);
+            let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            dot.set_size_request(8, 8);
+            dot.set_halign(gtk::Align::Start);
+            dot.set_valign(gtk::Align::Center);
+            dot.style_context().add_class("chefbar-dot");
+            dot.style_context().add_class(cls);
+            row.pack_start(&dot, false, false, 0);
+            let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+            let title = gtk::Label::new(Some(&prompt));
+            title.set_halign(gtk::Align::Start);
+            title.set_xalign(0.0);
+            title.set_ellipsize(pango::EllipsizeMode::End);
+            title.set_line_wrap(false);
+            title.set_max_width_chars(40);
+            title.set_tooltip_text(Some(&prompt));
+            title.style_context().add_class("chefbar-card-title");
+            text.pack_start(&title, false, false, 0);
+            if !task_id.is_empty() {
+                let short_id: String = task_id.chars().take(16).collect();
+                let meta = gtk::Label::new(Some(&format!("#{position} · {short_id}")));
+                meta.set_halign(gtk::Align::Start);
+                meta.set_xalign(0.0);
+                meta.set_ellipsize(pango::EllipsizeMode::End);
+                meta.style_context().add_class("chefbar-card-meta");
+                text.pack_start(&meta, false, false, 0);
+            }
+            row.pack_start(&text, true, true, 0);
+            // Per-taak actie: Stop (cancel) voor queued/running taken.
+            if matches!(status, "queued" | "running") && !task_id.is_empty() {
+                let spec = crate::actions::RunSpec::CancelTask(task_id.to_string());
+                let executor_clone = executor.clone();
+                let stop = gtk::Button::with_label("Stop");
+                stop.set_tooltip_text(Some(&format!("Stop taak {task_id}")));
+                stop.style_context().add_class("chefbar-btn");
+                stop.style_context().add_class("chefbar-danger");
+                stop.connect_clicked(move |_| executor_clone.run_for_ui(&spec));
+                row.pack_end(&stop, false, false, 0);
+            }
+            row.pack_end(&stamp_label(stamp), false, false, 0);
+            group.pack_start(&row_wrap(&row), false, false, 0);
+        }
+        content.pack_start(&group, false, false, 0);
+    }
 
     // ---- Sectie: Aandacht (sessions die jou nodig hebben) — premium, actionable ----
     let attention: Vec<_> = sessions.iter().filter(|s| s.needs_attention()).collect();
