@@ -183,28 +183,27 @@ pub fn set_theme(theme: &str) {
 /// Programmatisch gegenereerd 22x22 ARGB-pictogram: de CG-statuslijn —
 /// een verticale lijn met drie segmentmarkeringen (spec: chefbar-tray.md).
 /// States via vorm + badge, nooit alleen kleur:
-/// stil = lijn in outline, bezig = gevuld middensegment, hulp = ember-dot
+/// stil = lijn in outline, bezig = gevuld middensegment, hulp = amber-dot
 /// rechtsboven, fout = !-badge, offline = gestreepte lijn.
 fn tray_icon_for(state: &str) -> ksni::Icon {
     const SIZE: usize = 22;
-    // Huly-tokenwaarden per tray-achtergrond. Statuskleuren volgen de
-    // designfile-statusspectrum van het actieve thema (4.5:1-norm).
+    // v2-tokenwaarden per tray-achtergrond (design-system tokens.css,
+    // skin devin). Lijn = text-muted over de traykleur; statussen volgen
+    // het v2-spectrum (accent / amber hold / rood).
     let light = *THEME.read().unwrap() == "light";
-    let (line_c, iris_c, ember_c, red_c) = if light {
+    let (line_c, accent_c, amber_c, red_c) = if light {
         (
-            // Licht: bewust text-muted (#6B6C6D, 5.9:1 op een witte tray) —
-            // control_border (#95979E) haalt daar maar 2.9:1.
-            (0x6B, 0x6C, 0x6D),
-            (0x2E, 0x5B, 0x8F), // info licht
-            (0x9A, 0x57, 0x00), // warning licht
-            (0xCF, 0x2D, 0x56), // error licht
+            (0x73, 0x73, 0x73), // text-muted rgba(0,0,0,0.55) op lichte tray
+            (0x31, 0x7C, 0xFF), // accent licht
+            (0xBF, 0x5B, 0x00), // amber licht (hold)
+            (0xCF, 0x22, 0x2E), // rood licht
         )
     } else {
         (
-            (0xC8, 0xCA, 0xD0), // lichtgrijs op donkere tray
-            (0x56, 0x83, 0xDA), // info donker (Iris)
-            (0xFF, 0x89, 0x64), // warning donker (Ember)
-            (0xFF, 0x4D, 0x4D), // error donker
+            (0x90, 0x8F, 0x8C), // text-muted over basalt-tray (#1B1A19)
+            (0x5C, 0x97, 0xFF), // accent donker
+            (0xD9, 0xA0, 0x38), // amber donker (hold)
+            (0xF8, 0x51, 0x49), // rood donker
         )
     };
 
@@ -256,13 +255,13 @@ fn tray_icon_for(state: &str) -> ksni::Icon {
     }
     match state {
         "bezig" => {
-            // Gevuld middensegment in Iris.
-            rect(&mut px, 7, 9, 6, 4, iris_c, 255);
+            // Gevuld middensegment in accent.
+            rect(&mut px, 7, 9, 6, 4, accent_c, 255);
         }
         "hulp" => {
-            // Gevuld topsegment + Ember brand-dot rechtsboven.
-            rect(&mut px, 7, 4, 6, 4, iris_c, 255);
-            disc(&mut px, 16.0, 6.0, 3.0, ember_c, 255);
+            // Gevuld topsegment + amber hold-dot rechtsboven.
+            rect(&mut px, 7, 4, 6, 4, accent_c, 255);
+            disc(&mut px, 16.0, 6.0, 3.0, amber_c, 255);
         }
         "fout" => {
             // !-badge rechts: staaf + dot in rood.

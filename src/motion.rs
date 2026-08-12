@@ -1,6 +1,6 @@
 //! Signaal motion helpers voor ChefBar (GTK3).
 //!
-//! DESIGN.md: 100ms press, 180ms hover/select, 280ms panel/dialog.
+//! Signaal v2 motion-spec: 140ms hover/press, 280ms paneel, 420ms expand.
 //! Alleen opacity-fades: geen bounce, pulse-loops of scroll-theater.
 //! Respecteert gtk-enable-animations (reduced-motion proxy).
 
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub const PRESS_MS: u32 = 100;
-pub const HOVER_MS: u32 = 180;
+pub const HOVER_MS: u32 = 140;
 pub const PANEL_MS: u32 = 280;
 const FADE_STEPS: u32 = 8;
 

@@ -118,7 +118,7 @@ impl Panel {
         footer_title.set_xalign(0.0);
         footer_title.style_context().add_class("chefbar-sidebar-footer-title");
         status_footer.pack_start(&footer_title, false, false, 0);
-        let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal\u{00b7}huly"));
+        let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal v2"));
         footer_meta.set_halign(gtk::Align::Start);
         footer_meta.set_xalign(0.0);
         footer_meta.style_context().add_class("chefbar-sidebar-footer-meta");
@@ -143,12 +143,12 @@ impl Panel {
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
         title.style_context().add_class("chefbar-title");
-        // Huly display-tracking: agressief negatief op grote mono-maten.
+        // v2 heading-tracking: -0.02em op koppen (Pango-eenheden).
         let attrs = pango::AttrList::new();
         attrs.insert(pango::AttrInt::new_letter_spacing(-380));
         title.set_attributes(Some(&attrs));
         title_block.pack_start(&title, false, false, 0);
-        let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} signaal\u{00b7}huly"));
+        let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} signaal v2"));
         title_sub.set_halign(gtk::Align::Start);
         title_sub.set_xalign(0.0);
         title_sub.set_ellipsize(pango::EllipsizeMode::End);
@@ -1125,7 +1125,7 @@ fn state_label(health: &crate::models::HealthInfo) -> String {
 }
 
 fn section_title(content: &gtk::Box, title: &str, sub: &str) {
-    // Huly-eyebrow: korte caps in de interface-face. GTK3 kent geen
+    // v2 eyebrow (.caps): korte caps in de interface-face. GTK3 kent geen
     // text-transform, dus de caps gebeuren hier.
     let label = gtk::Label::new(Some(&title.to_uppercase()));
     label.set_halign(gtk::Align::Start);
