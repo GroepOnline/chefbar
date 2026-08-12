@@ -69,6 +69,11 @@ pub struct PanelState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_target: Option<String>,
 
+    /// Live herdr-alias van de gepinde agent (bijv. chefapp-herdr).
+    /// Wordt gebruikt om de pin te remappen als het pane-id verhuist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_alias: Option<String>,
+
     /// Of de control-pin actief is (combo blijft vast na restart).
     #[serde(default)]
     pub control_pinned: bool,
@@ -84,6 +89,7 @@ impl Default for PanelState {
             density: default_density(),
             recent_domains: Vec::new(),
             control_target: None,
+            control_alias: None,
             control_pinned: false,
         }
     }
@@ -110,6 +116,8 @@ impl<'de> Deserialize<'de> for PanelState {
             recent_domains: Option<Vec<String>>,
             #[serde(default)]
             control_target: Option<String>,
+            #[serde(default)]
+            control_alias: Option<String>,
             #[serde(default)]
             control_pinned: Option<bool>,
         }
@@ -142,6 +150,7 @@ impl<'de> Deserialize<'de> for PanelState {
             density,
             recent_domains: recent,
             control_target: raw.control_target.filter(|t| !t.trim().is_empty()),
+            control_alias: raw.control_alias.filter(|t| !t.trim().is_empty()),
             control_pinned: raw.control_pinned.unwrap_or(false),
         })
     }
@@ -178,15 +187,22 @@ impl PanelState {
 }
 
 /// Persist de control-chat pin zonder andere panel-velden te verliezen.
-pub fn persist_control_pin(target: Option<&str>, pinned: bool) -> bool {
-    persist_control_pin_to(&state_path(), target, pinned)
+pub fn persist_control_pin(target: Option<&str>, pinned: bool, alias: Option<&str>) -> bool {
+    persist_control_pin_to(&state_path(), target, pinned, alias)
 }
 
 /// Pad-expliciete kern — testbaar zonder env.
-pub fn persist_control_pin_to(path: &std::path::Path, target: Option<&str>, pinned: bool) -> bool {
+pub fn persist_control_pin_to(
+    path: &std::path::Path,
+    target: Option<&str>,
+    pinned: bool,
+    alias: Option<&str>,
+) -> bool {
     let mut state = load_from(path);
     let target = target.filter(|t| !t.trim().is_empty());
+    let alias = alias.filter(|t| !t.trim().is_empty());
     state.control_target = target.map(str::to_string);
+    state.control_alias = alias.map(str::to_string);
     state.control_pinned = pinned && state.control_target.is_some();
     save_to(path, &state)
 }
@@ -267,6 +283,7 @@ mod tests {
             density: DENSITY_COMFORTABLE.into(),
             recent_domains: vec!["fleet".into()],
             control_target: Some("w2R:p2".into()),
+            control_alias: Some("chefapp-herdr".into()),
             control_pinned: true,
         };
         assert!(save_to(&path, &state));
@@ -363,16 +380,23 @@ mod tests {
             ..Default::default()
         };
         assert!(save_to(&path, &state));
-        assert!(persist_control_pin_to(&path, Some("w2R:p2"), true));
+        assert!(persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
         let loaded = load_from(&path);
         assert_eq!(loaded.control_target.as_deref(), Some("w2R:p2"));
+        assert_eq!(loaded.control_alias.as_deref(), Some("chefapp-herdr"));
         assert!(loaded.control_pinned);
         assert_eq!(loaded.active_group.as_deref(), Some("fleet"));
         // unpin
-        assert!(persist_control_pin_to(&path, None, false));
+        assert!(persist_control_pin_to(&path, None, false, None));
         let loaded = load_from(&path);
         assert!(!loaded.control_pinned);
         assert_eq!(loaded.control_target, None);
+        assert_eq!(loaded.control_alias, None);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -383,6 +407,7 @@ mod tests {
         std::fs::write(&path, r#"{"active_group":"fleet","query":"x"}"#).unwrap();
         let loaded = load_from(&path);
         assert_eq!(loaded.control_target, None);
+        assert_eq!(loaded.control_alias, None);
         assert!(!loaded.control_pinned);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -390,7 +415,7 @@ mod tests {
     #[test]
     fn lege_persist_target_zet_pin_uit() {
         let path = temp_path("lege-target");
-        assert!(persist_control_pin_to(&path, Some("   "), true));
+        assert!(persist_control_pin_to(&path, Some("   "), true, None));
         let loaded = load_from(&path);
         assert_eq!(loaded.control_target, None);
         assert!(!loaded.control_pinned);

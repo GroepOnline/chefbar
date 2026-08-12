@@ -190,9 +190,6 @@ pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String>
         {
             return Some(pin.to_string());
         }
-        if ops.agents.iter().any(|a| agent_id(a) == pin) {
-            return Some(pin.to_string());
-        }
     }
     if let Some(env) = env_target() {
         return Some(env);
@@ -222,6 +219,12 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     }
     let ops = shared.ops.read().unwrap().clone();
     let kind = kind_for(&ops, id);
+    let alias = ops
+        .agents
+        .iter()
+        .find(|a| agent_id(a) == id)
+        .map(|a| a.alias.trim().to_string())
+        .filter(|a| !a.is_empty());
     let mut log = shared.chat.write().unwrap();
     if log.busy {
         return;
@@ -230,10 +233,87 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     log.kind = kind;
     log.pinned = true;
     drop(log);
-    let _ = crate::panel_state::persist_control_pin(Some(id), true);
+    let _ = crate::panel_state::persist_control_pin(Some(id), true, alias.as_deref());
     shared
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Na elke ops-poll: remap een gepinde pane-id via de alias (of het oude
+/// pane-id) naar de live agent. Weg/jcode/gereserveerde working visual-lane
+/// → unpin (persist) en daarna auto-pick. Geen pin → niets te doen.
+pub fn refresh_persisted_pin(shared: &crate::state::Shared) {
+    refresh_persisted_pin_at(shared, &crate::panel_state::state_path());
+}
+
+/// Pad-expliciete kern van `refresh_persisted_pin` — testbaar zonder env.
+pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std::path::Path) {
+    let ops = shared.ops.read().unwrap().clone();
+    let (target, alias) = {
+        let log = shared.chat.read().unwrap();
+        if !log.pinned {
+            return;
+        }
+        let alias = crate::panel_state::load_from(state_path)
+            .control_alias
+            .unwrap_or_default();
+        (log.target.clone().unwrap_or_default(), alias)
+    };
+    let matched = ops.agents.iter().find(|a| {
+        (!alias.is_empty() && a.alias.eq_ignore_ascii_case(&alias)) || agent_id(a) == target
+    });
+    match matched {
+        Some(agent) if is_picker_eligible(agent) => {
+            let id = agent_id(agent);
+            let kind = kind_of(agent);
+            let alias_keep = if agent.alias.trim().is_empty() {
+                None
+            } else {
+                Some(agent.alias.trim().to_string())
+            };
+            let changed = {
+                let mut log = shared.chat.write().unwrap();
+                let stored_alias = (!alias.is_empty()).then_some(alias.as_str());
+                let changed = log.target.as_deref() != Some(id.as_str())
+                    || log.kind.as_deref() != Some(kind.as_str())
+                    || alias_keep.as_deref() != stored_alias;
+                log.target = Some(id.clone());
+                log.kind = Some(kind.clone());
+                log.pinned = true;
+                changed
+            };
+            if changed {
+                let _ = crate::panel_state::persist_control_pin_to(
+                    state_path,
+                    Some(&id),
+                    true,
+                    alias_keep.as_deref(),
+                );
+                shared
+                    .chat_revision
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        _ => {
+            // Pin is weg of niet (meer) kiesbaar: unpin + auto-pick.
+            {
+                let mut log = shared.chat.write().unwrap();
+                log.target = None;
+                log.kind = None;
+                log.pinned = false;
+            }
+            let _ = crate::panel_state::persist_control_pin_to(state_path, None, false, None);
+            if let Some(auto) = resolve_target(&ops, None) {
+                let kind = kind_for(&ops, &auto);
+                let mut log = shared.chat.write().unwrap();
+                log.target = Some(auto);
+                log.kind = kind;
+            }
+            shared
+                .chat_revision
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
 }
 
 /// Hydrateer ChatLog vanuit panel-state: pin overleeft een herstart.
@@ -564,13 +644,181 @@ mod tests {
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
             Some("w2R:p2"),
-            true
+            true,
+            Some("chefapp-herdr")
         ));
         let panel = crate::panel_state::load_from(&path);
         let log = chat_log_from_panel(&panel);
         assert_eq!(log.target.as_deref(), Some("w2R:p2"));
         assert!(log.pinned);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    fn shared_met_pin(path: &std::path::Path) -> crate::state::Shared {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let shared = crate::state::Shared::new();
+        let panel = crate::panel_state::load_from(path);
+        *shared.chat.write().unwrap() = chat_log_from_panel(&panel);
+        shared
+    }
+
+    fn temp_state_path(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir()
+            .join(format!("chefbar-pin-resolve-{tag}-{}", std::process::id()))
+            .join("panel-state.json")
+    }
+
+    fn set_ops(shared: &crate::state::Shared, ops: OpsSnapshot) {
+        *shared.ops.write().unwrap() = ops;
+    }
+
+    #[test]
+    fn alias_remap_naar_nieuw_pane_id() {
+        let path = temp_state_path("alias-remap");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
+        let shared = shared_met_pin(&path); // hydrateert pin uit panel-state
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![agent_met_alias(
+                    "chefapp-herdr",
+                    "w2R:p3",
+                    "/home/joep/.herdr/worktrees/chefbar/worktree-pi-bind",
+                )],
+            },
+        );
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert_eq!(log.target.as_deref(), Some("w2R:p3"));
+        assert_eq!(log.kind.as_deref(), Some("pi"));
+        assert!(log.pinned);
+        let persisted = crate::panel_state::load_from(&path);
+        assert_eq!(persisted.control_target.as_deref(), Some("w2R:p3"));
+        assert_eq!(persisted.control_alias.as_deref(), Some("chefapp-herdr"));
+        assert!(persisted.control_pinned);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn stale_pane_zonder_alias_unpint_en_auto_pickt() {
+        let path = temp_state_path("stale-no-alias");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2Q:p9"),
+            true,
+            None
+        ));
+        let shared = shared_met_pin(&path);
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![agent("pi", "w2S:p2", "idle", "/tmp/ops-lane")],
+            },
+        );
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(!log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2S:p2"));
+        let persisted = crate::panel_state::load_from(&path);
+        assert!(!persisted.control_pinned);
+        assert_eq!(persisted.control_target, None);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn jcode_pin_van_disk_wordt_gedropt() {
+        let path = temp_state_path("jcode-pin");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w9:p1"),
+            true,
+            None
+        ));
+        let shared = shared_met_pin(&path);
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![agent(
+                    "pi",
+                    "w9:p1",
+                    "idle",
+                    "/var/lib/chef-jcode-memory/home",
+                )],
+            },
+        );
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(!log.pinned);
+        assert_eq!(log.target, None);
+        let persisted = crate::panel_state::load_from(&path);
+        assert!(!persisted.control_pinned);
+        assert_eq!(persisted.control_target, None);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn working_visual_pin_wordt_gedropt() {
+        let path = temp_state_path("visual-pin");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2M:p1"),
+            true,
+            None
+        ));
+        let shared = shared_met_pin(&path);
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![
+                    agent("pi", "w2M:p1", "working", "/home/joep/ChefFactory/chefbar"),
+                    agent_met_alias(
+                        "chefapp-herdr",
+                        "w2R:p2",
+                        "/home/joep/.herdr/worktrees/chefbar/worktree-pi-bind",
+                    ),
+                ],
+            },
+        );
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(!log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2R:p2"));
+        let persisted = crate::panel_state::load_from(&path);
+        assert!(!persisted.control_pinned);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn ineligible_pin_valt_door_naar_auto() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent("pi", "w9:p1", "idle", "/var/lib/chef-jcode-memory/home"),
+                agent("pi", "w2S:p2", "idle", "/tmp/ops-lane"),
+            ],
+        };
+        // jcode-pin wint niet; doorvallen naar auto-pick
+        assert_eq!(
+            resolve_target(&ops, Some("w9:p1")).as_deref(),
+            Some("w2S:p2")
+        );
+        // bestaande pin weg → auto
+        assert_eq!(
+            resolve_target(&ops, Some("w9:p9")).as_deref(),
+            Some("w2S:p2")
+        );
     }
 
     #[test]

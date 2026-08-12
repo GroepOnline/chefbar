@@ -687,6 +687,7 @@ impl Poller {
             let mut current = self.shared.ops.write().unwrap();
             *current = ops;
         }
+        crate::chat::refresh_persisted_pin(&self.shared);
         {
             let mut snap = self.shared.snapshot.write().unwrap();
             snap.last_poll_at.insert("ops".into(), iso_now());

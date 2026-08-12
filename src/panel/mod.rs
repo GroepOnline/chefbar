@@ -459,6 +459,7 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
+            let persisted = crate::panel_state::load();
             let mut state = crate::panel_state::PanelState {
                 active_group: Some(current.clone()),
                 harness: None,
@@ -466,9 +467,10 @@ impl Panel {
                     .filter(|q: &String| !q.trim().is_empty()),
                 drawer_open: self.drawer.is_open(),
                 density: self.density.borrow().clone(),
-                recent_domains: crate::panel_state::load().recent_domains.clone(),
-                control_target: crate::panel_state::load().control_target.clone(),
-                control_pinned: crate::panel_state::load().control_pinned,
+                recent_domains: persisted.recent_domains.clone(),
+                control_target: persisted.control_target.clone(),
+                control_pinned: persisted.control_pinned,
+                control_alias: persisted.control_alias.clone(),
             };
             // push huidige group naar recent_domains MRU
             state.push_recent_domain(&current);
