@@ -226,7 +226,8 @@ fn civil_from_epoch(secs: u64) -> (i32, u32, u32, u32, u32, u32) {
 pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
     let expanded = expand_query(query);
     // needle voor contains/prefix/gappy: join expanded terms met spatie
-    // maar voor contains checken we elk geëxpande term individueel als tier-1.
+    // maar voor contains checken we alleen de volledige needle, niet per-token
+    // (per-token zou "fl" al als contains tellen voor "fleet" — fout: dat is prefix).
     let needle_raw: String = query.split_whitespace().collect::<Vec<_>>().join(" ");
     if needle_raw.trim().is_empty() && expanded.is_empty() {
         return Some(0);
@@ -238,53 +239,34 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
         action.section.to_lowercase(),
         action.keywords.to_lowercase()
     );
-    // Tier 1 — contains: als haystack één van de expanded termen bevat
-    // (of de volledige needle als substring), scoor als contains.
+    // Tier 1 — contains: alleen volledige needle als substring, plus single-token alias.
     let needle_lower = needle_raw.to_lowercase();
     if !needle_lower.is_empty() && haystack.contains(&needle_lower) {
         return Some(1000 + (1000 - haystack.find(&needle_lower).unwrap_or(0) as i32).max(0));
     }
-    for term in expanded.iter() {
-        if haystack.contains(term) {
-            return Some(1000 + (1000 - haystack.find(term).unwrap_or(0) as i32).max(0));
+    // Single-token alias: "cfg" -> "config" — als alias-term in haystack, tel als contains.
+    let orig_tokens: Vec<&str> = needle_lower.split_whitespace().collect();
+    if orig_tokens.len() == 1 && expanded.len() > 1 {
+        for term in expanded.iter() {
+            if *term != needle_lower && haystack.contains(term) {
+                return Some(1000 + (1000 - haystack.find(term).unwrap_or(0) as i32).max(0));
+            }
         }
     }
-    // Voor prefix/gappy gebruiken we de geëxpande needle (join met spatie)
-    let needle_joined = if expanded.is_empty() {
-        needle_lower.clone()
-    } else {
-        expanded.join(" ")
-    };
-    if needle_joined.trim().is_empty() {
+    // Voor prefix/gappy gebruiken we de originele needle (niet geëxpande join)
+    if needle_lower.trim().is_empty() {
         return Some(0);
     }
     let words: Vec<&str> = haystack.split_whitespace().collect();
-    let tokens: Vec<&str> = needle_joined.split_whitespace().collect();
-    // Prefix: elk token moet prefix van een woord zijn — maar we staan toe dat
-    // één alias-token al voldoende is per origineel token (expanded bevat alle varianten).
-    // Voor backward compat: check of alle originele needle-tokens prefixen.
-    let orig_tokens: Vec<&str> = needle_lower.split_whitespace().collect();
-    if !orig_tokens.is_empty()
-        && orig_tokens
+    let tokens: Vec<&str> = needle_lower.split_whitespace().collect();
+    // Prefix: elk token moet prefix van een woord zijn.
+    if !tokens.is_empty()
+        && tokens
             .iter()
             .all(|token| words.iter().any(|word| word.starts_with(token)))
     {
         return Some(700);
     }
-    // Ook via expanded tokens: als alle expanded tokens als prefix voorkomen, ook tier 700.
-    // We checken of voor elk origineel token ten minste één van zijn expansies prefix-matcht.
-    // Vereenvoudigd: als expanded tokens allemaal prefix-matchen, geef 700.
-    if tokens
-        .iter()
-        .all(|token| words.iter().any(|word| word.starts_with(token)))
-    {
-        // Alleen als expanded niet veel groter is dan origineel (voorkom false positive)
-        // Maar voor 1-token queries is dit correct.
-        if expanded.len() <= orig_tokens.len() * 2 {
-            return Some(700);
-        }
-    }
-    // Fallback: probeer originele needle voor prefix (hierboven al), anders gappy
     // Gappy: ordered character match op haystack met de originele needle
     let mut position: i64 = -1;
     let mut gaps: i64 = 0;
@@ -524,30 +506,28 @@ mod tests {
 
     #[test]
     fn tier_invariant_contains_nooit_onder_prefix_met_max_boost() {
-        // contains vs prefix: zelfs met alle boosts op prefix mag contains nooit verliezen.
-        let contains = action("Open dashboard overzicht", "status", "dashboard open");
-        let mut prefix = action("dash extra", "status", "dash extra");
-        // prefix match op "dash" -> 700, contains op "dash" via substring -> >=1000
+        // contains ("fl ex" als aaneengesloten substring) vs prefix (fl→fleet, ex→extra)
+        // zelfs met alle boosts op prefix mag contains nooit verliezen.
+        let contains = action("fl ex dashboard", "status", "open");
+        let mut prefix = action("fleet extra ops", "status", "run fleet extra");
         // geef prefix alle boosts
         prefix.pinned = true;
         let mut frecency = HashMap::new();
-        frecency.insert("dash".into(), (5, format_now_rfc3339()));
+        frecency.insert("fleet".into(), (5, format_now_rfc3339()));
         let ctx = RankContext {
-            boost_terms: vec!["dash".into()],
-            active_group: Some("dash".into()),
+            boost_terms: vec!["fleet".into()],
+            active_group: Some("fleet".into()),
             frecency,
         };
-        // contains krijgt geen boost
         let ctx_empty = RankContext::default();
-        // raw scores
-        let score_contains = fuzzy_score("dash", &contains).unwrap();
-        let score_prefix = fuzzy_score("dash", &prefix).unwrap();
+        let score_contains = fuzzy_score("fl ex", &contains).unwrap();
+        let score_prefix = fuzzy_score("fl ex", &prefix).unwrap();
         assert!(
             score_contains >= 1000,
             "contains tier >=1000 got {score_contains}"
         );
         assert_eq!(score_prefix, 700);
-        // boosted: prefix krijgt max boost 150+150+60+80=440 capped 99 -> 799, contains 1000+ -> >=1000
+        // boosted: prefix krijgt max boost capped 99 -> 799, contains 1000+ -> >=1000
         let boosted_contains = boosted(
             score_contains,
             ctx_empty.boost(&contains) + if contains.pinned { 80 } else { 0 },
@@ -557,28 +537,29 @@ mod tests {
             boosted_contains > boosted_prefix,
             "tier invariant broken: contains {boosted_contains} vs prefix {boosted_prefix}"
         );
-        // ook via rank
         let actions = vec![prefix, contains.clone()];
-        let ranked = rank_actions_with(&actions, "dash", 10, Some(&ctx));
-        // contains moet winnen, ook al heeft prefix alle boosts
-        assert_eq!(ranked[0].title, "Open dashboard overzicht");
+        let ranked = rank_actions_with(&actions, "fl ex", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "fl ex dashboard");
     }
 
     #[test]
     fn tier_invariant_prefix_nooit_onder_gappy_met_boost() {
         // prefix 700 vs gappy ~500: gappy met max boost mag nooit boven prefix komen
         let prefix = action("Stuur prompt", "herdr", "stuur prompt");
-        let gappy = action("Systeem status", "overzicht", "sys");
-        // "stuur" is prefix voor prefix-action, gappy voor gappy-action
+        // gappy: ordered chars s-t-u-u-r verspreid, niet als substring/prefix
+        let gappy = action("Snel terug uur", "overzicht", "snel terug uur");
         let score_prefix = fuzzy_score("stuur", &prefix).unwrap();
         let score_gappy = fuzzy_score("stuur", &gappy).unwrap();
         assert_eq!(score_prefix, 700);
-        assert!(score_gappy < 700 && score_gappy >= 1);
+        assert!(
+            score_gappy < 700 && score_gappy >= 1,
+            "gappy score {score_gappy:?} moet 1..699 zijn"
+        );
         let mut frecency = HashMap::new();
-        frecency.insert("sys".into(), (3, format_now_rfc3339()));
+        frecency.insert("snel".into(), (3, format_now_rfc3339()));
         let ctx_gappy = RankContext {
-            boost_terms: vec!["sys".into()],
-            active_group: Some("sys".into()),
+            boost_terms: vec!["snel".into()],
+            active_group: Some("snel".into()),
             frecency,
         };
         let mut gappy_pinned = gappy.clone();
