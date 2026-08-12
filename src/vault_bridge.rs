@@ -700,7 +700,7 @@ pub fn parse_connectors(value: &Value) -> Option<ConnectorEventsResponse> {
 // 11. work — GET /api/work
 // ===========================================================================
 
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorkPr {
     pub number: i64,
@@ -744,7 +744,7 @@ pub struct WorkCounts {
     pub notion_pages: i64,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorkResponse {
     pub ok: bool,
@@ -1108,13 +1108,13 @@ mod tests {
     }
 
     // --- determinisme helper ---
-    fn roundtrip<T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug>(
+    fn assert_deterministic<T: PartialEq + std::fmt::Debug>(
         value: Value,
         parse: fn(&Value) -> Option<T>,
-    ) -> (T, T) {
-        let a = parse(&value).unwrap();
-        let b = parse(&value).unwrap();
-        (a, b)
+    ) {
+        let a = parse(&value);
+        let b = parse(&value);
+        assert_eq!(a, b);
     }
 
     #[test]
@@ -1127,8 +1127,7 @@ mod tests {
             "checkedAt":"2026-08-12T10:00:00Z",
             "versionInfo":{"version":"1.2.3","commit":"abc"}
         });
-        let (a, b) = roundtrip(v.clone(), parse_status);
-        assert_eq!(a, b);
+        assert_deterministic(v.clone(), parse_status);
         let p = parse_status(&v).unwrap();
         assert_eq!(p.services.len(), 2);
         assert_eq!(p.checked_at, "2026-08-12T10:00:00Z");
@@ -1151,9 +1150,11 @@ mod tests {
         assert_eq!(p.containers[0].name, "vault");
         assert!(parse_fleet(&json!(null)).is_none());
         // tolerant on garbage
-        assert_eq!(parse_fleet(&json!({"peers":"bad"})).unwrap().peers, Vec::<FleetPeer>::new());
-        let (a, b) = roundtrip(v, parse_fleet);
-        assert_eq!(a, b);
+        assert_eq!(
+            parse_fleet(&json!({"peers":"bad"})).unwrap().peers,
+            Vec::<FleetPeer>::new()
+        );
+        assert_deterministic(v, parse_fleet);
     }
 
     #[test]
@@ -1252,8 +1253,7 @@ mod tests {
         });
         assert_eq!(parse_brain(&v).unwrap().skills[0].id, "s1");
         assert!(parse_brain(&json!(null)).is_none());
-        let (a, b) = roundtrip(v, parse_brain);
-        assert_eq!(a, b);
+        assert_deterministic(v, parse_brain);
     }
 
     #[test]
@@ -1310,14 +1310,16 @@ mod tests {
         assert_eq!(parse_commander(&v2).unwrap().tasks[0].id, "t2");
         assert!(parse_commander(&json!(null)).is_none());
         // determinisme
-        let (a, b) = roundtrip(v, parse_commander);
-        assert_eq!(a, b);
+        assert_deterministic(v, parse_commander);
     }
 
     #[test]
     fn commander_workspaces_parse_fixture() {
         let v = json!({"workspaces":[{"path":"/home/joep/ChefFactory","label":"Factory","group":"code"}],"allowPrefix":"/home/joep","fetchedAt":"2026-08-12T10:00:00Z"});
-        assert_eq!(parse_commander_workspaces(&v).unwrap().workspaces[0].path, "/home/joep/ChefFactory");
+        assert_eq!(
+            parse_commander_workspaces(&v).unwrap().workspaces[0].path,
+            "/home/joep/ChefFactory"
+        );
         assert!(parse_commander_workspaces(&json!(null)).is_none());
     }
 
