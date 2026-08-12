@@ -81,7 +81,9 @@ impl Shared {
             revision: Arc::new(AtomicI64::new(0)),
             vault_online: Arc::new(RwLock::new(false)),
             last_error: Arc::new(RwLock::new(None)),
-            chat: Arc::new(RwLock::new(crate::chat::ChatLog::default())),
+            chat: Arc::new(RwLock::new(crate::chat::chat_log_from_panel(
+                &crate::panel_state::load(),
+            ))),
             chat_revision: Arc::new(AtomicI64::new(0)),
         }
     }

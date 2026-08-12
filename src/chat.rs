@@ -230,9 +230,27 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     log.kind = kind;
     log.pinned = true;
     drop(log);
+    let _ = crate::panel_state::persist_control_pin(Some(id), true);
     shared
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Hydrateer ChatLog vanuit panel-state: pin overleeft een herstart.
+/// Target zonder actieve pin wordt niet vastgezet.
+pub fn chat_log_from_panel(panel: &crate::panel_state::PanelState) -> ChatLog {
+    let mut log = ChatLog::default();
+    if panel.control_pinned {
+        if let Some(target) = panel
+            .control_target
+            .as_deref()
+            .filter(|t| !t.trim().is_empty())
+        {
+            log.target = Some(target.to_string());
+            log.pinned = true;
+        }
+    }
+    log
 }
 
 /// Korte control-context, geen secrets, geen dumps.
@@ -536,5 +554,38 @@ mod tests {
     fn terminal_delta_takes_suffix() {
         assert_eq!(terminal_delta("abc", "abcdef"), "def");
         assert_eq!(terminal_delta("nope", "hello"), "hello");
+    }
+
+    #[test]
+    fn pin_overleeft_save_en_load_via_panel_state() {
+        let path = std::env::temp_dir()
+            .join(format!("chefbar-control-pin-{}", std::process::id()))
+            .join("panel-state.json");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true
+        ));
+        let panel = crate::panel_state::load_from(&path);
+        let log = chat_log_from_panel(&panel);
+        assert_eq!(log.target.as_deref(), Some("w2R:p2"));
+        assert!(log.pinned);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn hydratie_zonder_pin_geeft_ongepinde_log() {
+        let panel = crate::panel_state::PanelState::default();
+        let log = chat_log_from_panel(&panel);
+        assert_eq!(log.target, None);
+        assert!(!log.pinned);
+        // target zonder actieve pin wordt niet vastgezet
+        let panel = crate::panel_state::PanelState {
+            control_target: Some("w2S:p2".into()),
+            ..Default::default()
+        };
+        let log = chat_log_from_panel(&panel);
+        assert_eq!(log.target, None);
+        assert!(!log.pinned);
     }
 }

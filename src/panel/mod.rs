@@ -467,6 +467,8 @@ impl Panel {
                 drawer_open: self.drawer.is_open(),
                 density: self.density.borrow().clone(),
                 recent_domains: crate::panel_state::load().recent_domains.clone(),
+                control_target: crate::panel_state::load().control_target.clone(),
+                control_pinned: crate::panel_state::load().control_pinned,
             };
             // push huidige group naar recent_domains MRU
             state.push_recent_domain(&current);
