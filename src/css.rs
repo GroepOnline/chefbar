@@ -18,9 +18,9 @@ use gtk::prelude::*;
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
-/// Eén provider voor de hele app; herladen op thema-wissel past de skin
-/// live toe zonder herstart. GTK-objecten zijn niet Send/Sync, dus
-/// thread-local (alleen de UI-thread raakt hem aan).
+// Eén provider voor de hele app; herladen op thema-wissel past de skin
+// live toe zonder herstart. GTK-objecten zijn niet Send/Sync, dus
+// thread-local (alleen de UI-thread raakt hem aan).
 thread_local! {
     static PROVIDER: RefCell<Option<gtk::CssProvider>> = RefCell::new(None);
 }

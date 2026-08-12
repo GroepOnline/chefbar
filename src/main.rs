@@ -8,8 +8,6 @@ use chefbar::config::{global_profile, load_profile, set_global_profile};
 use chefbar::css;
 use chefbar::policy::EndpointPolicy;
 use clap::Parser;
-use gtk::prelude::*;
-
 #[derive(Parser, Debug)]
 #[command(
     name = "chefbar",
@@ -188,7 +186,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     let provider = css::theme_provider(&theme);
     gtk::StyleContext::add_provider_for_screen(
         &gdk::Screen::default().expect("geen scherm"),
-        provider,
+        &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
