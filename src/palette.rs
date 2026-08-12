@@ -70,7 +70,7 @@ mod aliases {
         out
     }
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     pub fn alias_map_for_test() -> HashMap<&'static str, &'static str> {
         alias_map()
     }
@@ -173,7 +173,7 @@ fn parse_rfc3339_to_epoch(s: &str) -> Option<u64> {
 }
 
 fn days_from_civil(y: i32, m: u32, d: u32) -> Option<i64> {
-    if m < 1 || m > 12 || d < 1 || d > 31 {
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
     let y = y as i64;
@@ -188,6 +188,7 @@ fn days_from_civil(y: i32, m: u32, d: u32) -> Option<i64> {
     Some(era * 146097 + doe - 719468)
 }
 
+#[allow(dead_code)]
 fn format_now_rfc3339() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -197,6 +198,7 @@ fn format_now_rfc3339() -> String {
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
 }
 
+#[allow(dead_code)]
 fn civil_from_epoch(secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     let days = (secs / 86400) as i64;
     let secs_of_day = (secs % 86400) as u32;
@@ -347,7 +349,7 @@ impl RankContext {
 /// contains >=1000, prefix 700, gappy <=500+99=599.
 /// Dus: gappy+99 < prefix (700) en prefix+99 < contains (1000).
 fn boosted(score: i32, boost: i32) -> i32 {
-    let capped = boost.min(99).max(0);
+    let capped = boost.clamp(0, 99);
     score + capped
 }
 
@@ -561,7 +563,7 @@ mod tests {
             "prefix tier verwacht voor stu pro -> stuur prompt"
         );
         assert!(
-            score_gappy < 700 && score_gappy >= 1,
+            (1..700).contains(&score_gappy),
             "gappy score {score_gappy:?} moet 1..699 zijn"
         );
         let mut frecency = HashMap::new();

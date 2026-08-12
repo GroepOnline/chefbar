@@ -88,9 +88,9 @@ impl<'de> Deserialize<'de> for PanelState {
     {
         #[derive(Deserialize)]
         struct Raw {
-            #[serde(default, alias = "active_harness")]
+            #[serde(default, alias = "active_harness", alias = "harness")]
             active_group: Option<String>,
-            #[serde(default, alias = "active_harness")]
+            #[serde(default)]
             harness: Option<String>,
             #[serde(default)]
             query: Option<String>,
@@ -100,14 +100,14 @@ impl<'de> Deserialize<'de> for PanelState {
             density: Option<String>,
             #[serde(default)]
             recent_domains: Option<Vec<String>>,
-            // vang extra velden tolerant op zonder te falen
             #[serde(default)]
-            active_harness: Option<String>,
+            #[allow(dead_code)]
+            _catch_active_harness: Option<String>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
-        // Prioriteit: active_group > active_harness > harness
-        let active_group = raw.active_group.or(raw.active_harness).or(raw.harness);
+        // Prioriteit: active_group > harness (active_group alias dekt active_harness al)
+        let active_group = raw.active_group.or(raw.harness);
 
         let density_raw = raw.density.unwrap_or_else(default_density);
         let density = normalize_density(&density_raw);
