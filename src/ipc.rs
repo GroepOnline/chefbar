@@ -49,6 +49,43 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     Ok(())
 }
 
+/// Doctor via een draaiende instantie: stuurt `doctor`, leest alle
+/// report-regels terug (EOF gemarkeerd door de luisteraar) en parst de
+/// machine-leesbare statusregel. Gebruikt door `--doctor` zodat die de echte
+/// runtime-env van de service ziet, niet de kale shell-profiel-default.
+pub struct DoctorReply {
+    pub lines: Vec<String>,
+    pub status: u8,
+}
+
+pub fn send_doctor() -> Result<DoctorReply, String> {
+    let path = socket_path();
+    let stream = UnixStream::connect(&path).map_err(|e| e.to_string())?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).map_err(|e| e.to_string())?;
+    use std::io::{BufRead, Write};
+    let mut stream = stream;
+    stream
+        .write_all(b"doctor\n")
+        .and_then(|_| stream.flush())
+        .map_err(|e| e.to_string())?;
+    let mut lines: Vec<String> = Vec::new();
+    let mut reader = BufReader::new(&stream);
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => lines.push(line.trim_end().to_string()),
+            Err(_) => break,
+        }
+    }
+    let status = lines
+        .iter()
+        .rev()
+        .find_map(|l| l.strip_prefix("doctor-status ").map(|s| s.trim().parse::<u8>().unwrap_or(1)))
+        .unwrap_or(1);
+    Ok(DoctorReply { lines, status })
+}
+
 /// Wie de socket bezit: Owner bindt (en is dè instantie), Occupied betekent
 /// dat een andere instantie hem al houdt — ook als die nog midden in de
 /// GTK-init zit. Zo kan een gelijktijdige start nooit twee panels maken.
@@ -114,6 +151,21 @@ fn handle_connection(stream: UnixStream, tx: Sender<UiCommand>) {
             continue;
         }
         if let Some(command) = parse_command(&line) {
+            // Doctor: afhandelen in de luisteraar-thread zodat de caller het
+            // report terugkrijgt (doctor-checks raken geen GTK: config
+            // OnceLock, atomics, bestanden). Report terugschrijven + socket
+            // sluiten markeert EOF voor send_doctor(). De tray-doctor (via
+            // start_command_bridge) blijft op de UI-thread lopen.
+            if command == UiCommand::Doctor {
+                let report = crate::doctor::run_checks();
+                use std::io::Write;
+                let mut stream = reader.into_inner();
+                let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(3)));
+                for l in report.report_lines() {
+                    let _ = writeln!(stream, "{l}");
+                }
+                break;
+            }
             let _ = tx.send(command);
         }
     }

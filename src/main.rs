@@ -71,12 +71,24 @@ fn main() {
     }
 
     if cli.doctor {
-        // Doctor must use the same explicitly selected profile as the runtime.
-        let profile = load_profile(cli.profile.as_deref());
-        set_global_profile(profile);
-        let report = chefbar::doctor::run_checks();
-        chefbar::doctor::print_report(&report);
-        std::process::exit(if report.ok() { 0 } else { 1 });
+        // W4: bevraag eerst de draaiende instantie via IPC — die heeft de
+        // echte runtime-env (drop-in CHEFBAR_VAULT_API enz.), niet de kale
+        // shell-profiel-default. Pas zonder instantie lokaal pollen.
+        match chefbar::ipc::send_doctor() {
+            Ok(reply) => {
+                for line in reply.lines {
+                    println!("{line}");
+                }
+                std::process::exit(i32::from(reply.status));
+            }
+            Err(_) => {
+                let profile = load_profile(cli.profile.as_deref());
+                set_global_profile(profile);
+                let report = chefbar::doctor::run_checks();
+                chefbar::doctor::print_report(&report);
+                std::process::exit(i32::from(report.status()));
+            }
+        }
     }
 
     if cli.show_config {

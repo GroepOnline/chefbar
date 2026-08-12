@@ -14,6 +14,36 @@ impl DoctorReport {
     pub fn ok(&self) -> bool {
         self.failures.is_empty()
     }
+
+    /// Exit-code voor scripts/systemd: 0 ok / 1 degraded / 2 down.
+    /// Down = geen bruikbare credentials of vault onbereikbaar; de rest
+    /// (policy, profiel, watchdog) telt als degraded.
+    pub fn status(&self) -> u8 {
+        if self.ok() {
+            return 0;
+        }
+        let down = self
+            .failures
+            .iter()
+            .any(|f| f.contains("credentials") || f.contains("offline"));
+        if down {
+            2
+        } else {
+            1
+        }
+    }
+
+    /// Report-regels inclusief een machine-leesbare statusregel voor IPC.
+    pub fn report_lines(&self) -> Vec<String> {
+        let mut out = self.lines.clone();
+        out.push(if self.ok() {
+            "doctor   OK".into()
+        } else {
+            "doctor   NIET OK".into()
+        });
+        out.push(format!("doctor-status {}", self.status()));
+        out
+    }
 }
 
 pub fn run_checks() -> DoctorReport {
@@ -97,6 +127,9 @@ pub fn run_checks() -> DoctorReport {
     } else {
         "netwerk  vault offline (laatste poll faalde of nog geen poll)".into()
     });
+    if !online {
+        failures.push("vault offline (laatste poll faalde of nog geen poll)".into());
+    }
 
     DoctorReport { lines, failures }
 }
@@ -118,17 +151,50 @@ pub fn run_checks_async(report: DoctorReport) {
 
 /// Doctor via CLI: leg het rapport als tekst op stdout.
 pub fn print_report(report: &DoctorReport) {
-    for line in &report.lines {
+    for line in report.report_lines() {
         println!("{line}");
-    }
-    if report.ok() {
-        println!("doctor   OK");
-    } else {
-        println!("doctor   NIET OK");
     }
 }
 
 /// Helper zodat panel/doctor-UI het profiel kan tonen zonder import-cyclus.
 pub fn profile_line(profile: &EndpointProfile) -> String {
     format!("{} · {}", profile.name, profile.label("vaultApi"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(failures: Vec<&str>) -> DoctorReport {
+        DoctorReport {
+            lines: vec!["profiel   test".into()],
+            failures: failures.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn status_is_0_when_ok() {
+        assert_eq!(report(vec![]).status(), 0);
+    }
+
+    #[test]
+    fn status_is_1_for_degraded() {
+        assert_eq!(report(vec!["policy-gate weigerde profiel-host(s)"]).status(), 1);
+    }
+
+    #[test]
+    fn status_is_2_when_down() {
+        assert_eq!(report(vec!["geen bruikbare credentials gevonden"]).status(), 2);
+        assert_eq!(report(vec!["vault offline (laatste poll faalde)"]).status(), 2);
+    }
+
+    #[test]
+    fn report_lines_include_machine_status() {
+        let r = report(vec!["policy-gate weigerde profiel-host(s)"]);
+        let lines = r.report_lines();
+        assert!(lines.iter().any(|l| l == "doctor-status 1"));
+        assert!(lines.iter().any(|l| l == "doctor   NIET OK"));
+        assert!(lines.iter().any(|l| l == "profiel   test"));
+        assert!(lines.iter().filter(|l| l.starts_with("doctor")).count() == 2);
+    }
 }
