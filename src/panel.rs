@@ -39,7 +39,12 @@ impl Panel {
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
         window.set_title("ChefBar");
         window.set_decorated(false);
+        // Vaste geometrie (W1/D2): min==max via size_request + resizable(false)
+        // zodat inhoud-hoogte het venster nooit kan laten resizen/jumpen,
+        // op welke backend dan ook (X11/XWayland/Wayland).
         window.set_default_size(760, 840);
+        window.set_size_request(760, 840);
+        window.set_resizable(false);
         window.set_keep_above(true);
         window.set_position(gtk::WindowPosition::Center);
 
@@ -239,7 +244,10 @@ impl Panel {
         // ---- Content ----
         let scroller = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        // Vaste scroller-hoogte (W1/D2): content scrollt intern i.p.v. het
+        // venster op te rekken tijdens poll-renders.
         scroller.set_min_content_height(480);
+        scroller.set_max_content_height(480);
         main.pack_start(&scroller, true, true, 0);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -324,8 +332,11 @@ impl Panel {
             self.render(&query);
             self.window.show_all();
             fade_in(&self.window, PANEL_MS);
+            // Alleen present() bij overgang verborgen→zichtbaar (W1/D2): elke
+            // show -> her-positionering/re-focus, dus geen present bij herhaalde
+            // Super+Space terwijl het venster al open staat.
+            self.window.present();
         }
-        self.window.present();
     }
 
     pub fn is_visible(&self) -> bool {
