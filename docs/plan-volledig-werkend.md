@@ -19,11 +19,11 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
 
 ### W1 — Interactie & venster-stabiliteit (hoogste impact)
 - [x] D1 hotkey-alias (PR #10) + live binding gerepareerd
-- [ ] Vaste venster-geometrie: hoogte van de inhoud mag nooit de venstergrootte
+- [x] Vaste venster-geometrie: hoogte van de inhoud mag nooit de venstergrootte
       veranderen (scroller met vaste hoogte; min/max size lock). Eliminieert
-      resize-jumps onafhankelijk van backend.
-- [ ] Fades alleen op open/dicht, nooit tijdens render; `present()` alleen
-      als het venster verborgen was (nu: elke show → her-positionering).
+      resize-jumps onafhankelijk van backend. (PR #17, gemerged)
+- [x] Fades alleen op open/dicht, nooit tijdens render; `present()` alleen
+      als het venster verborgen was (nu: elke show → her-positionering). (PR #17)
 - [ ] **gtk-layer-shell evaluatie** (stond al op de roadmap als "bewust
       uitgesteld"): echte Wayland-laag met tray-anker (top-right, margin),
       geen XWayland meer. Beslis-tree: crate `gtk-layer-shell` aanwezig op
@@ -57,22 +57,24 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
       onder Xvfb): stil/bezig/hulp/fout/offline doorprikken via ipc-testhook.
 
 ### W4 — Doctor, IPC & observability
-- [ ] `chefbar --doctor` bevraagt eerst de draaiende instantie via IPC
+- [x] `chefbar --doctor` bevraagt eerst de draaiende instantie via IPC
       (die heeft de echte env); pas zonder instantie zelf pollen.
-      Geen "vault offline" meer door env-drift.
-- [ ] Doctor exit-codes: 0 ok / 1 degraded / 2 down — bruikbaar in
-      systemd en scripts.
+      Geen "vault offline" meer door env-drift. (PR #18, gemerged)
+- [x] Doctor exit-codes: 0 ok / 1 degraded / 2 down — bruikbaar in
+      systemd en scripts. (PR #18)
 - [ ] Poll-gezondheid zichtbaar in de statuslijn zelf ("laatste poll 4s
       geleden · vault ok · ops 302").
 
 ### W5 — QA-harnas (zodat dit niet terugkomt)
-- [ ] `/tmp/chefbar-shot3.sh` volwassen maken als `scripts/visual-shot.sh`
+- [x] `/tmp/chefbar-shot3.sh` volwassen maken als `scripts/visual-shot.sh`
       in de repo (geïsoleerde Xvfb + runtime-dir, IPC-poke, pixel-assert
-      op accent-kleur).
-- [ ] CLI golden tests: elke gedocumenteerde vlag (`--bar`, `--ipc bar`,
-      `doctor`, `serve`, `--show-config`) in een clap-test.
-- [ ] Single-instance e2e: twee processen starten → exact één venster.
-- [ ] Screenshot-diff tegen design-referentie in CI (zacht, warning-only).
+      op accent-kleur). (PR #19, gemerged)
+- [x] CLI golden tests: elke gedocumenteerde vlag (`--bar`, `--ipc bar`,
+      `doctor`, `serve`, `--show-config`) in een clap-test. (PR #19)
+- [x] Single-instance e2e: twee processen starten → exact één venster.
+      (in visual-shot.sh, PR #19)
+- [x] Screenshot-diff tegen design-referentie in CI (zacht, warning-only).
+      (CI visual-job met Xvfb + accent-assert, PR #19)
 
 ## 3. Acceptatiecriteria (done = dit)
 1. Super+Space opent het paneel binnen ~300ms, **altijd precies één venster**,
