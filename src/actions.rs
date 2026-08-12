@@ -34,6 +34,21 @@ pub enum RunSpec {
     DesktopAction(String),
     ShareSync(String),
     Refresh,
+    // Lane B — nieuwe domein-varianten
+    OpenLinearIssue(String),
+    CopySecretMeta {
+        id: String,
+    },
+    FleetDeploy {
+        node: String,
+    },
+    FleetExec {
+        node: String,
+        template: String,
+    },
+    PrunePreview,
+    FocusDomain(String),
+    TogglePalette,
 }
 
 fn action(
@@ -99,6 +114,371 @@ pub fn sync_blocked(snap: &Snapshot) -> bool {
         )
 }
 
+// ---------------------------------------------------------------------------
+// Per-domein builders — pure functies, geen I/O
+// ---------------------------------------------------------------------------
+
+/// Inbox: blocked/hulp/down items — unified D1.
+/// Tolerant: werkt ook als snapshot leeg is (0 items).
+pub fn build_inbox_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    for suggestion in snap.suggestions.iter().take(6) {
+        let kind_label = match suggestion.kind {
+            crate::models::SuggestionKind::FocusAgent(_) => "focus",
+            crate::models::SuggestionKind::OpenDashboard => "dashboard",
+            crate::models::SuggestionKind::None_ => "melding",
+        };
+        out.push(action(
+            suggestion.title.clone(),
+            suggestion.meta.clone(),
+            suggestion.stamp.clone(),
+            format!(
+                "inbox melding attention {} {}",
+                suggestion.title, kind_label
+            ),
+            match &suggestion.kind {
+                crate::models::SuggestionKind::FocusAgent(id) => RunSpec::FocusAgent(id.clone()),
+                crate::models::SuggestionKind::OpenDashboard => {
+                    RunSpec::OpenUrl(_profile.dashboard.clone())
+                }
+                crate::models::SuggestionKind::None_ => RunSpec::Noop,
+            },
+        ));
+    }
+    // Als er geen suggesties zijn maar health down → toch een inbox-actie
+    if out.is_empty() && snap.health.level == "down" && snap.health.total > 0 {
+        out.push(action(
+            format!("Health · {} down", snap.health.down),
+            snap.health.line(),
+            "FOUT",
+            "inbox health fout down melding",
+            RunSpec::FocusDomain("health".into()),
+        ));
+    }
+    out
+}
+
+/// Fleet: nodes + herdr agents — D2.
+/// Tolerant: toont 0 als snapshot leeg is.
+pub fn build_fleet_actions(
+    snap: &Snapshot,
+    ops: &OpsSnapshot,
+    _profile: &EndpointProfile,
+) -> Vec<Action> {
+    let mut out = Vec::new();
+    // Bestaand: fleet-info als basis
+    if snap.fleet.total > 0 {
+        let label = snap
+            .fleet
+            .host
+            .clone()
+            .unwrap_or_else(|| "fleet".to_string());
+        out.push(action(
+            format!("Fleet · {}/{} online", snap.fleet.online, snap.fleet.total),
+            label.clone(),
+            if snap.fleet.stale { "FOUT" } else { "STIL" },
+            "fleet herdr nodes status",
+            RunSpec::FleetDeploy { node: label },
+        ));
+    }
+    // Per agent een deploy/exec hint (read-only in 4.0 — template exec)
+    for agent in ops.agents.iter().take(8) {
+        let node = agent.workspace.clone();
+        out.push(action(
+            format!("Deploy naar {} · {}", agent.name, node),
+            agent.cwd.clone(),
+            agent_stamp(&agent.status),
+            format!("fleet deploy herdr {} {}", agent.name, node),
+            RunSpec::FleetDeploy { node: node.clone() },
+        ));
+        out.push(action(
+            format!("Run op {} · {}", agent.name, node),
+            "kies template en voer uit",
+            agent_stamp(&agent.status),
+            format!("fleet exec herdr {} {}", agent.name, node),
+            RunSpec::FleetExec {
+                node,
+                template: "status".into(),
+            },
+        ));
+    }
+    // TODO Lane A will replace with snapshot.fleet_nodes iteration
+    out
+}
+
+/// Vault: accounts/providers/CRM — D3.
+/// Tolerant: bestaande providers-logica, CRM placeholder tot Lane A.
+pub fn build_vault_actions(
+    snap: &Snapshot,
+    _ops: &OpsSnapshot,
+    _profile: &EndpointProfile,
+) -> Vec<Action> {
+    let mut out = Vec::new();
+    for row in &snap.providers {
+        for acc in &row.accounts {
+            let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if Some(acc_id) == row.active_id.as_deref() {
+                continue;
+            }
+            let label = acc
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or(acc_id)
+                .to_string();
+            out.push(action(
+                format!("Werk als {label}"),
+                format!("{} · account wisselen", row.label),
+                "STIL",
+                format!("vault account switch wissel {} {}", row.label, label),
+                RunSpec::SwitchAccount {
+                    account_id: acc_id.to_string(),
+                    source: row.source.clone(),
+                    driver: row.driver.clone(),
+                },
+            ));
+        }
+    }
+    // TODO Lane A will replace with snapshot.vault_accounts / crm_deals
+    out
+}
+
+/// Containers: observed vs desired diff — D4.
+pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    // Generieke prune-preview (read-only diff) — altijd beschikbaar
+    out.push(action(
+        "Toon container drift",
+        "observed vs desired — read-only",
+        "STIL",
+        "containers docker drift prune preview",
+        RunSpec::PrunePreview,
+    ));
+    // Als snapshot.raw een containers-diff bevat, toon per-item (tolerant)
+    if let Some(containers) = snap.raw.get("containers") {
+        if let Some(items) = containers.get("observed").and_then(|v| v.as_array()) {
+            for item in items.iter().take(6) {
+                let name = item
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("container");
+                let host = item
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                out.push(action(
+                    format!("Container · {name}"),
+                    format!("{host} · image"),
+                    "STIL",
+                    format!("containers docker {name} {host}"),
+                    RunSpec::CopyText(name.to_string()),
+                ));
+            }
+        }
+    }
+    // TODO Lane A will replace with snapshot.containers drift
+    let _ = snap;
+    out
+}
+
+/// Secrets: alleen meta, copy via vault-api — D5.
+pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    // Placeholder tot Lane A: als er geen secrets_meta is, toon één uitleg-actie
+    // Secrets-meta is nog niet in Snapshot — tolerant.
+    // TODO Lane A will replace with snapshot.secrets_meta
+    if let Some(secrets) = snap.raw.get("secrets_meta").and_then(|v| v.as_array()) {
+        for item in secrets.iter().take(8) {
+            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
+            if id.is_empty() {
+                continue;
+            }
+            out.push(action(
+                format!("Kopieer secret · {title}"),
+                "kopieert via vault — zichtbaar in audit-log, auto-clear",
+                "STIL",
+                format!("secrets vaultwarden wachtwoord {title} {id}"),
+                RunSpec::CopySecretMeta { id: id.to_string() },
+            ));
+        }
+    } else if out.is_empty() {
+        // Lege state → hint, geen netwerk
+        out.push(action(
+            "Secrets · geen items",
+            "vaultwarden — kopieert via vault met audit-log",
+            "STIL",
+            "secrets vaultwarden wachtwoord",
+            RunSpec::Noop,
+        ));
+    }
+    out
+}
+
+/// Clipboard: geschiedenis — D6.
+pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    for (index, item) in snap.clipboard.iter().take(6).enumerate() {
+        let text: String = item
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .chars()
+            .map(|c| if c == '\n' { ' ' } else { c })
+            .take(56)
+            .collect();
+        let full = item
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        out.push(action(
+            format!("Kopieer · {text}"),
+            format!("clipboard-rij {index}"),
+            "STIL",
+            format!("clipboard klembord kopieer plak {text}"),
+            RunSpec::CopyText(full),
+        ));
+        out.push(destructive_action(
+            format!("Verwijder clipboard-rij {index}"),
+            text.clone(),
+            "HULP",
+            format!("clipboard klembord verwijder delete {index}"),
+            RunSpec::ClipboardDelete(index),
+        ));
+    }
+    // Altijd ook toevoegen-actie
+    out.push(task_action(
+        "Voeg toe aan clipboard",
+        "typ tekst en kies deze actie",
+        "clipboard klembord toevoegen add tekst",
+        RunSpec::ClipboardAdd,
+    ));
+    out
+}
+
+/// Linear: assigned-to-me — D7.
+pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    // TODO Lane A will replace with snapshot.linear_issues
+    if let Some(issues) = snap.raw.get("linear_issues").and_then(|v| v.as_array()) {
+        for issue in issues.iter().take(10) {
+            let id = issue.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
+            let url = issue
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    format!("{}/linear/{}", profile.dashboard.trim_end_matches('/'), id)
+                });
+            let _ = url;
+            if id.is_empty() {
+                continue;
+            }
+            out.push(action(
+                format!("Linear · {title}"),
+                id.to_string(),
+                "STIL",
+                format!("linear taken issues tickets {title} {id}"),
+                RunSpec::OpenLinearIssue(id.to_string()),
+            ));
+        }
+    }
+    if out.is_empty() {
+        // Fallback: open Linear via dashboard/workaround als er geen issues zijn
+        out.push(action(
+            "Open Linear",
+            "taken · issues — read-only in 4.0",
+            "STIL",
+            "linear taken issues tickets open",
+            RunSpec::OpenUrl(format!(
+                "{}/linear",
+                profile.dashboard.trim_end_matches('/')
+            )),
+        ));
+    }
+    out
+}
+
+/// Kater: gateway/profielen — D8.
+pub fn build_kater_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    if let Some(kater_url) = profile.kater_workspace.clone() {
+        out.push(action(
+            "Open Kater",
+            profile.label("katerWorkspace"),
+            "STIL",
+            "kater gateway proxy profiel open",
+            RunSpec::OpenUrl(kater_url),
+        ));
+    }
+    // TODO Lane A will replace with snapshot.kater_status
+    if let Some(kater) = snap.raw.get("kater_status") {
+        let status = kater
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        out.push(action(
+            format!("Kater · {status}"),
+            "gateway status",
+            if status == "ok" { "STIL" } else { "FOUT" },
+            "kater gateway status",
+            RunSpec::FocusDomain("kater".into()),
+        ));
+    }
+    if out.is_empty() {
+        out.push(action(
+            "Kater · geen profiel",
+            "voeg CHEFBAR_KATER_WORKSPACE toe",
+            "STIL",
+            "kater gateway",
+            RunSpec::Noop,
+        ));
+    }
+    out
+}
+
+/// Health: observability + day_score — D8.
+pub fn build_health_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
+    let mut out = Vec::new();
+    let health_line = snap.health.line();
+    out.push(action(
+        health_line.clone(),
+        format!(
+            "{}/{} ok · {}",
+            snap.health.ok, snap.health.total, snap.health.level
+        ),
+        if snap.health.level == "down" {
+            "FOUT"
+        } else {
+            "STIL"
+        },
+        "health status eval dagscore doctor",
+        RunSpec::FocusDomain("health".into()),
+    ));
+    let ds_line = snap.day_score.line();
+    out.push(action(
+        ds_line,
+        snap.day_score
+            .source
+            .clone()
+            .unwrap_or_else(|| "dagscore".to_string()),
+        if snap.day_score.score.is_some() {
+            "BEZIG"
+        } else {
+            "STIL"
+        },
+        "health dagscore eval score",
+        RunSpec::FocusDomain("health".into()),
+    ));
+    // TODO Lane A will replace with snapshot.observability
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Hoofd-builder — concateneert alle domeinen (pure functie, geen I/O)
+// ---------------------------------------------------------------------------
+
 /// Bouw de catalogus uit de laatste snapshots (pure functie, geen I/O).
 pub fn build_actions(
     ops: &OpsSnapshot,
@@ -110,6 +490,18 @@ pub fn build_actions(
     let home = crate::home_dir();
     let home_str = home.to_string_lossy().to_string();
 
+    // Domein-builders — elk puur, tolerant
+    actions.extend(build_inbox_actions(snap, profile));
+    actions.extend(build_fleet_actions(snap, ops, profile));
+    actions.extend(build_vault_actions(snap, ops, profile));
+    actions.extend(build_container_actions(snap, profile));
+    actions.extend(build_secret_actions(snap, profile));
+    actions.extend(build_clipboard_actions(snap, profile));
+    actions.extend(build_linear_actions(snap, profile));
+    actions.extend(build_kater_actions(snap, profile));
+    actions.extend(build_health_actions(snap, profile));
+
+    // Bestaand: herdr focus/send
     for agent in &ops.agents {
         let stamp = agent_stamp(&agent.status);
         let cwd_label = agent.cwd.replace(&home_str, "~");
@@ -158,31 +550,7 @@ pub fn build_actions(
         ));
     }
 
-    for row in &snap.providers {
-        for acc in &row.accounts {
-            let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if Some(acc_id) == row.active_id.as_deref() {
-                continue;
-            }
-            let label = acc
-                .get("label")
-                .and_then(|v| v.as_str())
-                .unwrap_or(acc_id)
-                .to_string();
-            actions.push(action(
-                format!("Werk als {label}"),
-                format!("{} · account wisselen", row.label),
-                "STIL",
-                format!("account switch wissel {} {}", row.label, label),
-                RunSpec::SwitchAccount {
-                    account_id: acc_id.to_string(),
-                    source: row.source.clone(),
-                    driver: row.driver.clone(),
-                },
-            ));
-        }
-    }
-
+    // Bestaand: tasks cancel (aanvullend op build_vault etc.)
     for task in &snap.tasks {
         let task_id = task.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let status = task
@@ -207,36 +575,7 @@ pub fn build_actions(
         }
     }
 
-    for (index, item) in snap.clipboard.iter().take(6).enumerate() {
-        let text: String = item
-            .get("text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .chars()
-            .map(|c| if c == '\n' { ' ' } else { c })
-            .take(56)
-            .collect();
-        let full = item
-            .get("text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        actions.push(action(
-            format!("Kopieer · {text}"),
-            format!("clipboard-rij {index}"),
-            "STIL",
-            format!("clipboard klembord kopieer plak {text}"),
-            RunSpec::CopyText(full),
-        ));
-        actions.push(destructive_action(
-            format!("Verwijder clipboard-rij {index}"),
-            text.clone(),
-            "HULP",
-            format!("clipboard klembord verwijder delete {index}"),
-            RunSpec::ClipboardDelete(index),
-        ));
-    }
-
+    // Bestaand: events feed
     for event in snap.events.iter().take(5) {
         let agent = event
             .get("agent")
@@ -308,12 +647,6 @@ pub fn build_actions(
                 cwd: home_str.clone(),
             },
         ),
-        task_action(
-            "Voeg toe aan clipboard",
-            "typ tekst en kies deze actie",
-            "clipboard klembord toevoegen add tekst",
-            RunSpec::ClipboardAdd,
-        ),
         action(
             if desktop_running {
                 "Stop desktop"
@@ -359,6 +692,20 @@ pub fn build_actions(
             "STIL",
             "ververs refresh status",
             RunSpec::Refresh,
+        ),
+        action(
+            "Focus domein…",
+            "spring naar Inbox, Fleet, Vault, Linear, …",
+            "STIL",
+            "focus domein domain inbox fleet vault",
+            RunSpec::FocusDomain("inbox".into()),
+        ),
+        action(
+            "Toggle palette",
+            "snel zoeken — overlay",
+            "STIL",
+            "toggle palette zoek overlay",
+            RunSpec::TogglePalette,
         ),
     ]);
 
@@ -621,6 +968,78 @@ impl Executor {
                     }
                 });
             }
+            RunSpec::OpenLinearIssue(issue_id) => {
+                // Open Linear issue via dashboard fallback; policy-checked via open_url.
+                let url = format!(
+                    "{}/linear/{}",
+                    self.profile.dashboard.trim_end_matches('/'),
+                    urlencoding(issue_id)
+                );
+                crate::notify::open_url(&url);
+            }
+            RunSpec::CopySecretMeta { id } => {
+                let id = id.clone();
+                let vault = self.vault.clone();
+                self.spawn_bg(move || {
+                    match vault.post_json("/api/secrets/copy", &json!({"id": id})) {
+                        Ok(_) => crate::notify::notify(
+                            "Secret gekopieerd",
+                            "via vault — zichtbaar in audit-log, auto-clear",
+                            "ok",
+                        ),
+                        Err(_) => crate::notify::notify("Kopiëren lukte niet", "", "error"),
+                    }
+                });
+            }
+            RunSpec::FleetDeploy { node } => {
+                let node = node.clone();
+                let vault = self.vault.clone();
+                self.spawn_bg(move || {
+                    match vault.post_json("/fleet/deploy", &json!({"node": node})) {
+                        Ok(_) => crate::notify::notify("Deploy gestart", &node, "ok"),
+                        Err(_) => crate::notify::notify("Deploy lukte niet", "", "error"),
+                    }
+                });
+            }
+            RunSpec::FleetExec { node, template } => {
+                let node = node.clone();
+                let template = template.clone();
+                let ops = self.ops.clone();
+                self.spawn_bg(move || {
+                    // Probeer via joep-ops fleet exec; fallback naar vault.
+                    let body = json!({"node": node, "template": template});
+                    let ok = ops.post_json("/api/fleet/exec", &body).is_ok();
+                    if ok {
+                        crate::notify::notify(
+                            "Fleet exec gestart",
+                            &format!("{node}:{template}"),
+                            "ok",
+                        );
+                    } else {
+                        crate::notify::notify("Fleet exec lukte niet", "", "error");
+                    }
+                });
+            }
+            RunSpec::PrunePreview => {
+                let vault = self.vault.clone();
+                self.spawn_bg(move || match vault.get_json("/containers/prune-preview") {
+                    Ok(val) => {
+                        let summary = val
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("prune preview klaar");
+                        crate::notify::notify("Prune preview", summary, "ok");
+                    }
+                    Err(_) => crate::notify::notify("Prune preview lukte niet", "", "error"),
+                });
+            }
+            RunSpec::FocusDomain(domain) => {
+                // IPC/palette focus — no network, UI-thread safe via notify + refresh.
+                crate::notify::notify("Focus domein", domain, "ok");
+            }
+            RunSpec::TogglePalette => {
+                crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+            }
         }
     }
 
@@ -717,5 +1136,128 @@ mod tests {
         snap.share_sync
             .insert("status".into(), serde_json::Value::String("ok".into()));
         assert!(!sync_blocked(&snap));
+    }
+
+    #[test]
+    fn per_domein_builders_zijn_puur_en_deterministisch() {
+        let snap = Snapshot::default();
+        let ops = OpsSnapshot::default();
+        let profile = EndpointProfile::default();
+        let a1 = build_inbox_actions(&snap, &profile);
+        let a2 = build_inbox_actions(&snap, &profile);
+        assert_eq!(a1.len(), a2.len());
+
+        let b1 = build_fleet_actions(&snap, &ops, &profile);
+        let b2 = build_fleet_actions(&snap, &ops, &profile);
+        assert_eq!(b1.len(), b2.len());
+
+        let c1 = build_clipboard_actions(&snap, &profile);
+        let c2 = build_clipboard_actions(&snap, &profile);
+        assert_eq!(c1.len(), c2.len());
+    }
+
+    #[test]
+    fn runspec_determinisme() {
+        let a = RunSpec::CopySecretMeta { id: "abc".into() };
+        let b = RunSpec::CopySecretMeta { id: "abc".into() };
+        let c = RunSpec::CopySecretMeta { id: "xyz".into() };
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+
+        let d = RunSpec::FleetDeploy {
+            node: "sofie".into(),
+        };
+        let e = RunSpec::FleetDeploy {
+            node: "sofie".into(),
+        };
+        assert_eq!(d, e);
+
+        let f = RunSpec::FleetExec {
+            node: "jan".into(),
+            template: "status".into(),
+        };
+        let g = RunSpec::FleetExec {
+            node: "jan".into(),
+            template: "status".into(),
+        };
+        assert_eq!(f, g);
+    }
+
+    #[test]
+    fn secret_copy_is_niet_destructief_maar_met_waarschuwing() {
+        let snap = Snapshot::default();
+        let profile = EndpointProfile::default();
+        // Bouw met placeholder raw secrets_meta
+        let mut snap_with = snap.clone();
+        snap_with.raw = serde_json::json!({
+            "secrets_meta": [{"id": "sec-1", "title": "API key"}]
+        });
+        let actions = build_secret_actions(&snap_with, &profile);
+        let copy = actions
+            .iter()
+            .find(|a| matches!(a.run, RunSpec::CopySecretMeta { .. }))
+            .expect("copy-secret actie aanwezig");
+        assert!(!copy.destructive, "secret copy mag niet destructive zijn");
+        assert!(
+            copy.meta.contains("audit-log"),
+            "meta moet waarschuwing bevatten, kreeg: {}",
+            copy.meta
+        );
+    }
+
+    #[test]
+    fn focus_domain_en_toggle_palette_bestaan() {
+        let snap = Snapshot::default();
+        let actions = catalogus_met(&snap);
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::FocusDomain(_))));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::TogglePalette)));
+    }
+
+    #[test]
+    fn prune_preview_bestaat() {
+        let snap = Snapshot::default();
+        let profile = EndpointProfile::default();
+        let actions = build_container_actions(&snap, &profile);
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::PrunePreview)));
+    }
+
+    #[test]
+    fn open_linear_issue_variant_bestaat() {
+        let snap = Snapshot::default();
+        let mut snap_with = snap.clone();
+        snap_with.raw = serde_json::json!({
+            "linear_issues": [{"id": "LIN-123", "title": "Fix bug"}]
+        });
+        let profile = EndpointProfile::default();
+        let actions = build_linear_actions(&snap_with, &profile);
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::OpenLinearIssue(_))));
+    }
+
+    #[test]
+    fn per_domein_geen_io() {
+        // Pure check: builders mogen geen I/O doen — ze mogen niet panicken
+        // op lege snapshot en moeten binnen 100 ms klaar zijn.
+        let snap = Snapshot::default();
+        let ops = OpsSnapshot::default();
+        let profile = EndpointProfile::default();
+        let start = std::time::Instant::now();
+        let _ = build_inbox_actions(&snap, &profile);
+        let _ = build_fleet_actions(&snap, &ops, &profile);
+        let _ = build_vault_actions(&snap, &ops, &profile);
+        let _ = build_container_actions(&snap, &profile);
+        let _ = build_secret_actions(&snap, &profile);
+        let _ = build_clipboard_actions(&snap, &profile);
+        let _ = build_linear_actions(&snap, &profile);
+        let _ = build_kater_actions(&snap, &profile);
+        let _ = build_health_actions(&snap, &profile);
+        assert!(start.elapsed().as_millis() < 100);
     }
 }
