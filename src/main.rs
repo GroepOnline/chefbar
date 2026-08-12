@@ -176,7 +176,6 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     // Signaal CSS op het hele proces (v2 devin-skin, dark default).
     // CHEFBAR_THEME env wint; anders de persisted keuze uit panel-state
     // (footer-toggle), anders dark.
-    let settings = gtk::Settings::default().expect("GTK-settings");
     let theme = match std::env::var("CHEFBAR_THEME") {
         Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_LIGHT) => css::THEME_LIGHT.to_string(),
         Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_DARK) => css::THEME_DARK.to_string(),
