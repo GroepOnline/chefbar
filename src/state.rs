@@ -191,7 +191,8 @@ impl Poller {
                 .min(next_vault_extra)
                 .min(next_linear)
                 .min(next_kater)
-                .min(next_jcode);
+                .min(next_jcode)
+                .min(next_brain);
             let timeout = deadline
                 .saturating_duration_since(Instant::now())
                 .min(Duration::from_secs(1));
