@@ -79,9 +79,16 @@ jobs:
           if command -v Xvfb >/dev/null 2>&1 && command -v import >/dev/null 2>&1; then
             echo "X-tools al aanwezig"
           else
-            sudo -n apt-get update -qq && sudo -n apt-get install -y -qq xvfb imagemagick
+            # Runner-service heeft NoNewPrivileges=true: sudo faalt hier.
+            # Tools staan op de host (apt) en zijn door chef-ci-pr uitvoerbaar;
+            # alleen bij echte afwezigheid is de visual-step een zachte skip.
+            sudo -n apt-get update -qq && sudo -n apt-get install -y -qq xvfb imagemagick 2>&1 || echo "install overgeslagen (geen sudo in runner-service)"
           fi
-          command -v Xvfb && command -v import
+          if command -v Xvfb && command -v import; then
+            echo "X-stack OK"
+          else
+            echo "X-stack ontbreekt — visual-shot wordt zachte skip (exit 2)"
+          fi
 
       - name: Fetch release binary from build job
         uses: actions/download-artifact@v4
