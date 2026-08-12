@@ -1100,11 +1100,12 @@ impl Executor {
             }
             RunSpec::FleetDeploy { node } => {
                 let node = node.clone();
-                let vault = self.vault.clone();
+                let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    match vault.post_json("/fleet/deploy", &json!({"node": node})) {
-                        Ok(_) => crate::notify::notify("Deploy gestart", &node, "ok"),
-                        Err(_) => crate::notify::notify("Deploy lukte niet", "", "error"),
+                    if crate::ops_cli::fleet_deploy(&ops, &node) {
+                        crate::notify::notify("Deploy gestart", &node, "ok");
+                    } else {
+                        crate::notify::notify("Deploy lukte niet", "", "error");
                     }
                 });
             }
@@ -1113,10 +1114,7 @@ impl Executor {
                 let template = template.clone();
                 let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    // Probeer via joep-ops fleet exec; fallback naar vault.
-                    let body = json!({"node": node, "template": template});
-                    let ok = ops.post_json("/api/fleet/exec", &body).is_ok();
-                    if ok {
+                    if crate::ops_cli::fleet_exec(&ops, &node, &template) {
                         crate::notify::notify(
                             "Fleet exec gestart",
                             &format!("{node}:{template}"),
