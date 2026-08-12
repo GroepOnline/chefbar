@@ -134,10 +134,9 @@ fn parse_rfc3339_to_epoch(s: &str) -> Option<u64> {
     // Accept "YYYY-MM-DDTHH:MM:SSZ", "YYYY-MM-DD HH:MM:SS", with optional millis/timezone
     let (date_part, time_part) = if let Some(idx) = s.find('T') {
         (&s[..idx], &s[idx + 1..])
-    } else if let Some(idx) = s.find(' ') {
-        (&s[..idx], &s[idx + 1..])
     } else {
-        return None;
+        let idx = s.find(' ')?;
+        (&s[..idx], &s[idx + 1..])
     };
     let date_parts: Vec<&str> = date_part.split('-').collect();
     if date_parts.len() != 3 {
