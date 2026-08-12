@@ -10,51 +10,70 @@
 //! CG-statuslijn (v2 worked-row-streep: line-strong in rust, accent live).
 //! Groen blijft gereserveerd voor git/PR/toestemming; amber = wacht-op-jou.
 
-use std::sync::OnceLock;
+use std::cell::RefCell;
+use std::sync::{Mutex, OnceLock};
+
+use gtk::prelude::*;
 
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
 /// Eén provider voor de hele app; herladen op thema-wissel past de skin
-/// live toe zonder herstart (CssProvider::load_from_data is idempotent).
-static PROVIDER: OnceLock<gtk::CssProvider> = OnceLock::new();
-static ACTIVE: OnceLock<std::sync::Mutex<String>> = OnceLock::new();
+/// live toe zonder herstart. GTK-objecten zijn niet Send/Sync, dus
+/// thread-local (alleen de UI-thread raakt hem aan).
+thread_local! {
+    static PROVIDER: RefCell<Option<gtk::CssProvider>> = RefCell::new(None);
+}
+static ACTIVE: OnceLock<Mutex<String>> = OnceLock::new();
 
-fn active_mutex() -> &'static std::sync::Mutex<String> {
-    ACTIVE.get_or_init(|| std::sync::Mutex::new(THEME_DARK.to_string()))
+fn set_active(theme: &str) {
+    if let Ok(mut active) = ACTIVE
+        .get_or_init(|| Mutex::new(THEME_DARK.to_string()))
+        .lock()
+    {
+        *active = theme.to_string();
+    }
 }
 
 /// Het nu actieve thema (voor footer-toggle en state-persist).
 pub fn active_theme() -> String {
-    active_mutex().lock().map(|s| s.clone()).unwrap_or_else(|_| THEME_DARK.to_string())
+    ACTIVE
+        .get_or_init(|| Mutex::new(THEME_DARK.to_string()))
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_else(|_| THEME_DARK.to_string())
 }
 
 /// Laadt de stylesheet voor `theme` en geeft de provider voor
 /// `add_provider_for_screen`. Herhaald aanroepen met een ander thema
 /// herlaadt dezelfde provider (live skin-wissel).
-pub fn theme_provider(theme: &str) -> &'static gtk::CssProvider {
-    if let Ok(mut active) = active_mutex().lock() {
-        *active = theme.to_string();
-    }
-    PROVIDER.get_or_init(|| {
-        let provider = gtk::CssProvider::new();
-        provider
-            .load_from_data(styles_css(theme).as_bytes())
-            .expect("chefbar-css compileert");
-        provider
-    })
+pub fn theme_provider(theme: &str) -> gtk::CssProvider {
+    let provider = PROVIDER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            let provider = gtk::CssProvider::new();
+            if let Err(err) = provider.load_from_data(styles_css(theme).as_bytes()) {
+                eprintln!("chefbar: css-load mislukt ({err})");
+            }
+            *slot = Some(provider);
+        }
+        slot.as_ref().expect("provider net aangemaakt").clone()
+    });
+    set_active(theme);
+    provider
 }
 
 /// Live thema-wissel: herlaad de gedeelde provider en onthoud de keuze.
 pub fn set_theme(theme: &str) {
-    if let Ok(mut active) = active_mutex().lock() {
-        *active = theme.to_string();
-    }
-    if let Some(provider) = PROVIDER.get() {
-        if let Err(err) = provider.load_from_data(styles_css(theme).as_bytes()) {
-            eprintln!("chefbar: css herladen mislukt ({err})");
+    set_active(theme);
+    PROVIDER.with(|slot| {
+        let slot = slot.borrow();
+        if let Some(provider) = slot.as_ref() {
+            if let Err(err) = provider.load_from_data(styles_css(theme).as_bytes()) {
+                eprintln!("chefbar: css herladen mislukt ({err})");
+            }
         }
-    }
+    });
 }
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
@@ -128,13 +147,14 @@ pub fn styles_css(theme: &str) -> String {
 }}
 
 /* ============ Signature: de CG-statuslijn ============ */
-/* 3px verticale lijn (v2 worked-row-streep) + één compacte statusregel.
+/* 2px verticale lijn (v2 worked-row-streep) + één compacte statusregel.
    Rust = line-strong; live/bezig = accent; ok/warn/error/info volgen het
    statusspectrum. De streep blijft het enige uitgesproken element. */
 .chefbar-signature {{
   background-color: {control_border};
-  min-width: 3px;
-  border-radius: 2px;
+  min-width: 2px;
+  max-width: 2px;
+  border-radius: 1px;
 }}
 .chefbar-signature.ok       {{ background-color: {success}; }}
 .chefbar-signature.warn     {{ background-color: {warn}; }}

@@ -56,6 +56,7 @@ pub struct Panel {
     window_overlay: gtk::Overlay,
     footer_label: gtk::Label,
     theme: Rc<RefCell<String>>,
+    header_title: gtk::Label,
 }
 
 impl Panel {
@@ -104,8 +105,9 @@ impl Panel {
         main.style_context().add_class("chefbar-main");
         main.set_hexpand(true);
 
-        // Header via module
-        let (header, search, refresh_btn, min_btn, close_btn) = header::build_header();
+        // Header via module — titel toont de actieve domeinnaam (render_into).
+        let (header, header_title, search, refresh_btn, min_btn, close_btn) =
+            header::build_header();
         if !persisted_query.trim().is_empty() {
             search.set_text(&persisted_query);
         }
@@ -291,6 +293,7 @@ impl Panel {
                 let density_clone = density.clone();
                 let drawer_clone = drawer.clone();
                 let footer_label_clone = footer_label.clone();
+                let header_title_clone = header_title.clone();
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
@@ -306,6 +309,7 @@ impl Panel {
                         &harness_state_clone,
                         &drawer_clone,
                         &footer_label_clone,
+                        &header_title_clone,
                     );
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
@@ -329,6 +333,7 @@ impl Panel {
             window_overlay,
             footer_label: footer_label.clone(),
             theme: theme.clone(),
+            header_title: header_title.clone(),
         };
         panel.wire_search();
         panel.wire_overlay();
@@ -482,6 +487,7 @@ impl Panel {
         let dirty = self.persist_dirty.clone();
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
+        let header_title = self.header_title.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
@@ -495,6 +501,7 @@ impl Panel {
                     &harness_state,
                     &drawer,
                     &footer_label,
+                    &header_title,
                 );
             }
         });
@@ -526,6 +533,7 @@ impl Panel {
             &self.harness_state,
             &self.drawer,
             &self.footer_label,
+            &self.header_title,
         );
     }
 
@@ -571,6 +579,7 @@ impl Panel {
         let shared_nav = self.shared.clone();
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
+        let header_title = self.header_title.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
@@ -583,6 +592,7 @@ impl Panel {
                     &harness_state,
                     &drawer,
                     &footer_label,
+                    &header_title,
                 );
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
@@ -659,6 +669,7 @@ fn render_into(
     harness_state: &Rc<RefCell<String>>,
     drawer: &Rc<Drawer>,
     footer_label: &gtk::Label,
+    header_title: &gtk::Label,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -770,6 +781,7 @@ fn render_into(
         "Acties",
         &format!("zoek of kies — {}", harness_label.to_lowercase()),
     );
+    header_title.set_text(&harness_label);
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
         let sub = format!(

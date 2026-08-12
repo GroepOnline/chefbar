@@ -6,12 +6,13 @@
 
 use gtk::prelude::*;
 
-/// Bouwt de header en geeft `(header_box, search_entry, refresh_btn, min_btn, close_btn)` terug.
-///
-/// De caller wiret de knoppen (refresh → `refresh_global`, min → `iconify`,
-/// close → `fade_out`, drag, key-handlers) om GTK-ownership simpel te houden.
+/// Bouwt de header en geeft `(header_box, title_label, search_entry,
+/// refresh_btn, min_btn, close_btn)` terug. De caller wiret de knoppen en
+/// zet de titel op de actieve domeinnaam (deviant van statisch "ChefBar"
+/// in de sidebar).
 pub fn build_header() -> (
     gtk::Box,
+    gtk::Label,
     gtk::SearchEntry,
     gtk::Button,
     gtk::Button,
@@ -76,5 +77,5 @@ pub fn build_header() -> (
     header_controls.pack_start(&close_btn, false, false, 0);
     header.pack_end(&header_controls, false, false, 0);
 
-    (header, search, refresh_btn, min_btn, close_btn)
+    (header, title, search, refresh_btn, min_btn, close_btn)
 }
