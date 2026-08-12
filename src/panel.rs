@@ -382,29 +382,7 @@ impl Panel {
 
     fn sync_sidebar_nav(&self) {
         let active = self.harness_state.borrow().clone();
-        // Queue-depth in het label (was eerder de pill-rij): "Fleet · 3".
-        let (snap, ops) = {
-            let snap = self.shared.snapshot.read().unwrap().clone();
-            let ops = self.shared.ops.read().unwrap().clone();
-            (snap, ops)
-        };
-        let harnesses = build_harnesses(&snap, &ops);
-        for (id, btn) in self.nav_buttons.iter() {
-            if let Some(h) = harnesses.iter().find(|h| &h.id == id) {
-                let text = if h.queue_depth > 0 {
-                    format!("{} · {}", h.label, h.queue_depth)
-                } else {
-                    h.label.clone()
-                };
-                btn.set_label(&text);
-                btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
-            }
-            if *id == active {
-                btn.style_context().add_class("active");
-            } else {
-                btn.style_context().remove_class("active");
-            }
-        }
+        sync_nav_buttons(&self.nav_buttons, &self.shared, &active);
     }
 
     /// Schrijf gewijzigde panel-state direct weg, bijvoorbeeld bij afsluiten.
@@ -430,10 +408,14 @@ impl Panel {
         let window = self.window.clone();
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
+        let nav_buttons = self.nav_buttons.clone();
+        let shared_nav = self.shared.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
                 render_into(&content, &shared, &executor, &window, &query, &harness_state);
+                let active = harness_state.borrow().clone();
+                sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
             ControlFlow::Continue
         });
@@ -1095,6 +1077,34 @@ fn render_into(
     content.pack_start(&footer, false, false, 0);
 
     content.show_all();
+}
+
+/// Sidebar-nav syncen op live state: queue-depth in het label ("Fleet · 3"),
+/// status als tooltip, actieve room gemarkeerd. Gedeeld door Panel::render
+/// en de periodieke refresh-timer.
+fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: &str) {
+    let (snap, ops) = {
+        let snap = shared.snapshot.read().unwrap().clone();
+        let ops = shared.ops.read().unwrap().clone();
+        (snap, ops)
+    };
+    let harnesses = build_harnesses(&snap, &ops);
+    for (id, btn) in buttons.iter() {
+        if let Some(h) = harnesses.iter().find(|h| &h.id == id) {
+            let text = if h.queue_depth > 0 {
+                format!("{} · {}", h.label, h.queue_depth)
+            } else {
+                h.label.clone()
+            };
+            btn.set_label(&text);
+            btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
+        }
+        if id == active {
+            btn.style_context().add_class("active");
+        } else {
+            btn.style_context().remove_class("active");
+        }
+    }
 }
 
 /// Privacy-safe kopie-melding: nooit klembord-inhoud in notificaties.
