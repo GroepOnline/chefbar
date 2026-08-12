@@ -28,12 +28,53 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
         "quit" | "exit" | "stop" => Some(UiCommand::Quit),
         "pause-notify" => Some(UiCommand::PauseNotifications),
         "toggle-autostart" => Some(UiCommand::ToggleAutostart),
+        "palette" => Some(UiCommand::TogglePalette),
+        "inbox" => Some(UiCommand::OpenInbox),
         _ if trimmed.starts_with("state ") => {
             let state = trimmed.trim_start_matches("state ").trim();
             if matches!(state, "stil" | "bezig" | "hulp" | "fout" | "offline") {
                 Some(UiCommand::ForceState(state.to_string()))
             } else {
                 None
+            }
+        }
+        // "focus <domain>" — domain mapping is open-ended (inbox, fleet, vault, etc.)
+        _ if trimmed.starts_with("focus ") => {
+            let arg = trimmed.trim_start_matches("focus ").trim();
+            if arg.is_empty() {
+                None
+            } else {
+                // If arg matches known domains, it's FocusDomain; but we need
+                // to disambiguate: legacy "focus <agent-id>" is still valid.
+                // Convention: domain values are one of
+                // inbox/fleet/vault/share/taken/containers/secrets/kater/health/instellingen
+                // plus future. For now: if arg is a known domain, emit FocusDomain,
+                // otherwise treat as FocusAgent (backwards-compatible).
+                const KNOWN_DOMAINS: &[&str] = &[
+                    "inbox",
+                    "fleet",
+                    "herdr",
+                    "vault",
+                    "accounts",
+                    "providers",
+                    "crm",
+                    "share",
+                    "clipboard",
+                    "desktop",
+                    "taken",
+                    "linear",
+                    "containers",
+                    "secrets",
+                    "kater",
+                    "health",
+                    "instellingen",
+                    "settings",
+                ];
+                if KNOWN_DOMAINS.contains(&arg) {
+                    Some(UiCommand::FocusDomain(arg.to_string()))
+                } else {
+                    Some(UiCommand::FocusAgent(arg.to_string()))
+                }
             }
         }
         _ => {
@@ -45,6 +86,9 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
                 Some("focus") => parts
                     .next()
                     .map(|id| UiCommand::FocusAgent(id.trim().to_string())),
+                Some("focus-domain") => parts
+                    .next()
+                    .map(|domain| UiCommand::FocusDomain(domain.trim().to_string())),
                 Some("desktop") => parts
                     .next()
                     .map(|verb| UiCommand::DesktopAction(verb.trim().to_string())),
@@ -95,6 +139,9 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::ToggleAutostart => "toggle-autostart\n".to_string(),
         UiCommand::DesktopAction(verb) => format!("desktop {verb}\n"),
         UiCommand::ForceState(state) => format!("state {state}\n"),
+        UiCommand::FocusDomain(domain) => format!("focus-domain {domain}\n"),
+        UiCommand::TogglePalette => "palette\n".to_string(),
+        UiCommand::OpenInbox => "inbox\n".to_string(),
     };
     use std::io::Write;
     let mut stream = stream;
@@ -280,5 +327,65 @@ mod tests {
         );
         std::env::remove_var("XDG_RUNTIME_DIR");
         assert_eq!(socket_path(), PathBuf::from("/tmp/chefbar.sock"));
+    }
+
+    #[test]
+    fn parses_focus_domain_and_palette_inbox() {
+        // focus <domain> → FocusDomain for known domains, FocusAgent otherwise
+        assert_eq!(
+            parse_command("focus inbox"),
+            Some(UiCommand::FocusDomain("inbox".into()))
+        );
+        assert_eq!(
+            parse_command("focus vault"),
+            Some(UiCommand::FocusDomain("vault".into()))
+        );
+        assert_eq!(
+            parse_command("focus fleet"),
+            Some(UiCommand::FocusDomain("fleet".into()))
+        );
+        assert_eq!(
+            parse_command("focus-domain kater"),
+            Some(UiCommand::FocusDomain("kater".into()))
+        );
+        assert_eq!(parse_command("palette"), Some(UiCommand::TogglePalette));
+        assert_eq!(parse_command("inbox"), Some(UiCommand::OpenInbox));
+        // unknown focus arg stays FocusAgent (backwards-compat)
+        assert_eq!(
+            parse_command("focus pane-99"),
+            Some(UiCommand::FocusAgent("pane-99".into()))
+        );
+        // empty focus → None
+        assert_eq!(parse_command("focus "), None);
+        assert_eq!(parse_command("focus"), None);
+    }
+
+    #[test]
+    fn tray_status_maps_inbox_suffix() {
+        use crate::models::{Snapshot, Suggestion, SuggestionKind};
+        let mut snap = Snapshot::default();
+        // stil without inbox → stil
+        let (state, line) = crate::tray::tray_status_for(&snap);
+        assert_eq!(state, "stil");
+        assert!(line.contains("ChefGroep"));
+        // add fresh inbox item → hulp + suffix
+        snap.suggestions.push(Suggestion {
+            key: "k1".into(),
+            title: "blocked item".into(),
+            meta: "".into(),
+            stamp: "FOUT".into(),
+            action_label: "Open".into(),
+            kind: SuggestionKind::FocusAgent("a".into()),
+            created_unix: {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64
+            },
+        });
+        let (state2, line2) = crate::tray::tray_status_for(&snap);
+        assert_eq!(state2, "hulp");
+        assert!(line2.contains("om aandacht"));
     }
 }
