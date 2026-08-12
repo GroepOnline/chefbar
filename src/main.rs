@@ -82,22 +82,41 @@ fn main() {
         std::process::exit(0);
     }
 
-    // Single-instance: als er al een bar draait, laat die het paneel shown
-    // (idempotent, "openen" — Esc verbergt) i.p.v. een tweede GTK-instantie
-    // te starten (on-click/XDG-autostart race).
-    if std::env::var("CHEFBAR_FORCE_NEW").is_err()
-        && chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok()
-    {
-        println!("chefbar: bestaande instantie getoond via IPC");
-        std::process::exit(0);
-    }
-
     if cli.serve {
         run_actor_only(&cli);
         return;
     }
 
-    run_app(&cli);
+    // Single-instance: wie de IPC-socket bindt, is dè instantie. Eerst een
+    // snelle probe (bestaande instantie shown het paneel — idempotent,
+    // Esc verbergt); binden gebeurt vóór GTK-init zodat een gelijktijdige
+    // start (on-click/XDG-autostart race) nooit twee panels kan maken.
+    if std::env::var("CHEFBAR_FORCE_NEW").is_err() {
+        if chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok() {
+            println!("chefbar: bestaande instantie getoond via IPC");
+            std::process::exit(0);
+        }
+        match chefbar::ipc::acquire() {
+            chefbar::ipc::Acquire::Owner(listener) => run_app(&cli, Some(listener)),
+            chefbar::ipc::Acquire::Occupied => {
+                // De eigenaar is net gestart en nog niet klaar met init;
+                // geef het show-commando alsnog door met een korte retry.
+                for _ in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if chefbar::ipc::send_command(chefbar::tray::UiCommand::ShowPanel).is_ok() {
+                        println!("chefbar: bestaande instantie getoond via IPC");
+                        std::process::exit(0);
+                    }
+                }
+                eprintln!("chefbar: instantie bezet de socket maar reageert niet; probeer opnieuw");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // FORCE_NEW: bewust een tweede instantie — de socket blijft van de
+        // eerste (geen listener in dit proces).
+        run_app(&cli, None);
+    }
 }
 
 fn build_runtime(
@@ -127,7 +146,7 @@ fn run_actor_only(cli: &Cli) {
     }
 }
 
-fn run_app(cli: &Cli) {
+fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     gtk::init().expect("GTK init mislukt — draait er een display? (DISPLAY/WAYLAND_DISPLAY)");
 
     let (vault, ops, shared) = build_runtime(cli);
@@ -136,6 +155,7 @@ fn run_app(cli: &Cli) {
     // Signaal CSS op het hele proces (strak-skin, dark default).
     let settings = gtk::Settings::default().expect("GTK-settings");
     let theme = css::detect_theme(&settings);
+    chefbar::tray::set_theme(&theme);
     let provider = gtk::CssProvider::new();
     if let Err(err) = provider.load_from_data(css::styles_css(&theme).as_bytes()) {
         eprintln!("[chefbar] CSS-load mislukt (fallback naar systeemthema): {err}");
@@ -179,7 +199,9 @@ fn run_app(cli: &Cli) {
         });
 
     chefbar::tray::start_command_bridge(ui_rx, dispatcher);
-    chefbar::ipc::spawn_listener(ui_tx.clone());
+    if let Some(listener) = ipc_listener {
+        chefbar::ipc::spawn_listener_on(listener, ui_tx.clone());
+    }
 
     // Tray in eigen thread (ksni).
     let snapshot = shared.snapshot.clone();

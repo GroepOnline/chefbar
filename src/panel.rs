@@ -1096,7 +1096,11 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
             } else {
                 h.label.clone()
             };
-            btn.set_label(&text);
+            // Poll-vriendelijk: alleen schrijven als het label wijzigt,
+            // anders forceert GTK elke tick een herlayout van de knop.
+            if btn.label().as_deref() != Some(text.as_str()) {
+                btn.set_label(&text);
+            }
             btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
         }
         if id == active {

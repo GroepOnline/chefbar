@@ -49,23 +49,39 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     Ok(())
 }
 
-/// Start de listener; commando's worden op de UI-thread afgehandeld.
-pub fn spawn_listener(tx: Sender<UiCommand>) {
+/// Wie de socket bezit: Owner bindt (en is dè instantie), Occupied betekent
+/// dat een andere instantie hem al houdt — ook als die nog midden in de
+/// GTK-init zit. Zo kan een gelijktijdige start nooit twee panels maken.
+pub enum Acquire {
+    Owner(UnixListener),
+    Occupied,
+}
+
+/// Bind de IPC-socket (met stale-cleanup) zodra de app start, vóór GTK-init.
+pub fn acquire() -> Acquire {
+    acquire_at(&socket_path())
+}
+
+fn acquire_at(path: &std::path::Path) -> Acquire {
+    // Stale socket opruimen: als er een oude socket ligt maar niemand
+    // luistert, is connect_err → veilig verwijderen. Bij connect_ok is
+    // Occupied het correcte antwoord (bind zou EADDRINUSE geven).
+    if path.exists() && UnixStream::connect(path).is_err() {
+        let _ = std::fs::remove_file(path);
+    }
+    match UnixListener::bind(path) {
+        Ok(listener) => {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            Acquire::Owner(listener)
+        }
+        Err(_) => Acquire::Occupied,
+    }
+}
+
+/// Start de listener op een eerder geacquirede socket; commando's worden op
+/// de UI-thread afgehandeld.
+pub fn spawn_listener_on(listener: UnixListener, tx: Sender<UiCommand>) {
     std::thread::spawn(move || {
-        let path = socket_path();
-        // Stale socket opruimen: als er een oude socket ligt maar niemand
-        // luistert, is connect_err → veilig verwijderen. Als connect_ok, draait
-        // er al een instantie (en is bind EADDRINUSE correct).
-        if path.exists()
-            && UnixStream::connect(&path).is_err() {
-                let _ = std::fs::remove_file(&path);
-            }
-        let listener = match UnixListener::bind(&path) {
-            Ok(l) => l,
-            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => return,
-            Err(_) => return,
-        };
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -75,7 +91,7 @@ pub fn spawn_listener(tx: Sender<UiCommand>) {
                 Err(_) => break,
             }
         }
-        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(socket_path());
     });
 }
 
@@ -95,6 +111,28 @@ fn handle_connection(stream: UnixStream, tx: Sender<UiCommand>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn acquire_is_exclusief() {
+        // Twee gelijktijdige starts: precies één Owner, de rest Occupied.
+        let dir = std::env::temp_dir().join(format!("chefbar-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.sock");
+        let _ = std::fs::remove_file(&path);
+
+        let eerste = acquire_at(&path);
+        assert!(matches!(eerste, Acquire::Owner(_)), "eerste bind moet lukken");
+        assert!(matches!(acquire_at(&path), Acquire::Occupied), "tweede bind is Occupied");
+
+        // Stale-cleanup: socket-file zonder luisteraar wordt opgeruimd.
+        drop(eerste);
+        UnixStream::connect(&path).ok();
+        let _ = std::fs::remove_file(&path);
+        assert!(matches!(acquire_at(&path), Acquire::Owner(_)), "na cleanup weer bindbaar");
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
 
     #[test]
     fn parses_known_commands() {

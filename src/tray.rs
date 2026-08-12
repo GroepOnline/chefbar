@@ -169,6 +169,17 @@ impl ksni::Tray for ChefTray {
     }
 }
 
+/// Het opgeloste thema ("dark"/"light") voor de tray-pixmap: een pixmap
+/// kleurt niet mee met het panel-thema, dus het basislijntje moet contrasteren
+/// met de tray-achtergrond (donker paneel -> lichte lijn, licht paneel ->
+/// donkere lijn). Wordt éénmalig gezet vanuit main na css::detect_theme.
+static THEME: std::sync::RwLock<&'static str> = std::sync::RwLock::new("dark");
+
+pub fn set_theme(theme: &str) {
+    let t: &'static str = if theme == crate::css::THEME_LIGHT { "light" } else { "dark" };
+    *THEME.write().unwrap() = t;
+}
+
 /// Programmatisch gegenereerd 22x22 ARGB-pictogram: de CG-statuslijn —
 /// een verticale lijn met drie segmentmarkeringen (spec: chefbar-tray.md).
 /// States via vorm + badge, nooit alleen kleur:
@@ -176,12 +187,24 @@ impl ksni::Tray for ChefTray {
 /// rechtsboven, fout = !-badge, offline = gestreepte lijn.
 fn tray_icon_for(state: &str) -> ksni::Icon {
     const SIZE: usize = 22;
-    // Kleuren uit de Huly-tokenlijst (pixmap kan niet meekleuren met het
-    // panel-thema; lichtgrijs leest op donker én licht).
-    const LINE: (u8, u8, u8) = (0xC8, 0xCA, 0xD0);
-    const IRIS: (u8, u8, u8) = (0x56, 0x83, 0xDA);
-    const EMBER: (u8, u8, u8) = (0xFF, 0x89, 0x64);
-    const RED: (u8, u8, u8) = (0xFF, 0x4D, 0x4D);
+    // Huly-tokenwaarden per tray-achtergrond. Statuskleuren volgen de
+    // designfile-statusspectrum van het actieve thema (4.5:1-norm).
+    let light = *THEME.read().unwrap() == "light";
+    let (line_c, iris_c, ember_c, red_c) = if light {
+        (
+            (0x6B, 0x6C, 0x6D), // control-border licht
+            (0x2E, 0x5B, 0x8F), // info licht
+            (0x9A, 0x57, 0x00), // warning licht
+            (0xCF, 0x2D, 0x56), // error licht
+        )
+    } else {
+        (
+            (0xC8, 0xCA, 0xD0), // lichtgrijs op donkere tray
+            (0x56, 0x83, 0xDA), // info donker (Iris)
+            (0xFF, 0x89, 0x64), // warning donker (Ember)
+            (0xFF, 0x4D, 0x4D), // error donker
+        )
+    };
 
     let mut px = vec![0u8; SIZE * SIZE * 4];
     let rect = |px: &mut Vec<u8>, x0: usize, y0: usize, w: usize, h: usize, c: (u8, u8, u8), a: u8| {
@@ -214,36 +237,36 @@ fn tray_icon_for(state: &str) -> ksni::Icon {
 
     let alpha_line: u8 = match state {
         "offline" => 70,
-        "stil" => 150,
+        "stil" => 170,
         _ => 235,
     };
     // Verticale lijn x=9..11; offline = gestreept (dashes met gaten).
     if state == "offline" {
         for (y0, h) in [(4usize, 3usize), (9, 3), (14, 3)] {
-            rect(&mut px, 9, y0, 2, h, LINE, alpha_line);
+            rect(&mut px, 9, y0, 2, h, line_c, alpha_line);
         }
     } else {
-        rect(&mut px, 9, 4, 2, 13, LINE, alpha_line);
+        rect(&mut px, 9, 4, 2, 13, line_c, alpha_line);
     }
     // Drie segmentmarkeringen (ticks over de lijn).
     for y in [5usize, 10, 15] {
-        rect(&mut px, 8, y, 4, 2, LINE, alpha_line);
+        rect(&mut px, 8, y, 4, 2, line_c, alpha_line);
     }
     match state {
         "bezig" => {
             // Gevuld middensegment in Iris.
-            rect(&mut px, 7, 9, 6, 4, IRIS, 255);
+            rect(&mut px, 7, 9, 6, 4, iris_c, 255);
         }
         "hulp" => {
             // Gevuld topsegment + Ember brand-dot rechtsboven.
-            rect(&mut px, 7, 4, 6, 4, IRIS, 255);
-            disc(&mut px, 16.0, 6.0, 3.0, EMBER, 255);
+            rect(&mut px, 7, 4, 6, 4, iris_c, 255);
+            disc(&mut px, 16.0, 6.0, 3.0, ember_c, 255);
         }
         "fout" => {
             // !-badge rechts: staaf + dot in rood.
-            rect(&mut px, 15, 4, 2, 6, RED, 255);
-            disc(&mut px, 16.0, 13.0, 1.6, RED, 255);
-            rect(&mut px, 7, 14, 6, 4, RED, 255);
+            rect(&mut px, 15, 4, 2, 6, red_c, 255);
+            disc(&mut px, 16.0, 13.0, 1.6, red_c, 255);
+            rect(&mut px, 7, 14, 6, 4, red_c, 255);
         }
         _ => {}
     }

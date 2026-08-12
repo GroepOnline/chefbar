@@ -11,7 +11,6 @@ pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
-#[allow(clippy::too_many_arguments)]
 pub fn styles_css(theme: &str) -> String {
     let t = if theme == THEME_LIGHT { Tokens::light() } else { Tokens::dark() };
     format!(
@@ -39,20 +38,20 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-title-sub {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 
 /* ============ Signature: de CG-statuslijn ============ */
 /* 2px verticale lijn in statuskleur + één compacte statusregel. */
 .chefbar-signature {{
-  background-color: {text_faint};
+  background-color: {text_muted};
   min-width: 2px;
   border-radius: 1px;
 }}
 .chefbar-signature.ok    {{ background-color: {success}; }}
-.chefbar-signature.warn  {{ background-color: {warm}; }}
+.chefbar-signature.warn  {{ background-color: {warn}; }}
 .chefbar-signature.error {{ background-color: {error}; }}
-.chefbar-signature.info  {{ background-color: {brand}; }}
+.chefbar-signature.info  {{ background-color: {info}; }}
 .chefbar-statuslijn {{
   background-color: {surface};
   border: 1px solid {line};
@@ -112,7 +111,7 @@ pub fn styles_css(theme: &str) -> String {
 }}
 .chefbar-section-sub {{
   font-size: 11.5px;
-  color: {text_faint};
+  color: {text_muted};
   padding: 0 16px 6px 16px;
 }}
 
@@ -167,7 +166,7 @@ pub fn styles_css(theme: &str) -> String {
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   font-weight: 600;
-  color: {text_faint};
+  color: {text_muted};
 }}
 
 /* Status-dots — status = kleur + vorm + tekst (dot naast label) */
@@ -175,12 +174,12 @@ pub fn styles_css(theme: &str) -> String {
   min-width: 8px;
   min-height: 8px;
   border-radius: 999px;
-  background-color: {text_faint};
+  background-color: {text_muted};
 }}
 .chefbar-dot.ok    {{ background-color: {success}; }}
-.chefbar-dot.warn  {{ background-color: {warm}; }}
+.chefbar-dot.warn  {{ background-color: {warn}; }}
 .chefbar-dot.down  {{ background-color: {error}; }}
-.chefbar-dot.info  {{ background-color: {brand}; }}
+.chefbar-dot.info  {{ background-color: {info}; }}
 
 /* Usage bars */
 .chefbar-bar-track {{
@@ -193,7 +192,7 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {brand};
 }}
 .chefbar-bar-fill.ok    {{ background-color: {success}; }}
-.chefbar-bar-fill.warn  {{ background-color: {warm}; }}
+.chefbar-bar-fill.warn  {{ background-color: {warn}; }}
 .chefbar-bar-fill.down  {{ background-color: {error}; }}
 
 /* Knoppen — Huly: primary = Iris fill, witte tekst */
@@ -243,9 +242,9 @@ pub fn styles_css(theme: &str) -> String {
   color: {text_muted};
 }}
 .chefbar-stamp.ok    {{ background-color: {success_soft}; color: {success}; }}
-.chefbar-stamp.warn  {{ background-color: {warm_soft};    color: {warm}; }}
+.chefbar-stamp.warn  {{ background-color: {warn_soft};    color: {warn}; }}
 .chefbar-stamp.error {{ background-color: {error_soft};   color: {error}; }}
-.chefbar-stamp.info  {{ background-color: {brand_soft};   color: {brand}; }}
+.chefbar-stamp.info  {{ background-color: {info_soft};   color: {info}; }}
 
 /* Actierows (klikbare rijen in een zone) */
 .chefbar-row-btn {{
@@ -283,7 +282,7 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-sidebar-sub {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 .chefbar-nav-item {{
   background-color: transparent;
@@ -325,7 +324,7 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-sidebar-footer-meta {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 .chefbar-main {{
   background-color: {canvas};
@@ -338,12 +337,12 @@ pub fn styles_css(theme: &str) -> String {
   padding: 7px 16px;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 .chefbar-footer-label {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 
 /* Textdialog (acties met needs_text) — radius 14, diepe schaduw */
@@ -388,13 +387,16 @@ scrollbar slider:hover {{
         control_border = t.control_border,
         text = t.text,
         text_muted = t.text_muted,
-        text_faint = t.text_faint,
         brand = t.brand,
         brand_hover = t.brand_hover,
         brand_soft = t.brand_soft,
         warm = t.warm,
         warm_soft = t.warm_soft,
         warm_line = t.warm_line,
+        warn = t.warn,
+        warn_soft = t.warn_soft,
+        info = t.info,
+        info_soft = t.info_soft,
         focus = t.focus,
         focus_soft = t.focus_soft,
         success = t.success,
@@ -415,13 +417,16 @@ struct Tokens {
     control_border: &'static str,
     text: &'static str,
     text_muted: &'static str,
-    text_faint: &'static str,
     brand: &'static str,
     brand_hover: &'static str,
     brand_soft: &'static str,
     warm: &'static str,
     warm_soft: &'static str,
     warm_line: &'static str,
+    warn: &'static str,
+    warn_soft: &'static str,
+    info: &'static str,
+    info_soft: &'static str,
     focus: &'static str,
     focus_soft: &'static str,
     success: &'static str,
@@ -443,13 +448,16 @@ impl Tokens {
             control_border: "#6B6C6D",
             text: "#FFFFFF",
             text_muted: "#95979E",
-            text_faint: "#6B6C6D",
             brand: "#5683DA",
             brand_hover: "#6B93E3",
             brand_soft: "rgba(86,131,218,0.14)",
             warm: "#FF8964",
             warm_soft: "rgba(255,137,100,0.12)",
             warm_line: "rgba(255,137,100,0.40)",
+            warn: "#FF8964",
+            warn_soft: "rgba(255,137,100,0.12)",
+            info: "#5683DA",
+            info_soft: "rgba(86,131,218,0.14)",
             focus: "#7BA3F0",
             focus_soft: "rgba(123,163,240,0.16)",
             success: "#47D18C",
@@ -471,13 +479,16 @@ impl Tokens {
             control_border: "#95979E",
             text: "#090A0C",
             text_muted: "#6B6C6D",
-            text_faint: "#95979E",
             brand: "#3D7EFF",
             brand_hover: "#5C97FF",
             brand_soft: "rgba(61,126,255,0.10)",
             warm: "#E56A3F",
             warm_soft: "rgba(229,106,63,0.10)",
             warm_line: "rgba(229,106,63,0.35)",
+            warn: "#9A5700",
+            warn_soft: "rgba(154,87,0,0.10)",
+            info: "#2E5B8F",
+            info_soft: "rgba(46,91,143,0.10)",
             focus: "#0B5FFF",
             focus_soft: "rgba(11,95,255,0.14)",
             success: "#1F8A65",
@@ -497,7 +508,7 @@ impl Tokens {
 /// CHEFBAR_THEME=dark.
 pub fn detect_theme(_settings: &gtk::Settings) -> String {
     if let Ok(force) = std::env::var("CHEFBAR_THEME") {
-        match force.trim() {
+        match force.trim().to_ascii_lowercase().as_str() {
             THEME_LIGHT => return THEME_LIGHT.into(),
             THEME_DARK => return THEME_DARK.into(),
             _ => {}
