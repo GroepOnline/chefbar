@@ -612,6 +612,22 @@ button, entry {{
 .chefbar-app.density-compact .chefbar-empty {{
   padding: 8px 16px;
 }}
+.chefbar-app.density-compact .chefbar-nav-item {{
+  padding: 4px 10px;
+  min-height: 24px;
+}}
+.chefbar-app.density-compact .chefbar-stamp {{
+  font-size: 10px;
+  padding: 1px 7px;
+}}
+.chefbar-app.density-compact .chefbar-search,
+.chefbar-app.density-compact .chefbar-search entry {{
+  padding: 4px 12px;
+  font-size: 12px;
+}}
+.chefbar-app.density-compact .chefbar-footer {{
+  padding: 4px 16px;
+}}
 
 /* Scrollbars — dun en stil */
 scrollbar {{
