@@ -1625,7 +1625,9 @@ mod chefapp_tolerant_tests {
         // ontbrekende sectie / null / onbekende velden → lege digest (zone verborgen)
         assert!(parse_brain_digest(&json!(null)).chunks.is_empty());
         assert!(parse_brain_digest(&json!({})).chunks.is_empty());
-        assert!(parse_brain_digest(&json!({"onbekend": true})).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({"onbekend": true}))
+            .chunks
+            .is_empty());
         // typed, Default: velden mogen ontbreken per chunk
         let v = json!({
             "chunks": [

@@ -63,9 +63,7 @@ pub fn search<'a>(needle: &str, digest: &'a BrainDigest) -> Vec<&'a BrainChunk> 
             )
             .to_lowercase();
             tokens.iter().all(|token| {
-                hay.split_whitespace()
-                    .any(|word| word.starts_with(token))
-                    || hay.contains(token)
+                hay.split_whitespace().any(|word| word.starts_with(token)) || hay.contains(token)
             })
         })
         .collect()
@@ -98,7 +96,12 @@ mod tests {
     fn search_prefix_and_substring_lexical() {
         let digest = BrainDigest {
             chunks: vec![
-                chunk("hard constraints", "/brain/reports/2026-08-10/hard.md", None, None),
+                chunk(
+                    "hard constraints",
+                    "/brain/reports/2026-08-10/hard.md",
+                    None,
+                    None,
+                ),
                 chunk("fleet compute ssot", "/brain/index/compute.md", None, None),
             ],
             ..Default::default()
@@ -126,7 +129,12 @@ mod tests {
 
     #[test]
     fn open_target_prefers_url_over_path() {
-        let c = chunk("t", "/pad.md", Some("https://vault.chefgroep.online/t"), None);
+        let c = chunk(
+            "t",
+            "/pad.md",
+            Some("https://vault.chefgroep.online/t"),
+            None,
+        );
         assert_eq!(open_target(&c), "https://vault.chefgroep.online/t");
         let c = chunk("t", "/pad.md", None, None);
         assert_eq!(open_target(&c), "/pad.md");
