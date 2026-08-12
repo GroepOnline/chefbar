@@ -144,9 +144,15 @@ pub fn spawn_listener_on(listener: UnixListener, tx: Sender<UiCommand>) {
 }
 
 fn handle_connection(stream: UnixStream, tx: Sender<UiCommand>) {
-    let reader = BufReader::new(stream);
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
         if line.trim().is_empty() {
             continue;
         }
@@ -159,7 +165,7 @@ fn handle_connection(stream: UnixStream, tx: Sender<UiCommand>) {
             if command == UiCommand::Doctor {
                 let report = crate::doctor::run_checks();
                 use std::io::Write;
-                let mut stream = reader.into_inner();
+                let stream = reader.get_mut();
                 let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(3)));
                 for l in report.report_lines() {
                     let _ = writeln!(stream, "{l}");
