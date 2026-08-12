@@ -1,14 +1,19 @@
 //! Eén poll-actor vervangt de drie concurrerende poll-loops en thread-per-taak.
 //!
-//! Een enkele thread draait het ritme (vault 5s, ops 15s), fan-out per endpoint
-//! met een kort afnamebudget, en publiceert één gedeelde Snapshot. UI leest
-//! onder een korte read-lock; mislukte secties behouden hun laatste goede waarde.
+//! Een enkele thread draait het ritme (vault 5s, ops 15s, vault-extra 30s,
+//! linear 60s, kater 30s), fan-out per endpoint met een kort afnamebudget,
+//! en publiceert één gedeelde Snapshot. UI leest onder een korte read-lock;
+//! mislukte secties behouden hun laatste goede waarde en markeren
+//! last_poll_at als stale.
 
 use crate::http::{ApiError, Client};
 use crate::models::{
-    build_agents, build_fleet, build_ops_snapshot, build_providers, day_score_from_agent_summary,
-    load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo, OpsSnapshot,
-    Snapshot, SUGGESTION_TTL_SECONDS,
+    build_agents, build_clipboard_entries, build_commander_tasks, build_container_diff,
+    build_crm_deals, build_fleet, build_fleet_nodes, build_herdr_workspaces, build_inbox,
+    build_kater_status, build_linear_issues, build_obs_summary, build_ops_snapshot,
+    build_providers, build_secrets_meta, build_vault_accounts, day_score_from_agent_summary,
+    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo,
+    OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -19,7 +24,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const VAULT_POLL_MS: u64 = 5_000;
 pub const OPS_POLL_MS: u64 = 15_000;
+pub const VAULT_EXTRA_POLL_MS: u64 = 30_000;
+pub const LINEAR_POLL_MS: u64 = 60_000;
+pub const KATER_POLL_MS: u64 = 30_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
+const PER_ENDPOINT_TIMEOUT_MS: u64 = 2_000;
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
 pub static REFRESH_TX: Mutex<Option<Sender<ActorCommand>>> = Mutex::new(None);
@@ -106,10 +115,12 @@ impl Poller {
     fn run(self, rx: Receiver<ActorCommand>) {
         let mut next_vault = Instant::now();
         let mut next_ops = Instant::now();
+        let mut next_vault_extra = Instant::now();
+        let mut next_linear = Instant::now();
+        let mut next_kater = Instant::now();
         let mut next_local = Instant::now();
         self.poll_watchdog_into_shared();
         loop {
-            // Begin met onmiddellijke eerste polls.
             let now = Instant::now();
             if now >= next_local {
                 self.poll_watchdog_into_shared();
@@ -123,14 +134,32 @@ impl Poller {
                 self.poll_ops();
                 next_ops = Instant::now() + Duration::from_millis(OPS_POLL_MS);
             }
-            let deadline = next_vault.min(next_ops);
+            if now >= next_vault_extra {
+                self.poll_vault_extra();
+                next_vault_extra = Instant::now() + Duration::from_millis(VAULT_EXTRA_POLL_MS);
+            }
+            if now >= next_linear {
+                self.poll_linear();
+                next_linear = Instant::now() + Duration::from_millis(LINEAR_POLL_MS);
+            }
+            if now >= next_kater {
+                self.poll_kater();
+                next_kater = Instant::now() + Duration::from_millis(KATER_POLL_MS);
+            }
+            let deadline = next_vault
+                .min(next_ops)
+                .min(next_vault_extra)
+                .min(next_linear)
+                .min(next_kater);
             let timeout = deadline
                 .saturating_duration_since(Instant::now())
                 .min(Duration::from_secs(1));
             match rx.recv_timeout(timeout) {
                 Ok(ActorCommand::RefreshNow) => {
                     self.poll_vault();
+                    self.poll_vault_extra();
                     next_vault = Instant::now() + Duration::from_millis(VAULT_POLL_MS);
+                    next_vault_extra = Instant::now() + Duration::from_millis(VAULT_EXTRA_POLL_MS);
                 }
                 Ok(ActorCommand::Shutdown) => break,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -160,7 +189,6 @@ impl Poller {
         let prev_snapshot = self.shared.snapshot.read().unwrap().clone();
         let (mut snap, mut any_ok) = (prev_snapshot.clone(), false);
 
-        // Laatste-goede-waarde per sectie; de rest van het beeld blijft staan.
         if !snap.raw.is_object() {
             snap.raw = Value::Object(Default::default());
         }
@@ -201,14 +229,12 @@ impl Poller {
                 .and_then(|t| t.as_array())
                 .cloned()
                 .unwrap_or_default();
+            // commander_tasks mirror
+            snap.commander_tasks = build_commander_tasks(Some(&tasks));
             any_ok = true;
         }
         if let Some(clipboard) = results.get("clipboard").cloned().flatten() {
-            snap.clipboard = clipboard
-                .get("items")
-                .and_then(|i| i.as_array())
-                .cloned()
-                .unwrap_or_default();
+            snap.clipboard = build_clipboard_entries(Some(&clipboard));
             any_ok = true;
         }
         if let Some(desktop) = results.get("desktop/status").cloned().flatten() {
@@ -228,15 +254,12 @@ impl Poller {
             any_ok = true;
         }
 
-        // Dagscore: bestand eerst; valt terug op de chef-eval agent summary
-        // uit /agents (parity met de Python load_day_score).
         if snap.day_score.score.is_none() {
             snap.day_score =
                 day_score_from_agent_summary(results.get("agents").and_then(|v| v.as_ref()))
                     .unwrap_or_else(load_day_score_file);
         }
 
-        // Cloudflare Access sessies uit de connector/API-feed.
         let sessions_payload = results
             .get("sessions")
             .cloned()
@@ -251,13 +274,11 @@ impl Poller {
                 .unwrap_or_default();
             if !events.is_empty() {
                 snap.events.extend(events.clone());
-                // sessies worden elders gerankt op basis van events; hier alleen cache.
                 snap.raw["sessions"] = Value::Array(events);
             }
             any_ok = true;
         }
 
-        // Watcher-suggesties (parity): transities → één rustige toast + snapshot-feed.
         let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap);
         if !fresh.is_empty() {
             if let Some((title, body, status)) = crate::models::coalesce_toasts(&fresh) {
@@ -274,12 +295,17 @@ impl Poller {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+        snap.last_poll_at.insert("vault".into(), iso_now());
 
         let mut errors: Vec<String> = Vec::new();
         for (key, value) in &results {
             if value.is_none() {
                 errors.push(key.clone());
             }
+        }
+        // Bij geheel falen: markeer stale
+        if errors.len() == results.len() && !results.is_empty() {
+            snap.last_poll_at.insert("vault".into(), iso_now());
         }
         snap.error = if errors.is_empty() {
             None
@@ -316,6 +342,112 @@ impl Poller {
         }
     }
 
+    fn poll_vault_extra(&self) {
+        let results = self.fetch_vault_extra();
+        let mut snap = self.shared.snapshot.write().unwrap();
+        let mut any_ok = false;
+
+        if let Some(val) = results.get("vault_accounts").cloned().flatten() {
+            snap.vault_accounts = build_vault_accounts(Some(&val));
+            any_ok = true;
+        } else if results.contains_key("vault_accounts") {
+            snap.last_poll_at
+                .insert("vault_extra:accounts".into(), iso_now());
+        }
+        if let Some(val) = results.get("crm_deals").cloned().flatten() {
+            snap.crm_deals = build_crm_deals(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("secrets_meta").cloned().flatten() {
+            snap.secrets_meta = build_secrets_meta(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("containers").cloned().flatten() {
+            snap.containers = build_container_diff(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("inbox").cloned().flatten() {
+            snap.inbox = build_inbox(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("fleet_nodes").cloned().flatten() {
+            snap.fleet_nodes = build_fleet_nodes(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("herdr_workspaces").cloned().flatten() {
+            snap.herdr_workspaces = build_herdr_workspaces(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("commander_tasks").cloned().flatten() {
+            snap.commander_tasks = build_commander_tasks(Some(&val));
+            // sync legacy tasks
+            if let Some(arr) = val.get("tasks").and_then(|v| v.as_array()) {
+                snap.tasks = arr.clone();
+            }
+            any_ok = true;
+        }
+        if let Some(val) = results.get("clipboard_extra").cloned().flatten() {
+            snap.clipboard = build_clipboard_entries(Some(&val));
+            any_ok = true;
+        }
+        if let Some(val) = results.get("observability").cloned().flatten() {
+            snap.observability = build_obs_summary(Some(&val));
+            any_ok = true;
+        }
+
+        // freshness
+        if any_ok {
+            snap.last_poll_at.insert("vault_extra".into(), iso_now());
+        } else {
+            // alles mislukt → stale marker, behoud vorige waarden
+            let stale = iso_now();
+            for k in ["vault_extra", "vault_extra:accounts"] {
+                snap.last_poll_at.entry(k.into()).or_insert(stale.clone());
+            }
+            // ensure at least vault_extra stale
+            snap.last_poll_at.insert("vault_extra".into(), stale);
+        }
+    }
+
+    fn poll_linear(&self) {
+        let results = self.fetch_linear();
+        let mut snap = self.shared.snapshot.write().unwrap();
+        if let Some(val) = results.get("linear").cloned().flatten() {
+            snap.linear_issues = build_linear_issues(Some(&val));
+            snap.last_poll_at.insert("linear".into(), iso_now());
+        } else {
+            // niet geconfigureerd → geen stale, gewoon behoud; wel markeren als stale als wel geconfigureerd maar faalde
+            let linear_api = std::env::var("LINEAR_API")
+                .or_else(|_| std::env::var("CHEFBAR_LINEAR_API"))
+                .ok();
+            if linear_api
+                .as_deref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false)
+            {
+                snap.last_poll_at.insert("linear".into(), iso_now());
+            }
+        }
+    }
+
+    fn poll_kater(&self) {
+        let results = self.fetch_kater();
+        let mut snap = self.shared.snapshot.write().unwrap();
+        if let Some(val) = results.get("kater").cloned().flatten() {
+            snap.kater_status = build_kater_status(Some(&val));
+            snap.last_poll_at.insert("kater".into(), iso_now());
+        } else {
+            let has_kater = crate::config::global_profile()
+                .kater_workspace
+                .as_deref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if has_kater {
+                snap.last_poll_at.insert("kater".into(), iso_now());
+            }
+        }
+    }
+
     fn fetch_all(&self) -> HashMap<String, Option<Value>> {
         let paths: &[(&str, &str)] = &[
             ("status", "/status"),
@@ -329,9 +461,108 @@ impl Poller {
             ("share-sync/status", "/share-sync/status"),
             ("sessions", "/sessions"),
         ];
-        // Fan-out over een klein threaddeel: per endpoint kort, alles binnen budget.
         let (tx, rx): (Sender<(String, Result<Value, ApiError>)>, _) = channel();
-        let client = self.vault.clone();
+        let client = self
+            .vault
+            .clone()
+            .with_timeout(Duration::from_millis(PER_ENDPOINT_TIMEOUT_MS));
+        let started = Instant::now();
+        for (key, path) in paths {
+            let (key, path, tx, client) = (
+                key.to_string(),
+                path.to_string(),
+                tx.clone(),
+                client.clone(),
+            );
+            std::thread::spawn(move || {
+                let result = client.get_json(&path);
+                let _ = tx.send((key, result));
+            });
+        }
+        drop(tx);
+        let mut results: HashMap<String, Option<Value>> = paths
+            .iter()
+            .map(|(key, _)| (key.to_string(), None))
+            .collect();
+        loop {
+            if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
+                break;
+            }
+            match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok((key, Ok(value))) => {
+                    results.insert(key, Some(value));
+                }
+                Ok((_, Err(_))) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        results
+    }
+
+    fn fetch_vault_extra(&self) -> HashMap<String, Option<Value>> {
+        let paths: &[(&str, &str)] = &[
+            ("vault_accounts", "/accounts"),
+            ("crm_deals", "/crm/deals"),
+            ("secrets_meta", "/secrets/meta"),
+            ("containers", "/containers"),
+            ("inbox", "/inbox"),
+            ("fleet_nodes", "/fleet/nodes"),
+            ("herdr_workspaces", "/herdr/workspaces"),
+            ("commander_tasks", "/commander/tasks?limit=20"),
+            ("clipboard_extra", "/clipboard"),
+            ("observability", "/observability/summary"),
+        ];
+        Self::fanout(&self.vault, paths)
+    }
+
+    fn fetch_linear(&self) -> HashMap<String, Option<Value>> {
+        let base = std::env::var("LINEAR_API")
+            .or_else(|_| std::env::var("CHEFBAR_LINEAR_API"))
+            .or_else(|_| std::env::var("LINEAR_API_URL"))
+            .unwrap_or_default();
+        let base = base.trim().trim_end_matches('/').to_string();
+        if base.is_empty() {
+            return HashMap::new();
+        }
+        let policy = crate::policy::EndpointPolicy::default();
+        let client =
+            Client::new(&base, policy).with_timeout(Duration::from_millis(PER_ENDPOINT_TIMEOUT_MS));
+        let paths: &[(&str, &str)] = &[("linear", "/issues?limit=20")];
+        Self::fanout(&client, paths)
+    }
+
+    fn fetch_kater(&self) -> HashMap<String, Option<Value>> {
+        let base = crate::config::global_profile()
+            .kater_workspace
+            .clone()
+            .unwrap_or_default();
+        let base = base.trim().trim_end_matches('/').to_string();
+        if base.is_empty() {
+            return HashMap::new();
+        }
+        // katerWorkspace is vaak https://kater.../agents/ — strip trailing path voor status
+        let policy = crate::policy::EndpointPolicy::default();
+        let client =
+            Client::new(&base, policy).with_timeout(Duration::from_millis(PER_ENDPOINT_TIMEOUT_MS));
+        let paths: &[(&str, &str)] = &[("kater", "/api/status"), ("kater_alt", "/status")];
+        let mut res = Self::fanout(&client, paths);
+        // normaliseer: kater_alt -> kater fallback
+        if res.get("kater").and_then(|v| v.as_ref()).is_none() {
+            if let Some(val) = res.remove("kater_alt").flatten() {
+                res.insert("kater".into(), Some(val));
+            }
+        } else {
+            res.remove("kater_alt");
+        }
+        res
+    }
+
+    fn fanout(client: &Client, paths: &[(&str, &str)]) -> HashMap<String, Option<Value>> {
+        let (tx, rx): (Sender<(String, Result<Value, ApiError>)>, _) = channel();
+        let client = client
+            .clone()
+            .with_timeout(Duration::from_millis(PER_ENDPOINT_TIMEOUT_MS));
         let started = Instant::now();
         for (key, path) in paths {
             let (key, path, tx, client) = (
@@ -367,10 +598,16 @@ impl Poller {
     }
 
     fn poll_ops(&self) {
-        let payload = match self.ops.get_json("/api/snapshot") {
+        let payload = match self
+            .ops
+            .clone()
+            .with_timeout(Duration::from_millis(PER_ENDPOINT_TIMEOUT_MS))
+            .get_json("/api/snapshot")
+        {
             Ok(payload) => payload,
             Err(_) => {
-                // behoud laatste goede ops-snapshot
+                let mut snap = self.shared.snapshot.write().unwrap();
+                snap.last_poll_at.insert("ops".into(), iso_now());
                 return;
             }
         };
@@ -378,6 +615,10 @@ impl Poller {
         {
             let mut current = self.shared.ops.write().unwrap();
             *current = ops;
+        }
+        {
+            let mut snap = self.shared.snapshot.write().unwrap();
+            snap.last_poll_at.insert("ops".into(), iso_now());
         }
     }
 }
