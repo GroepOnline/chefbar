@@ -164,6 +164,14 @@ mod tests {
     }
 
     #[test]
+    fn enter_args_send_return_to_pane() {
+        assert_eq!(
+            herdr_enter_args("w2M:p1"),
+            ["pane", "send-keys", "w2M:p1", "Enter"]
+        );
+    }
+
+    #[test]
     fn fleet_fallback_is_plugin_not_herdr_fleet() {
         let node = herdr_scan_node_args();
         let fleet = herdr_scan_fleet_args();

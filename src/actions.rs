@@ -923,7 +923,7 @@ impl Executor {
                 let target = terminal_id.clone();
                 let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    let _ = ops_focus(&ops, &target);
+                    let _ = crate::ops_cli::ops_focus(&ops, &target);
                 });
             }
             RunSpec::SendPrompt {
@@ -1162,10 +1162,6 @@ impl Executor {
             let _ = tx.send(crate::state::ActorCommand::RefreshNow);
         }
     }
-}
-
-fn ops_focus(ops: &Client, target: &str) -> bool {
-    crate::ops_cli::ops_focus(ops, target)
 }
 
 fn urlencoding(input: &str) -> String {
