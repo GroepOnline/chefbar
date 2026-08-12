@@ -30,8 +30,8 @@ en de roadmap (`docs/roadmap.md`). Dit plan richt zich op **prestaties**,
 | # | Actie | Status |
 |---|-------|--------|
 | P0.1 | Compileer-breuk `src/tray.rs` fixen (E0382/E0597) | ✅ gedaan (`.as_ref()` ×2, `move`-closure) |
-| P0.2 | CI op `chef-runner-01-1` laten draaien over de branch (cargo check/test/build + visual) | ⏳ bij push |
-| P0.3 | Borging: compile-breuk mag nooit meer ongemerkt de branch in — zie Q2 (pre-commit/CI-gate) | open |
+| P0.2 | CI op `chef-runner-01-1` over de branch — check/test/build + visual | ✅ groen (2026-08-12) |
+| P0.3 | Borging: compile-breuk mag nooit meer ongemerkt de branch in — QA-gate `scripts/gate.sh` (fmt · clippy · tests) staat nu in CI | ✅ (Q1/Q2) |
 
 **Waarom:** de break overleefde de laatste merge (PR #20) omdat er geen lokale
 build en geen clippy/fmt-gate in CI zit. Q2 maakt dit onmogelijk.

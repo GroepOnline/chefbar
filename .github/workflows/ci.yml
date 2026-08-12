@@ -19,8 +19,6 @@ jobs:
 
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          cache: false
 
       - name: Cache ~/.cargo
         uses: actions/cache@v4
