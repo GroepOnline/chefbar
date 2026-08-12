@@ -33,6 +33,12 @@ struct Cli {
     #[arg(long)]
     ipc: Option<String>,
 
+    /// Alias voor `--ipc bar` — oude hotkey-bindings (install.sh < 3.1)
+    /// roepen `chefbar --bar` aan; zonder deze vlag faalde Super+Space
+    /// stil met een clap-error (exit 2).
+    #[arg(long)]
+    bar: bool,
+
     /// Configuratie afdrukken (profiel + policy-summary, geen secrets).
     #[arg(long)]
     show_config: bool,
@@ -44,7 +50,8 @@ fn main() {
     // Externe IPC-commando's hebben geen GTK nodig en geen tweede instantie.
     // Proberen we een commando te sturen maar is er geen listener, geven we
     // een bruikbare hint (was een stille "kan commando niet versturen").
-    if let Some(command) = &cli.ipc {
+    let ipc_cmd = if cli.bar { Some("bar".to_string()) } else { cli.ipc.clone() };
+    if let Some(command) = &ipc_cmd {
         match chefbar::ipc::parse_command(command) {
             Some(cmd) => match chefbar::ipc::send_command(cmd) {
                 Ok(()) => {
