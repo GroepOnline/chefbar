@@ -186,6 +186,9 @@ run_shot() {
 
   export DISPLAY="$DISPLAY_NUM"
   export XDG_RUNTIME_DIR="$rt_dir"
+  # Panel-state isoleren per shot: anders laadt de app Joeps persisted
+  # actieve domein en is de panel-baseline niet deterministisch.
+  export CHEFBAR_PANEL_STATE="$rt_dir/panel-state.json"
   if [ "$theme" != "auto" ]; then
     export CHEFBAR_THEME="$theme"
   fi
