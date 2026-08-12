@@ -28,6 +28,7 @@ pub mod quiet;
 pub mod sessions;
 pub mod state;
 pub mod tray;
+pub mod vault_bridge;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
