@@ -74,7 +74,7 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-gbtn {{
   background-color: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   color: {text_muted};
   min-width: 28px;
   min-height: 28px;
