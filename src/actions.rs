@@ -14,6 +14,8 @@ use std::collections::HashSet;
 pub enum RunSpec {
     Noop,
     OpenUrl(String),
+    /// Open brain-chunk doel: url eerst, anders lokaal pad.
+    BrainOpen(String),
     OpenOcx,
     FocusAgent(String),
     SendPrompt {
@@ -638,6 +640,40 @@ pub fn build_health_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
 }
 
 // ---------------------------------------------------------------------------
+// Brain search — palette-prefix `?` (D10)
+// ---------------------------------------------------------------------------
+
+/// `?term` zoekt lexical door de brain-digest; resultaat opent pad/url.
+/// Zonder `?`-prefix: lege lijst (de normale catalogus blijft ongewijzigd).
+pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
+    if !query.starts_with('?') {
+        return Vec::new();
+    }
+    let needle = query.trim_start_matches('?');
+    crate::brain::search(needle, &snap.brain_digest)
+        .into_iter()
+        .take(8)
+        .filter_map(|chunk| {
+            let target = crate::brain::open_target(chunk);
+            if target.is_empty() {
+                return None;
+            }
+            Some(action(
+                if chunk.title.is_empty() {
+                    target.clone()
+                } else {
+                    chunk.title.clone()
+                },
+                chunk.excerpt.clone().unwrap_or_default(),
+                "STIL",
+                format!("brain digest zoek {}", chunk.title),
+                RunSpec::BrainOpen(target),
+            ))
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // Hoofd-builder — concateneert alle domeinen (pure functie, geen I/O)
 // ---------------------------------------------------------------------------
 
@@ -993,6 +1029,14 @@ impl Executor {
                 crate::notify::notify("Gekopieerd", "Tekst staat op het klembord.", "ok");
             }
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
+            RunSpec::BrainOpen(target) => {
+                let target = target.clone();
+                if target.starts_with("http://") || target.starts_with("https://") {
+                    crate::notify::open_url(&target);
+                } else if !target.is_empty() {
+                    let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
+                }
+            }
             RunSpec::Refresh => self.request_refresh(),
             RunSpec::OpenOcx => {
                 let url = self.profile.opencodex_dashboard.clone().unwrap_or_else(|| {
@@ -1265,7 +1309,7 @@ fn urlencoding(input: &str) -> String {
 mod tests {
     use super::*;
     use crate::config::EndpointProfile;
-    use crate::models::OpsSnapshot;
+    use crate::models::{BrainChunk, BrainDigest, OpsSnapshot};
 
     fn catalogus_met(snap: &Snapshot) -> Vec<Action> {
         build_actions(
@@ -1274,6 +1318,60 @@ mod tests {
             &EndpointProfile::default(),
             Vec::new(),
         )
+    }
+
+    fn snap_met_digest() -> Snapshot {
+        let mut snap = Snapshot::default();
+        snap.brain_digest = BrainDigest {
+            chunks: vec![
+                BrainChunk {
+                    title: "hard constraints".into(),
+                    path: Some("/brain/hard.md".into()),
+                    ..Default::default()
+                },
+                BrainChunk {
+                    title: "compute ssot".into(),
+                    url: Some("https://vault.chefgroep.online/brain/compute".into()),
+                    excerpt: Some("live compute latch".into()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        snap
+    }
+
+    #[test]
+    fn brain_search_vereist_vraagteken_prefix() {
+        let snap = snap_met_digest();
+        assert!(build_brain_search_actions(&snap, "hard").is_empty());
+        assert!(build_brain_search_actions(&snap, "?").is_empty());
+        assert_eq!(build_brain_search_actions(&snap, "?hard").len(), 1);
+    }
+
+    #[test]
+    fn brain_search_opent_pad_of_url() {
+        let snap = snap_met_digest();
+        let actions = build_brain_search_actions(&snap, "?hard");
+        assert_eq!(actions[0].run, RunSpec::BrainOpen("/brain/hard.md".into()));
+        let actions = build_brain_search_actions(&snap, "?compute");
+        assert_eq!(
+            actions[0].run,
+            RunSpec::BrainOpen("https://vault.chefgroep.online/brain/compute".into())
+        );
+    }
+
+    #[test]
+    fn brain_search_slaat_chunks_zonder_doel_over() {
+        let mut snap = Snapshot::default();
+        snap.brain_digest = BrainDigest {
+            chunks: vec![BrainChunk {
+                title: "geen doel".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(build_brain_search_actions(&snap, "?geen").is_empty());
     }
 
     #[test]
