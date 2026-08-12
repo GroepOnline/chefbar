@@ -23,11 +23,11 @@ impl Overlay {
         container.set_no_show_all(true);
 
         let entry = gtk::SearchEntry::new();
-        entry.set_placeholder_text(Some("Palette · typ om te zoeken (Lane D vult ranking)"));
+        entry.set_placeholder_text(Some("Zoek in alle 15 domeinen"));
         entry.style_context().add_class("chefbar-palette-entry");
         container.pack_start(&entry, false, false, 0);
 
-        let hint = gtk::Label::new(Some("TODO Lane D will wire ranking · Esc sluit overlay"));
+        let hint = gtk::Label::new(Some("Typ om te filteren · Esc sluit overlay"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
         hint.set_ellipsize(pango::EllipsizeMode::End);

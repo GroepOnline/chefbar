@@ -280,6 +280,31 @@ impl Panel {
         }
     }
 
+    pub fn focus_domain(&self, domain: &str) {
+        let id = domain.trim().to_lowercase();
+        if id.is_empty() {
+            return;
+        }
+        *self.harness_state.borrow_mut() = id;
+        self.persist_dirty.set(true);
+        self.show();
+        let query = self.search.text().to_string();
+        self.render(&query);
+    }
+
+    pub fn toggle_palette(&self) {
+        self.show();
+        if self.overlay.is_visible() {
+            self.overlay.hide();
+        } else {
+            self.overlay.show();
+        }
+    }
+
+    pub fn open_inbox(&self) {
+        self.focus_domain("inbox");
+    }
+
     /// Idempotent tonen — voor tray-/hotkey-/IPC-commando's die "openen"
     /// bedoelen (open/show/bar), nooit verbergen.
     pub fn show(&self) {

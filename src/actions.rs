@@ -202,7 +202,20 @@ pub fn build_fleet_actions(
             },
         ));
     }
-    // TODO Lane A will replace with snapshot.fleet_nodes iteration
+    for node in snap.fleet_nodes.iter().take(8) {
+        let label = if node.title.is_empty() {
+            node.id.clone()
+        } else {
+            node.title.clone()
+        };
+        out.push(action(
+            format!("Node · {label}"),
+            node.host.clone().unwrap_or_else(|| node.meta.clone()),
+            if node.online { "BEZIG" } else { "STIL" },
+            format!("fleet nodes {} {}", label, node.id),
+            RunSpec::FocusDomain("fleet".into()),
+        ));
+    }
     out
 }
 
@@ -238,7 +251,25 @@ pub fn build_vault_actions(
             ));
         }
     }
-    // TODO Lane A will replace with snapshot.vault_accounts / crm_deals
+    for account in snap.vault_accounts.iter().take(8) {
+        out.push(action(
+            format!("Account · {}", account.title),
+            format!("{} · {}", account.provider, account.meta),
+            "STIL",
+            format!("vault account {} {}", account.title, account.id),
+            RunSpec::FocusDomain("vault".into()),
+        ));
+    }
+    for deal in snap.crm_deals.iter().take(8) {
+        let amount = deal.amount.clone().unwrap_or_default();
+        out.push(action(
+            format!("Deal · {}", deal.title),
+            format!("{} {}", deal.status, amount).trim().to_string(),
+            "STIL",
+            format!("crm deals neon {} {}", deal.title, deal.id),
+            RunSpec::FocusDomain("crm".into()),
+        ));
+    }
     out
 }
 
@@ -275,24 +306,42 @@ pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
             }
         }
     }
-    // TODO Lane A will replace with snapshot.containers drift
-    let _ = snap;
+    for name in snap.containers.drift.iter().take(6) {
+        out.push(action(
+            format!("Drift · {name}"),
+            "observed vs desired",
+            "HULP",
+            format!("containers docker drift {name}"),
+            RunSpec::CopyText(name.clone()),
+        ));
+    }
     out
 }
 
 /// Secrets: alleen meta, copy via vault-api — D5.
 pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
     let mut out = Vec::new();
-    // Placeholder tot Lane A: als er geen secrets_meta is, toon één uitleg-actie
-    // Secrets-meta is nog niet in Snapshot — tolerant.
-    // TODO Lane A will replace with snapshot.secrets_meta
+    for item in snap.secrets_meta.iter().take(8) {
+        if item.id.is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Kopieer secret · {}", item.title),
+            "kopieert via vault — zichtbaar in audit-log, auto-clear",
+            "STIL",
+            format!("secrets vaultwarden wachtwoord {} {}", item.title, item.id),
+            RunSpec::CopySecretMeta {
+                id: item.id.clone(),
+            },
+        ));
+    }
     if let Some(secrets) = snap.raw.get("secrets_meta").and_then(|v| v.as_array()) {
         for item in secrets.iter().take(8) {
             let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
-            if id.is_empty() {
+            if id.is_empty() || out.iter().any(|a| a.keywords.contains(id)) {
                 continue;
             }
+            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
             out.push(action(
                 format!("Kopieer secret · {title}"),
                 "kopieert via vault — zichtbaar in audit-log, auto-clear",
@@ -301,8 +350,8 @@ pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
                 RunSpec::CopySecretMeta { id: id.to_string() },
             ));
         }
-    } else if out.is_empty() {
-        // Lege state → hint, geen netwerk
+    }
+    if out.is_empty() {
         out.push(action(
             "Secrets · geen items",
             "vaultwarden — kopieert via vault met audit-log",
@@ -359,22 +408,25 @@ pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
 /// Linear: assigned-to-me — D7.
 pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Action> {
     let mut out = Vec::new();
-    // TODO Lane A will replace with snapshot.linear_issues
+    for issue in snap.linear_issues.iter().take(10) {
+        if issue.id.is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Linear · {}", issue.title),
+            issue.id.clone(),
+            "STIL",
+            format!("linear taken issues tickets {} {}", issue.title, issue.id),
+            RunSpec::OpenLinearIssue(issue.id.clone()),
+        ));
+    }
     if let Some(issues) = snap.raw.get("linear_issues").and_then(|v| v.as_array()) {
         for issue in issues.iter().take(10) {
             let id = issue.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
-            let url = issue
-                .get("url")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    format!("{}/linear/{}", profile.dashboard.trim_end_matches('/'), id)
-                });
-            let _ = url;
-            if id.is_empty() {
+            if id.is_empty() || out.iter().any(|a| a.keywords.contains(id)) {
                 continue;
             }
+            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
             out.push(action(
                 format!("Linear · {title}"),
                 id.to_string(),
@@ -412,8 +464,23 @@ pub fn build_kater_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Ac
             RunSpec::OpenUrl(kater_url),
         ));
     }
-    // TODO Lane A will replace with snapshot.kater_status
-    if let Some(kater) = snap.raw.get("kater_status") {
+    if !snap.kater_status.status.is_empty() {
+        let status = snap.kater_status.status.as_str();
+        out.push(action(
+            format!("Kater · {status}"),
+            snap.kater_status
+                .profile
+                .clone()
+                .unwrap_or_else(|| "gateway status".into()),
+            if snap.kater_status.online {
+                "STIL"
+            } else {
+                "FOUT"
+            },
+            "kater gateway status",
+            RunSpec::FocusDomain("kater".into()),
+        ));
+    } else if let Some(kater) = snap.raw.get("kater_status") {
         let status = kater
             .get("status")
             .and_then(|v| v.as_str())
@@ -471,7 +538,22 @@ pub fn build_health_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
         "health dagscore eval score",
         RunSpec::FocusDomain("health".into()),
     ));
-    // TODO Lane A will replace with snapshot.observability
+    if !snap.observability.status.is_empty() {
+        out.push(action(
+            format!("Observability · {}", snap.observability.status),
+            snap.observability
+                .updated_at
+                .clone()
+                .unwrap_or_else(|| "samenvatting".into()),
+            if snap.observability.ok {
+                "STIL"
+            } else {
+                "FOUT"
+            },
+            "health observability events catalog",
+            RunSpec::FocusDomain("health".into()),
+        ));
+    }
     out
 }
 
@@ -500,6 +582,32 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
+    if snap.brain.ok || !snap.brain.skills.is_empty() {
+        let counts = snap.brain.counts.clone().unwrap_or_default();
+        actions.push(action(
+            format!("Brain · {} skills · {} evals", counts.skills, counts.evals),
+            snap.brain
+                .source
+                .clone()
+                .unwrap_or_else(|| "vault /api/brain".into()),
+            if snap.brain.ok { "STIL" } else { "HULP" },
+            "brain memory wiki skills eval",
+            RunSpec::FocusDomain("health".into()),
+        ));
+    }
+    if !snap.jcode_memory.status.is_empty() {
+        actions.push(action(
+            format!("jcode memory · {}", snap.jcode_memory.status),
+            format!("{} · {}", snap.jcode_memory.host, snap.jcode_memory.bind),
+            if snap.jcode_memory.online {
+                "BEZIG"
+            } else {
+                "STIL"
+            },
+            "jcode memory session gateway runner",
+            RunSpec::FocusDomain("kater".into()),
+        ));
+    }
 
     // Bestaand: herdr focus/send
     for agent in &ops.agents {
@@ -1189,6 +1297,11 @@ mod tests {
         let profile = EndpointProfile::default();
         // Bouw met placeholder raw secrets_meta
         let mut snap_with = snap.clone();
+        snap_with.secrets_meta = vec![crate::models::SecretMeta {
+            id: "sec-1".into(),
+            title: "API key".into(),
+            ..Default::default()
+        }];
         snap_with.raw = serde_json::json!({
             "secrets_meta": [{"id": "sec-1", "title": "API key"}]
         });

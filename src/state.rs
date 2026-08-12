@@ -27,6 +27,7 @@ pub const OPS_POLL_MS: u64 = 15_000;
 pub const VAULT_EXTRA_POLL_MS: u64 = 30_000;
 pub const LINEAR_POLL_MS: u64 = 60_000;
 pub const KATER_POLL_MS: u64 = 30_000;
+pub const JCODE_POLL_MS: u64 = 30_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
 const PER_ENDPOINT_TIMEOUT_MS: u64 = 2_000;
 
@@ -126,6 +127,7 @@ impl Poller {
         let mut next_vault_extra = Instant::now();
         let mut next_linear = Instant::now();
         let mut next_kater = Instant::now();
+        let mut next_jcode = Instant::now();
         let mut next_local = Instant::now();
         self.poll_watchdog_into_shared();
         loop {
@@ -154,11 +156,16 @@ impl Poller {
                 self.poll_kater();
                 next_kater = Instant::now() + Duration::from_millis(KATER_POLL_MS);
             }
+            if now >= next_jcode {
+                self.poll_jcode_memory();
+                next_jcode = Instant::now() + Duration::from_millis(JCODE_POLL_MS);
+            }
             let deadline = next_vault
                 .min(next_ops)
                 .min(next_vault_extra)
                 .min(next_linear)
-                .min(next_kater);
+                .min(next_kater)
+                .min(next_jcode);
             let timeout = deadline
                 .saturating_duration_since(Instant::now())
                 .min(Duration::from_secs(1));
@@ -421,6 +428,12 @@ impl Poller {
             snap.observability = build_obs_summary(Some(&val));
             any_ok = true;
         }
+        if let Some(val) = results.get("brain").cloned().flatten() {
+            if let Some(parsed) = crate::vault_bridge::parse_brain(&val) {
+                snap.brain = parsed;
+                any_ok = true;
+            }
+        }
 
         // freshness
         if any_ok {
@@ -473,6 +486,30 @@ impl Poller {
                 snap.last_poll_at.insert("kater".into(), iso_now());
             }
         }
+    }
+
+    fn poll_jcode_memory(&self) {
+        let bind = std::env::var("CHEFBAR_JCODE_MEMORY_BIND")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "100.111.187.17:7643".into());
+        let addr = bind
+            .parse()
+            .unwrap_or_else(|_| "100.111.187.17:7643".parse().expect("static bind"));
+        let online =
+            std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok();
+        let mut snap = self.shared.snapshot.write().unwrap();
+        snap.jcode_memory = crate::models::JcodeMemoryStatus {
+            online,
+            host: "chef-runner-01".into(),
+            bind: bind.clone(),
+            status: if online {
+                "online".into()
+            } else {
+                "offline".into()
+            },
+        };
+        snap.last_poll_at.insert("jcode_memory".into(), iso_now());
     }
 
     fn fetch_all(&self) -> HashMap<String, Option<Value>> {
@@ -539,6 +576,7 @@ impl Poller {
             ("commander_tasks", "/commander/tasks?limit=20"),
             ("clipboard_extra", "/clipboard"),
             ("observability", "/observability/summary"),
+            ("brain", "/brain"),
         ];
         Self::fanout(&self.vault, paths)
     }

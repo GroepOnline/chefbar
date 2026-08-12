@@ -754,6 +754,14 @@ pub struct ObsSummary {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JcodeMemoryStatus {
+    pub online: bool,
+    pub host: String,
+    pub bind: String,
+    pub status: String,
+}
+
 // --- tolerant builders (Value -> structs, misser = Default) ---
 
 fn str_field(v: &Value, key: &str) -> String {
@@ -1142,6 +1150,8 @@ pub struct Snapshot {
     pub kater_status: KaterStatus,
     pub observability: ObsSummary,
     pub last_poll_at: HashMap<String, String>,
+    pub brain: crate::vault_bridge::BrainResponse,
+    pub jcode_memory: JcodeMemoryStatus,
 }
 
 impl Snapshot {
