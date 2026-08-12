@@ -153,7 +153,6 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-signature {{
   background-color: {control_border};
   min-width: 2px;
-  max-width: 2px;
   border-radius: 1px;
 }}
 .chefbar-signature.ok       {{ background-color: {success}; }}
