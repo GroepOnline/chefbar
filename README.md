@@ -1,3 +1,22 @@
+
+## ChefApp 5.0 — mission control
+
+ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
+**Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
+Data blijft offline-tolerant en freshness-first; writes lopen uitsluitend via policy- en audit-gecontroleerde acties.
+
+### Lane-G tooling
+
+Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:
+
+```bash
+# op chef-runner-01-1, nadat target/release/chefbar bestaat
+scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain
+scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
+```
+
+De CI houdt `cargo fmt` en `cargo clippy --all-targets -- -D warnings` als harde gates; visual shots en screenshot-diffs zijn warning-only. Zie [het 5.0-plan](docs/plan-chefapp-5.0.md) en de [QA-checklist](docs/chefapp-qa.md).
+
 # ChefBar 3.1
 
 Mission control aan je menubalk. Eén venster, één actor, alle harnassen.

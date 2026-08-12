@@ -49,3 +49,18 @@ release-artifact heet `chefbar-release`.
 
 `feat:`, `fix:`, `docs:`, `test:`, `chore:` met scope, bijv.
 `fix(tray): statuslijn sorteert nieuwste eerst binnen priority-groep`.
+
+## ChefApp 5.0 lane G — tooling & docs
+
+Lane G blijft file-disjoint: wijzigingen zijn beperkt tot `scripts/**`, `.github/workflows/ci.yml`, `docs/**`, `README.md`, `CONTRIBUTING.md`, `Cargo.toml` (alleen dev-deps/scripts) en `tests/**`. Raak voor deze lane geen `src/**` aan.
+
+De verplichte gate op `chef-runner-01-1` is:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+shellcheck install.sh scripts/*.sh
+```
+
+Visual shots mogen in CI warning-only zijn, maar moeten hun artefacten en concrete foutmelding bewaren. De 15-domein-run gebruikt `scripts/visual-shot.sh --mode all-domains`; zie [docs/chefapp-qa.md](docs/chefapp-qa.md).
