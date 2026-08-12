@@ -110,6 +110,10 @@ pub fn run_checks() -> DoctorReport {
     //    actor toont dit eerlijk "poll nooit".
     lines.push(format!("poll     {}", crate::state::last_poll_label()));
 
+    // 7. Logging (Q4): het echte chefbar.log-pad — README en notificaties
+    //    verwezen er al naar, nu bestaat het bestand ook.
+    lines.push(format!("log      {}", crate::log::log_path().display()));
+
     DoctorReport {
         lines,
         failures,
@@ -122,6 +126,7 @@ pub fn run_checks_async(report: DoctorReport) {
     let check_time = report.elapsed_ms;
     if !report.ok() {
         let joined = report.failures.join("; ");
+        crate::log::log(&format!("doctor mislukt: {joined}"));
         crate::notify::notify("ChefBar-doctor", &joined, "error");
     } else {
         crate::notify::notify(

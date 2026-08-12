@@ -151,6 +151,10 @@ fn build_runtime(
 
 fn run_actor_only(cli: &Cli) {
     let (_vault, _ops, _shared) = build_runtime(cli);
+    chefbar::log::log(&format!(
+        "chefbar v{} gestart (serve-only)",
+        chefbar::VERSION
+    ));
     println!("chefbar serve: poll-actor draait (vault 5s, ops 15s). Ctrl-C om te stoppen.");
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
@@ -162,6 +166,12 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
 
     let (vault, ops, shared) = build_runtime(cli);
     let profile = global_profile().clone();
+    chefbar::log::log(&format!(
+        "chefbar v{} gestart (profiel {}) — log: {}",
+        chefbar::VERSION,
+        profile.name,
+        chefbar::log::log_path().display()
+    ));
 
     // Signaal CSS op het hele proces (strak-skin, dark default).
     let settings = gtk::Settings::default().expect("GTK-settings");
@@ -169,6 +179,9 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     chefbar::tray::set_theme(&theme);
     let provider = gtk::CssProvider::new();
     if let Err(err) = provider.load_from_data(css::styles_css(&theme).as_bytes()) {
+        chefbar::log::log(&format!(
+            "CSS-load mislukt (fallback naar systeemthema): {err}"
+        ));
         eprintln!("[chefbar] CSS-load mislukt (fallback naar systeemthema): {err}");
     }
     gtk::StyleContext::add_provider_for_screen(

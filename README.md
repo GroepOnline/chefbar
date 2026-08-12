@@ -148,7 +148,8 @@ RuntimeDirectory=chefbar          # → $XDG_RUNTIME_DIR/chefbar
 IPC-socket:  $XDG_RUNTIME_DIR/chefbar.sock (0600)
 ```
 
-Logs: `journalctl --user -u chefbar.service -f`
+Logs: `journalctl --user -u chefbar.service -f` \
+File-log: `~/.local/state/chefbar/chefbar.log` (of `CHEFBAR_LOG`, getoond door `chefbar --doctor`)
 
 ## Development
 

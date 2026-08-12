@@ -469,7 +469,9 @@ impl Executor {
                 let target = terminal_id.clone();
                 let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    let _ = ops_focus(&ops, &target);
+                    if !ops_focus(&ops, &target) {
+                        crate::log::log(&format!("FocusAgent mislukt: {target}"));
+                    }
                 });
             }
             RunSpec::SendPrompt {
@@ -484,6 +486,10 @@ impl Executor {
                     if ok {
                         crate::notify::notify("Opdracht verstuurd", &text, "ok");
                     } else {
+                        crate::log::log(&format!(
+                            "send_prompt mislukt (terminal={terminal}, pane={})",
+                            pane.as_deref().unwrap_or("-")
+                        ));
                         crate::notify::notify("Sturen lukte niet", "zie chefbar.log", "error");
                     }
                 });
@@ -499,11 +505,14 @@ impl Executor {
                             let tid = result.get("id").and_then(|v| v.as_str()).unwrap_or("?");
                             crate::notify::notify("Agent aan de slag", tid, "ok");
                         }
-                        Err(_) => crate::notify::notify(
-                            "Taak starten lukte niet",
-                            "zie chefbar.log",
-                            "error",
-                        ),
+                        Err(e) => {
+                            crate::log::log(&format!("CreateTask mislukt: {e}"));
+                            crate::notify::notify(
+                                "Taak starten lukte niet",
+                                "zie chefbar.log",
+                                "error",
+                            );
+                        }
                     }
                 });
             }
@@ -539,7 +548,10 @@ impl Executor {
                     )];
                     match vault.post_json_headers("/coding/accounts/switch", &body, &headers) {
                         Ok(_) => crate::notify::notify("Account gewisseld", "", "ok"),
-                        Err(_) => crate::notify::notify("Wisselen lukte niet", "", "error"),
+                        Err(e) => {
+                            crate::log::log(&format!("accountswitch mislukt: {e}"));
+                            crate::notify::notify("Wisselen lukte niet", "", "error");
+                        }
                     }
                 });
             }
@@ -548,7 +560,10 @@ impl Executor {
                 let vault = self.vault.clone();
                 self.spawn_bg(move || match vault.post_json(&path, &json!({})) {
                     Ok(_) => crate::notify::notify("Taak gestopt", "", "ok"),
-                    Err(_) => crate::notify::notify("Stoppen lukte niet", "", "error"),
+                    Err(e) => {
+                        crate::log::log(&format!("CancelTask mislukt: {e}"));
+                        crate::notify::notify("Stoppen lukte niet", "", "error");
+                    }
                 });
             }
             RunSpec::ClipboardAdd => {
@@ -557,7 +572,10 @@ impl Executor {
                 self.spawn_bg(move || {
                     match vault.post_json("/clipboard", &json!({"text": text})) {
                         Ok(_) => crate::notify::notify("Toegevoegd aan clipboard", "", "ok"),
-                        Err(_) => crate::notify::notify("Toevoegen lukte niet", "", "error"),
+                        Err(e) => {
+                            crate::log::log(&format!("ClipboardAdd mislukt: {e}"));
+                            crate::notify::notify("Toevoegen lukte niet", "", "error");
+                        }
                     }
                 });
             }
@@ -567,7 +585,10 @@ impl Executor {
                 self.spawn_bg(
                     move || match vault.delete_json(&format!("/clipboard/{row}")) {
                         Ok(_) => crate::notify::notify("Clipboard-rij verwijderd", "", "ok"),
-                        Err(_) => crate::notify::notify("Verwijderen lukte niet", "", "error"),
+                        Err(e) => {
+                            crate::log::log(&format!("ClipboardDelete mislukt: {e}"));
+                            crate::notify::notify("Verwijderen lukte niet", "", "error");
+                        }
                     },
                 );
             }
@@ -585,7 +606,10 @@ impl Executor {
                             "",
                             "ok",
                         ),
-                        Err(_) => crate::notify::notify("Desktop-actie lukte niet", "", "error"),
+                        Err(e) => {
+                            crate::log::log(&format!("DesktopAction({verb}) mislukt: {e}"));
+                            crate::notify::notify("Desktop-actie lukte niet", "", "error");
+                        }
                     }
                 });
             }
@@ -617,7 +641,10 @@ impl Executor {
                         Ok(_) => {
                             crate::notify::notify("Gedeelde bestanden gesynchroniseerd", "", "ok")
                         }
-                        Err(_) => crate::notify::notify("Sync lukte niet", "", "error"),
+                        Err(e) => {
+                            crate::log::log(&format!("ShareSync({kind}) mislukt: {e}"));
+                            crate::notify::notify("Sync lukte niet", "", "error");
+                        }
                     }
                 });
             }

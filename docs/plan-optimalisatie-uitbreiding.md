@@ -134,6 +134,10 @@ configuratievraagstuk, geen refactor. Blokkerend extern, dus laatste in
 volgorde.
 
 ### E5 — nieuwe acties & oppervlakken
+✅ Deel gedaan (2026-08-12): **Herdr-agents in het panel** — eigen Herdr-sectie
+(naast Agents) met pane/focus-status en inline prompt-sturen (klik op een rij →
+tekst-dialog → SendPrompt). Commander-queue, rustige meldingen en deep-links
+blijven open (M5-staart).
 - **Herdr-agents in het panel:** herdr-agent-rijen tonen pane/focus-status
   (`OpsSnapshot.agents` heeft `pane_id`/`focused` al) + inline prompt-sturen
   (nu alleen via de actie "Stuur naar …").
@@ -145,6 +149,10 @@ volgorde.
   al in `AttachPoints` (`src/sessions.rs`) — zichtbaarder maken in sessie-rijen.
 
 ### E6 — toetsenbord-first
+✅ Gedaan (2026-08-12): pijltjes ↑/↓ door de actie-rijen van het actieve harnas
+(wrap-around + `.selected`-stijl), Enter voert de geselecteerde rij uit,
+Ctrl+K/Cmd+K focust zoeken; `/` en Esc stonden al. Selectielogica is een pure
+`next_selection()` met unit-tests.
 `/` focust zoeken, Esc verbergt (staat). Uitbreiden: pijltjes door de
 resultaten van het actieve harnas, Enter = uitvoeren, Ctrl+K/Cmd+K = zoeken
 focussen; focus-chain expliciet maken (komt deels al terug via GTK-traversal).
@@ -183,10 +191,10 @@ De E0382/E0597-breuk overleefde een merge. Borging:
   blijven; voeg `--ipc state <x>` en `switch-account`-varianten toe.
 
 ### Q4 — logging
-README én notificaties verwijzen naar "chefbar.log" dat **niet bestaat**; veel
-`Err(_)`-takken slikken fouten stil. Voorstel: lichte logger (eigen
-bestand-append of `tracing`-lite), pad via `CHEFBAR_LOG`, actor/executor-fouten
-erin; doctor toont het pad.
+✅ Gedaan (2026-08-12): `src/log.rs` — lichte bestand-logger (append) naar
+`~/.local/state/chefbar/chefbar.log` (of `CHEFBAR_LOG`). Actor (vault-/ops-poll)
+en executor (alle actie-fouten) loggen nu; `--doctor` toont het pad; README
+wijst naar het echte bestand.
 
 ### Q5 — doctor & observability
 - Latency-probes per endpoint (DNS/TLS/connect), ops-status, laatste poll-tijd

@@ -326,6 +326,9 @@ impl Poller {
                 Some(errors.join(", "))
             };
         }
+        if !errors.is_empty() {
+            crate::log::log(&format!("vault-poll onvolledig: {}", errors.join(", ")));
+        }
         {
             let mut current = self.shared.snapshot.write().unwrap();
             *current = snap;
@@ -400,9 +403,18 @@ impl Poller {
                 *self.shared.ops.write().unwrap() = ops;
                 (Some("ok".to_string()), true)
             }
-            Err(ApiError::Http(code, _)) => (Some(code.to_string()), false),
-            Err(ApiError::Transport(_)) => (Some("offline".to_string()), false),
-            Err(ApiError::Blocked(_)) => (Some("geblokkeerd".to_string()), false),
+            Err(ApiError::Http(code, _)) => {
+                crate::log::log(&format!("ops-poll mislukt (HTTP {code})"));
+                (Some(code.to_string()), false)
+            }
+            Err(ApiError::Transport(reason)) => {
+                crate::log::log(&format!("ops-poll offline: {reason}"));
+                (Some("offline".to_string()), false)
+            }
+            Err(ApiError::Blocked(reason)) => {
+                crate::log::log(&format!("ops-poll geblokkeerd: {reason}"));
+                (Some("geblokkeerd".to_string()), false)
+            }
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

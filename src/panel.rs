@@ -20,6 +20,54 @@ use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+/// E6: gedeelde render- en toetsenbord-state, meegegeven aan render_into.
+/// Centraliseert de P3.1-revisie-check (handtekening + statusregel) en de
+/// actie-rijen waar de pijltjestoetsen doorheen lopen. Overleeft re-renders:
+/// de rijen worden elke render herbouwd, de selectie-index blijft staan.
+#[derive(Clone)]
+struct RenderSlots {
+    /// P3.1: laatste render-handtekening — bij onveranderde snapshot wordt de
+    /// dure full-rebuild overgeslagen in de refresh-loop.
+    sig: Rc<RefCell<Option<u64>>>,
+    /// Opgeslagen statusregel-label zodat poll-leeftijd + versheid ook zonder
+    /// rebuild blijven tikken (P3.1-skip-pad).
+    updated_label: Rc<RefCell<Option<gtk::Label>>>,
+    /// E6: actie-rijen in zichtvolgorde — de toetsenbord-navigeerbare resultaten.
+    action_rows: Rc<RefCell<Vec<gtk::Button>>>,
+    /// E6: geselecteerde rij-index binnen action_rows (0 = eerste).
+    selected: Rc<Cell<usize>>,
+}
+
+impl RenderSlots {
+    fn new() -> Self {
+        Self {
+            sig: Rc::new(RefCell::new(None)),
+            updated_label: Rc::new(RefCell::new(None)),
+            action_rows: Rc::new(RefCell::new(Vec::new())),
+            selected: Rc::new(Cell::new(0)),
+        }
+    }
+}
+
+/// E6: volgende selectie-index bij ↑/↓ (wrap-around, Raycast-geest) — pure,
+/// apart gehouden zodat de pijl-logica unit-testbaar is zonder GTK.
+fn next_selection(current: usize, len: usize, down: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if down {
+        if current + 1 < len {
+            current + 1
+        } else {
+            0
+        }
+    } else if current > 0 {
+        current - 1
+    } else {
+        len - 1
+    }
+}
+
 pub struct Panel {
     pub window: gtk::Window,
     content: gtk::Box,
@@ -32,12 +80,8 @@ pub struct Panel {
     nav_buttons: Rc<Vec<(String, gtk::Button)>>,
     /// UI-state (harnas + zoekterm) is gewijzigd maar nog niet naar disk.
     persist_dirty: Rc<Cell<bool>>,
-    /// P3.1: laatste render-handtekening — bij onveranderde snapshot wordt de
-    /// dure full-rebuild overgeslagen in de refresh-loop.
-    render_sig: Rc<RefCell<Option<u64>>>,
-    /// Opgeslagen statusregel-label zodat poll-leeftijd + versheid ook zonder
-    /// rebuild blijven tikken (P3.1-skip-pad).
-    updated_label: Rc<RefCell<Option<gtk::Label>>>,
+    /// E6: render- + toetsenbord-state (P3.1-handtekening, statusregel, actie-rijen).
+    slots: RenderSlots,
 }
 
 impl Panel {
@@ -233,11 +277,16 @@ impl Panel {
             gtk::glib::Propagation::Proceed
         });
 
-        // "/" → focus search, Esc → verbergen (Raycast-geest).
-        // Pijltjes ↑/↓ gaan naar de zoek-input terug als je eruit springt.
+        // E6: toetsenbord-first. Esc verbergt; "/" en Ctrl+K focussen zoeken;
+        // ↑/↓ lopen door de actie-rijen van het actieve harnas (wrap-around) en
+        // markeren de geselecteerde rij (.selected + focus) — Enter activeert
+        // hem via GTK's eigen button-activation.
+        let slots = RenderSlots::new();
         {
             let search_focus = search.clone();
             let window_esc = window.clone();
+            let rows_rc = slots.action_rows.clone();
+            let sel_rc = slots.selected.clone();
             window.connect_key_press_event(move |_, event| {
                 let kv = event.keyval();
                 if kv == gdk::keys::constants::Escape {
@@ -248,8 +297,30 @@ impl Panel {
                     search_focus.grab_focus();
                     return gtk::glib::Propagation::Stop;
                 }
-                // Als search focus heeft: ↓ springt naar eerste action-knop via focus-chain;
-                // GTK's eigen focus-traversal doet dat al — we hoeven alleen slash/Esc te claimen.
+                let ctrl = event.state().contains(gdk::ModifierType::CONTROL_MASK)
+                    || event.state().contains(gdk::ModifierType::MOD1_MASK);
+                if ctrl && kv == gdk::keys::constants::k {
+                    search_focus.grab_focus();
+                    return gtk::glib::Propagation::Stop;
+                }
+                if kv == gdk::keys::constants::Down || kv == gdk::keys::constants::Up {
+                    let rows = rows_rc.borrow();
+                    if rows.is_empty() {
+                        return gtk::glib::Propagation::Stop;
+                    }
+                    let idx =
+                        next_selection(sel_rc.get(), rows.len(), kv == gdk::keys::constants::Down);
+                    sel_rc.set(idx);
+                    for (i, row) in rows.iter().enumerate() {
+                        if i == idx {
+                            row.style_context().add_class("selected");
+                            row.grab_focus();
+                        } else {
+                            row.style_context().remove_class("selected");
+                        }
+                    }
+                    return gtk::glib::Propagation::Stop;
+                }
                 gtk::glib::Propagation::Proceed
             });
         }
@@ -285,9 +356,6 @@ impl Panel {
         }
         let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
-        // P3.1: render-handtekening + opgeslagen statusregel (refresh-loop).
-        let render_sig = Rc::new(RefCell::new(None));
-        let updated_label = Rc::new(RefCell::new(None));
         // Wire sidebar nav → harness_state + content re-render + sync_nav_buttons
         {
             for (id, btn) in nav_buttons_rc.iter() {
@@ -302,8 +370,7 @@ impl Panel {
                 let id_for_class = id.clone();
                 let btn_clone = btn.clone();
                 let dirty_clone = persist_dirty.clone();
-                let sig_clone = render_sig.clone();
-                let label_clone = updated_label.clone();
+                let slots_clone = slots.clone();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
@@ -315,8 +382,7 @@ impl Panel {
                         &window_clone,
                         &q,
                         &harness_state_clone,
-                        &sig_clone,
-                        &label_clone,
+                        &slots_clone,
                     );
                     // Eén pad met de poll-timer: labels + active-class + tooltips.
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
@@ -333,8 +399,7 @@ impl Panel {
             harness_state: harness_state.clone(),
             nav_buttons: nav_buttons_rc.clone(),
             persist_dirty: persist_dirty.clone(),
-            render_sig,
-            updated_label,
+            slots,
         };
         panel.wire_search();
         // Initieel renderen met de (mogelijk herstelde) zoekterm — nooit een
@@ -379,8 +444,7 @@ impl Panel {
         let window = self.window.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
-        let sig = self.render_sig.clone();
-        let label = self.updated_label.clone();
+        let slots = self.slots.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
@@ -392,8 +456,7 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
-                    &sig,
-                    &label,
+                    &slots,
                 );
             }
         });
@@ -423,8 +486,7 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
-            &self.render_sig,
-            &self.updated_label,
+            &self.slots,
         );
     }
 
@@ -458,16 +520,15 @@ impl Panel {
         let harness_state = self.harness_state.clone();
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
-        let render_sig = self.render_sig.clone();
-        let updated_label = self.updated_label.clone();
+        let slots = self.slots.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if !window.is_visible() {
                 return ControlFlow::Continue;
             }
             // P3.1: bij onveranderde snapshot geen dure full-rebuild — alleen
             // de statusregel (poll-leeftijd + versheid) blijft live tikken.
-            if *render_sig.borrow() == Some(render_signature(&shared)) {
-                if let Some(label) = updated_label.borrow().as_ref() {
+            if *slots.sig.borrow() == Some(render_signature(&shared)) {
+                if let Some(label) = slots.updated_label.borrow().as_ref() {
                     label.set_text(&status_right_text(&shared));
                 }
                 return ControlFlow::Continue;
@@ -480,8 +541,7 @@ impl Panel {
                 &window,
                 &query,
                 &harness_state,
-                &render_sig,
-                &updated_label,
+                &slots,
             );
             let active = harness_state.borrow().clone();
             sync_nav_buttons(&nav_buttons, &shared_nav, &active);
@@ -563,7 +623,7 @@ fn render_signature(shared: &Shared) -> u64 {
         day_score: Option<i64>,
         providers: Vec<(&'a str, bool)>, // label, available
         events_len: usize,
-        ops: (bool, Vec<(&'a str, &'a str)>), // ok, (terminal_id, status)
+        ops: (bool, Vec<(&'a str, &'a str, bool)>), // ok, (terminal_id, status, focused)
     }
 
     let mut hasher = DefaultHasher::new();
@@ -600,7 +660,7 @@ fn render_signature(shared: &Shared) -> u64 {
                 ops.ok,
                 ops.agents
                     .iter()
-                    .map(|a| (a.terminal_id.as_str(), a.status.as_str()))
+                    .map(|a| (a.terminal_id.as_str(), a.status.as_str(), a.focused))
                     .collect(),
             ),
         };
@@ -626,9 +686,6 @@ fn status_right_text(shared: &Shared) -> String {
     )
 }
 
-// render_into is bewust één monolithische renderer (Signaal v2-secties); de
-// P3.1-slots (handtekening + statusregel) zijn er daarom bij gekomen.
-#[allow(clippy::too_many_arguments)]
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
@@ -636,11 +693,14 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
-    render_sig: &Rc<RefCell<Option<u64>>>,
-    updated_label: &Rc<RefCell<Option<gtk::Label>>>,
+    slots: &RenderSlots,
 ) {
     // P3.1: na elke render is de handtekening de actuele waarheid.
-    *render_sig.borrow_mut() = Some(render_signature(shared));
+    *slots.sig.borrow_mut() = Some(render_signature(shared));
+    // E6: actie-rijen worden elke render herbouwd — start leeg, selectie 0
+    // (onderaan wordt de selectie geklemd en visueel gezet).
+    slots.action_rows.borrow_mut().clear();
+    slots.selected.set(0);
     for child in content.children() {
         content.remove(&child);
     }
@@ -747,7 +807,7 @@ fn render_into(
     updated.style_context().add_class("chefbar-card-meta");
     // P3.1: sla het label op zodat de refresh-loop het zonder rebuild kan
     // bijwerken (poll-leeftijd blijft live).
-    *updated_label.borrow_mut() = Some(updated.clone());
+    *slots.updated_label.borrow_mut() = Some(updated.clone());
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
 
@@ -923,6 +983,8 @@ fn render_into(
                 }
             }
         });
+        // E6: deze rij is toetsenbord-navigeerbaar (pijltjes + Enter).
+        slots.action_rows.borrow_mut().push(row.clone());
         group.pack_start(&row, false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
@@ -1078,8 +1140,11 @@ fn render_into(
     }
     content.pack_start(&group, false, false, 0);
 
+    // ---- Sectie: Herdr — ops-agents met pane/focus + inline prompt (E5) ----
+    render_herdr_section(content, &ops, executor, window, &q);
+
     // ---- Sectie: Agents — strak, ellipsis, premium empty ----
-    section_title(content, "Agents", "herdr en lopende werkstromen");
+    section_title(content, "Agents", "vault watcher-feed · werkstromen");
     let group = group_box();
     let mut any_agent = false;
     for agent in snap.agents.iter().filter(|a| {
@@ -1310,6 +1375,29 @@ fn render_into(
     content.pack_start(&footer, false, false, 0);
 
     content.show_all();
+
+    // E6: selectie vastzetten op de nieuwe rij-lijst. Na een rebuild is de
+    // focus gereset (children verwijderd) — herstel hem op de geselecteerde
+    // rij, tenzij de gebruiker aan het typen is (search houdt focus).
+    let rows = slots.action_rows.borrow();
+    let n = rows.len();
+    if n > 0 {
+        let mut idx = slots.selected.get();
+        if idx >= n {
+            idx = n - 1;
+            slots.selected.set(idx);
+        }
+        for (i, row) in rows.iter().enumerate() {
+            if i == idx {
+                row.style_context().add_class("selected");
+                if window.focused_widget().is_none() {
+                    row.grab_focus();
+                }
+            } else {
+                row.style_context().remove_class("selected");
+            }
+        }
+    }
 }
 
 /// Sidebar-nav syncen op live state: queue-depth in het label ("Fleet · 3"),
@@ -1386,6 +1474,129 @@ fn group_box_attention() -> gtk::Box {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
     group.style_context().add_class("chefbar-group-attention");
     group
+}
+
+/// E5: herdr-sectie — lopende agent-terminals uit OpsSnapshot met
+/// pane/focus-status; klik op een rij = inline prompt-sturen (tekst-dialog →
+/// SendPrompt via de executor). Stil overslaan als er geen ops-agents zijn.
+fn render_herdr_section(
+    content: &gtk::Box,
+    ops: &crate::models::OpsSnapshot,
+    executor: &Executor,
+    window: &gtk::Window,
+    q: &str,
+) {
+    let herdr: Vec<_> = ops
+        .agents
+        .iter()
+        .filter(|a| {
+            q.is_empty()
+                || a.name.to_lowercase().contains(q)
+                || a.workspace.to_lowercase().contains(q)
+                || a.cwd.to_lowercase().contains(q)
+        })
+        .collect();
+    if herdr.is_empty() {
+        return;
+    }
+    let home_str = crate::home_dir().to_string_lossy().to_string();
+    section_title(
+        content,
+        "Herdr",
+        "lopende agent-terminals · klik = prompt sturen",
+    );
+    let group = group_box();
+    for agent in herdr.iter().take(8) {
+        let (cls, stamp) = match agent.status.as_str() {
+            "working" => ("info", "BEZIG"),
+            "blocked" => ("warn", "HULP"),
+            "idle" => ("ok", "KLAAR"),
+            _ => ("ok", "STIL"),
+        };
+        let row = gtk::Button::new();
+        row.set_relief(gtk::ReliefStyle::None);
+        row.set_hexpand(true);
+        row.set_halign(gtk::Align::Fill);
+        row.style_context().add_class("chefbar-row-btn");
+        let inner = gtk::Box::new(gtk::Orientation::Horizontal, 9);
+        let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        dot.set_size_request(8, 8);
+        dot.set_halign(gtk::Align::Start);
+        dot.set_valign(gtk::Align::Center);
+        dot.style_context().add_class("chefbar-dot");
+        dot.style_context().add_class(cls);
+        inner.pack_start(&dot, false, false, 0);
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+        let title_raw = format!("{} · {}", agent.name, agent.workspace);
+        let title = gtk::Label::new(Some(&title_raw));
+        title.set_halign(gtk::Align::Start);
+        title.set_xalign(0.0);
+        title.set_ellipsize(pango::EllipsizeMode::End);
+        title.set_line_wrap(false);
+        title.set_max_width_chars(36);
+        title.set_tooltip_text(Some(&title_raw));
+        title.style_context().add_class("chefbar-card-title");
+        text.pack_start(&title, false, false, 0);
+        let cwd_label = agent.cwd.replace(&home_str, "~");
+        if !cwd_label.is_empty() {
+            let meta = gtk::Label::new(Some(&cwd_label));
+            meta.set_halign(gtk::Align::Start);
+            meta.set_xalign(0.0);
+            meta.set_ellipsize(pango::EllipsizeMode::End);
+            meta.set_line_wrap(false);
+            meta.set_max_width_chars(40);
+            meta.set_tooltip_text(Some(&cwd_label));
+            meta.style_context().add_class("chefbar-card-meta");
+            text.pack_start(&meta, false, false, 0);
+        }
+        inner.pack_start(&text, true, true, 0);
+        // Pane/focus-status (E5) naast de status-stamp.
+        let status = stamp_label(stamp);
+        if !agent.pane_id.is_empty() {
+            status.set_text(&format!("{} · pane {}", stamp, agent.pane_id));
+            let tip = if agent.focused {
+                format!("pane {} · gefocust", agent.pane_id)
+            } else {
+                format!("pane {} · niet gefocust", agent.pane_id)
+            };
+            status.set_tooltip_text(Some(&tip));
+        } else if agent.focused {
+            status.set_tooltip_text(Some("gefocust"));
+        }
+        inner.pack_end(&status, false, false, 0);
+        row.add(&inner);
+        if let Some(child) = row.child() {
+            child.set_margin_start(10);
+            child.set_margin_end(10);
+            child.set_margin_top(6);
+            child.set_margin_bottom(6);
+        }
+        // Inline prompt-sturen: klik → tekst-dialog → SendPrompt via executor.
+        let action = Action {
+            title: format!("Stuur naar {} · {}", agent.name, agent.workspace),
+            meta: "typ je opdracht en druk op Enter".into(),
+            stamp: "TAAK".into(),
+            keywords: String::new(),
+            section: "Acties".into(),
+            shortcut: "↵".into(),
+            needs_text: true,
+            destructive: false,
+            pinned: false,
+            run: crate::actions::RunSpec::SendPrompt {
+                terminal_id: agent.terminal_id.clone(),
+                pane_id: if agent.pane_id.is_empty() {
+                    None
+                } else {
+                    Some(agent.pane_id.clone())
+                },
+            },
+        };
+        let executor_clone = executor.clone();
+        let window_clone = window.clone();
+        row.connect_clicked(move |_| prompt_for(&executor_clone, &window_clone, &action));
+        group.pack_start(&row, false, false, 0);
+    }
+    content.pack_start(&group, false, false, 0);
 }
 
 fn session_cta(
@@ -1638,4 +1849,23 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
     dialog.move_(x + 24, y + 24);
     dialog.show_all();
     entry.grab_focus();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_selection;
+
+    #[test]
+    fn selectie_stapt_en_wrapt_rond() {
+        assert_eq!(next_selection(0, 4, true), 1);
+        assert_eq!(next_selection(3, 4, true), 0);
+        assert_eq!(next_selection(0, 4, false), 3);
+        assert_eq!(next_selection(2, 4, false), 1);
+    }
+
+    #[test]
+    fn selectie_bij_lege_lijst_is_nul() {
+        assert_eq!(next_selection(0, 0, true), 0);
+        assert_eq!(next_selection(0, 0, false), 0);
+    }
 }

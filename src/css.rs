@@ -276,6 +276,10 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-row-btn:focus {{
   box-shadow: inset 2px 0 0 {focus};
 }}
+.chefbar-row-btn.selected {{
+  background-color: {hover};
+  box-shadow: inset 2px 0 0 {focus};
+}}
 
 /* Room — sidebar + main canvas */
 .chefbar-sidebar {{
