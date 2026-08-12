@@ -223,7 +223,7 @@ impl ksni::Tray for ChefTray {
         // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
         let snap = self.shared.read().ok();
         let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
-        let sessions = crate::sessions::load_ranked_sessions(&events);
+        let sessions = crate::sessions::load_tray_events(&events);
         let mut shown = 0;
         for session in sessions.iter().take(6) {
             if shown >= 3 {

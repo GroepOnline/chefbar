@@ -135,6 +135,27 @@ pub fn load_ranked_sessions(events: &[Value]) -> Vec<Session> {
     sessions
 }
 
+/// Tray-statuslijn-variant: binnen elke priority-groep de nieuwste eerst
+/// (chefbar-tray.md: "maximaal 3 live eventregels, nieuwste eerst"). De
+/// priority-groep blijft leidend zodat een blokkering nooit wegzakt achter
+/// drie "klaar"-events.
+pub fn load_tray_events(events: &[Value]) -> Vec<Session> {
+    let mut sessions: Vec<Session> = Vec::new();
+    for raw in events {
+        if let Some(session) = Session::from_value(raw) {
+            sessions.push(session);
+        }
+    }
+    sessions.sort_by(|a, b| {
+        rank_priority(a)
+            .cmp(&rank_priority(b))
+            .then_with(|| b.updated_at.cmp(&a.updated_at))
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+    });
+    sessions.truncate(6);
+    sessions
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +187,21 @@ mod tests {
         let ranked = load_ranked_sessions(&events);
         assert_eq!(ranked[0].id, "b");
         assert_eq!(ranked[1].id, "a");
+    }
+
+    #[test]
+    fn tray_events_newest_first_within_priority() {
+        let events = vec![
+            serde_json::json!({"id": "old", "source": "kater", "state": "working", "title": "Old busy", "updatedAt": "2026-08-12T08:00:00Z"}),
+            serde_json::json!({"id": "new", "source": "kater", "state": "working", "title": "New busy", "updatedAt": "2026-08-12T09:00:00Z"}),
+            serde_json::json!({"id": "blocker", "source": "kater", "state": "waiting", "title": "Needs you", "updatedAt": "2026-08-12T07:00:00Z"}),
+        ];
+        let tray = load_tray_events(&events);
+        // blokkering wint van nieuwere busy-events
+        assert_eq!(tray[0].id, "blocker");
+        // binnen dezelfde groep: nieuwste eerst
+        assert_eq!(tray[1].id, "new");
+        assert_eq!(tray[2].id, "old");
     }
 
     #[test]
