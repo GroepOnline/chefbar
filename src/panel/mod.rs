@@ -165,16 +165,29 @@ impl Panel {
         footer_label.set_ellipsize(pango::EllipsizeMode::End);
         footer_label.set_line_wrap(false);
         footer_label.set_max_width_chars(64);
-        footer_label.style_context().add_class("chefbar-footer-label");
+        footer_label
+            .style_context()
+            .add_class("chefbar-footer-label");
         footer.pack_start(&footer_label, true, true, 0);
 
         // Density-toggle (rustig ↔ compact) — CSS-klas op het window
         let density = Rc::new(RefCell::new(persisted_density.clone()));
         let theme = Rc::new(RefCell::new(crate::css::active_theme()));
-        let density_btn = gtk::Button::with_label(if persisted_density == crate::panel_state::DENSITY_COMPACT { "Compact" } else { "Rustig" });
+        let density_btn = gtk::Button::with_label(
+            if persisted_density == crate::panel_state::DENSITY_COMPACT {
+                "Compact"
+            } else {
+                "Rustig"
+            },
+        );
         density_btn.set_relief(gtk::ReliefStyle::None);
         density_btn.style_context().add_class("chefbar-footer-btn");
-        let theme_btn = gtk::Button::with_label(if theme.borrow().as_str() == crate::css::THEME_LIGHT { "Licht" } else { "Donker" });
+        let theme_btn =
+            gtk::Button::with_label(if theme.borrow().as_str() == crate::css::THEME_LIGHT {
+                "Licht"
+            } else {
+                "Donker"
+            });
         theme_btn.set_relief(gtk::ReliefStyle::None);
         theme_btn.style_context().add_class("chefbar-footer-btn");
         {
@@ -183,12 +196,31 @@ impl Panel {
             let dirty_cls = persist_dirty.clone();
             let btn = density_btn.clone();
             density_btn.connect_clicked(move |_| {
-                let compact = density_toggle.borrow().as_str() == crate::panel_state::DENSITY_COMPACT;
-                let next = if compact { crate::panel_state::DENSITY_COMFORTABLE } else { crate::panel_state::DENSITY_COMPACT };
+                let compact =
+                    density_toggle.borrow().as_str() == crate::panel_state::DENSITY_COMPACT;
+                let next = if compact {
+                    crate::panel_state::DENSITY_COMFORTABLE
+                } else {
+                    crate::panel_state::DENSITY_COMPACT
+                };
                 *density_toggle.borrow_mut() = next.to_string();
-                window_cls.style_context().remove_class(if compact { "density-compact" } else { "density-comfortable" });
-                window_cls.style_context().add_class(if next == crate::panel_state::DENSITY_COMPACT { "density-compact" } else { "density-comfortable" });
-                btn.set_label(if next == crate::panel_state::DENSITY_COMPACT { "Compact" } else { "Rustig" });
+                window_cls.style_context().remove_class(if compact {
+                    "density-compact"
+                } else {
+                    "density-comfortable"
+                });
+                window_cls.style_context().add_class(
+                    if next == crate::panel_state::DENSITY_COMPACT {
+                        "density-compact"
+                    } else {
+                        "density-comfortable"
+                    },
+                );
+                btn.set_label(if next == crate::panel_state::DENSITY_COMPACT {
+                    "Compact"
+                } else {
+                    "Rustig"
+                });
                 dirty_cls.set(true);
             });
         }
@@ -198,10 +230,18 @@ impl Panel {
             let btn = theme_btn.clone();
             theme_btn.connect_clicked(move |_| {
                 let current = theme_toggle.borrow().clone();
-                let next = if current == crate::css::THEME_LIGHT { crate::css::THEME_DARK } else { crate::css::THEME_LIGHT };
+                let next = if current == crate::css::THEME_LIGHT {
+                    crate::css::THEME_DARK
+                } else {
+                    crate::css::THEME_LIGHT
+                };
                 crate::css::set_theme(next);
                 *theme_toggle.borrow_mut() = next.to_string();
-                btn.set_label(if next == crate::css::THEME_LIGHT { "Licht" } else { "Donker" });
+                btn.set_label(if next == crate::css::THEME_LIGHT {
+                    "Licht"
+                } else {
+                    "Donker"
+                });
                 dirty_cls.set(true);
             });
         }
@@ -295,15 +335,16 @@ impl Panel {
                 let drawer_clone = drawer.clone();
                 let footer_label_clone = footer_label.clone();
                 let header_title_clone = header_title.clone();
-                let render_ctx = RenderCtx {
-                    executor: &executor_clone,
-                    window: &window_clone,
-                    drawer: &drawer_clone,
-                    footer_label: &footer_label_clone,
-                    header_title: &header_title_clone,
-                };
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
+                    // Ctx binnen de closure: de clones leven in de closure zelf.
+                    let render_ctx = RenderCtx {
+                        executor: &executor_clone,
+                        window: &window_clone,
+                        drawer: &drawer_clone,
+                        footer_label: &footer_label_clone,
+                        header_title: &header_title_clone,
+                    };
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
                     // recent_domains wordt bij persist meegeschreven (push hier is impliciet via dirty)
@@ -717,11 +758,7 @@ fn render_into(
         .iter()
         .find(|h| h.id == active_id)
         .map(|h| h.kind.clone())
-        .or_else(|| {
-            HarnessKind::all()
-                .into_iter()
-                .find(|k| k.id() == active_id)
-        });
+        .or_else(|| HarnessKind::all().into_iter().find(|k| k.id() == active_id));
 
     let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
     let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());

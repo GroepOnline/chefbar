@@ -140,12 +140,13 @@ pub fn stamp_label(text: &str) -> gtk::Label {
 pub fn status_dot_cls(status: &str) -> &'static str {
     match status.to_ascii_lowercase().as_str() {
         "running" | "bezig" | "active" | "working" | "live" => "live",
-        "ok" | "klaar" | "done" | "healthy" | "online" | "up" | "completed"
-        | "success" | "merged" | "stil" => "ok",
-        "blocked" | "waiting" | "needs_input" | "input" | "attention" | "hulp"
-        | "hold" | "pending" | "warn" | "warning" | "stale" | "limiet" => "warn",
-        "failed" | "error" | "crashed" | "down" | "offline" | "fout"
-        | "unhealthy" | "kapot" => "down",
+        "ok" | "klaar" | "done" | "healthy" | "online" | "up" | "completed" | "success"
+        | "merged" | "stil" => "ok",
+        "blocked" | "waiting" | "needs_input" | "input" | "attention" | "hulp" | "hold"
+        | "pending" | "warn" | "warning" | "stale" | "limiet" => "warn",
+        "failed" | "error" | "crashed" | "down" | "offline" | "fout" | "unhealthy" | "kapot" => {
+            "down"
+        }
         _ => "",
     }
 }

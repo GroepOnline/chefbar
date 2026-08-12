@@ -42,9 +42,7 @@ pub fn build_header() -> (
     header.pack_start(&title_block, false, false, 0);
 
     let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some(
-        "Zoek in alles \u{00b7} / of Ctrl+K",
-    ));
+    search.set_placeholder_text(Some("Zoek in alles \u{00b7} / of Ctrl+K"));
     search.style_context().add_class("chefbar-search");
     search.set_hexpand(true);
     search.set_halign(gtk::Align::Fill);

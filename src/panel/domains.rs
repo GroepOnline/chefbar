@@ -12,12 +12,12 @@
 
 use gtk::prelude::*;
 
-use crate::actions::Executor;
-use crate::harness::HarnessKind;
-use crate::models::Snapshot;
 use super::zones::{
     domain_row, empty_state, group_box, section_title, short_ts, state_label, status_dot_cls,
 };
+use crate::actions::Executor;
+use crate::harness::HarnessKind;
+use crate::models::Snapshot;
 
 /// Max rijen per domein-zone; de rest wordt "+n meer" in de sectie-sub.
 const MAX_ROWS: usize = 8;
@@ -73,12 +73,19 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .inbox
         .iter()
-        .filter(|i| ql.is_empty() || i.title.to_lowercase().contains(&ql) || i.meta.to_lowercase().contains(&ql))
+        .filter(|i| {
+            ql.is_empty()
+                || i.title.to_lowercase().contains(&ql)
+                || i.meta.to_lowercase().contains(&ql)
+        })
         .collect();
     if all.is_empty() {
         section_title(content, "Inbox", "");
         content.pack_start(
-            &empty_state("Inbox is leeg", "Nieuwe meldingen van watchers verschijnen hier zodra er iets signaleert."),
+            &empty_state(
+                "Inbox is leeg",
+                "Nieuwe meldingen van watchers verschijnen hier zodra er iets signaleert.",
+            ),
             false,
             false,
             0,
@@ -114,7 +121,14 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .fleet_nodes
         .iter()
-        .filter(|n| ql.is_empty() || n.title.to_lowercase().contains(&ql) || n.host.as_deref().map(|h| h.to_lowercase().contains(&ql)).unwrap_or(false))
+        .filter(|n| {
+            ql.is_empty()
+                || n.title.to_lowercase().contains(&ql)
+                || n.host
+                    .as_deref()
+                    .map(|h| h.to_lowercase().contains(&ql))
+                    .unwrap_or(false)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
@@ -154,7 +168,10 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     if total == 0 && snap.fleet.total == 0 {
         content.pack_start(
-            &empty_state("Geen nodes bekend", "Zodra de ops-API fleet-data levert, staan de nodes hier met status en host."),
+            &empty_state(
+                "Geen nodes bekend",
+                "Zodra de ops-API fleet-data levert, staan de nodes hier met status en host.",
+            ),
             false,
             false,
             0,
@@ -173,7 +190,14 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .herdr_workspaces
         .iter()
-        .filter(|w| ql.is_empty() || w.title.to_lowercase().contains(&ql) || w.cwd.as_deref().map(|c| c.to_lowercase().contains(&ql)).unwrap_or(false))
+        .filter(|w| {
+            ql.is_empty()
+                || w.title.to_lowercase().contains(&ql)
+                || w.cwd
+                    .as_deref()
+                    .map(|c| c.to_lowercase().contains(&ql))
+                    .unwrap_or(false)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
@@ -186,7 +210,10 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
     section_title(content, "Herdr", &sub);
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen workspaces actief", "Start een herdr-workspace en hij verschijnt hier met cwd en status."),
+            &empty_state(
+                "Geen workspaces actief",
+                "Start een herdr-workspace en hij verschijnt hier met cwd en status.",
+            ),
             false,
             false,
             0,
@@ -233,7 +260,10 @@ fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let group = group_box();
     if observed + desired == 0 {
         content.pack_start(
-            &empty_state("Nog geen containers bekend", "De ops-API rapporteert hier observed vs desired en drift."),
+            &empty_state(
+                "Nog geen containers bekend",
+                "De ops-API rapporteert hier observed vs desired en drift.",
+            ),
             false,
             false,
             0,
@@ -242,14 +272,24 @@ fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     if drift.is_empty() {
         group.pack_start(
-            &domain_row("ok", "Geen drift", Some("observed en desired liggen in lijn"), None),
+            &domain_row(
+                "ok",
+                "Geen drift",
+                Some("observed en desired liggen in lijn"),
+                None,
+            ),
             false,
             false,
             0,
         );
     } else {
         for d in drift.iter().take(MAX_ROWS) {
-            group.pack_start(&domain_row("warn", d, None, Some(("DRIFT", "warn"))), false, false, 0);
+            group.pack_start(
+                &domain_row("warn", d, None, Some(("DRIFT", "warn"))),
+                false,
+                false,
+                0,
+            );
         }
     }
     content.pack_start(&group, false, false, 0);
@@ -264,14 +304,21 @@ fn render_vault(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .vault_accounts
         .iter()
-        .filter(|a| ql.is_empty() || a.title.to_lowercase().contains(&ql) || a.provider.to_lowercase().contains(&ql))
+        .filter(|a| {
+            ql.is_empty()
+                || a.title.to_lowercase().contains(&ql)
+                || a.provider.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Vault", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen accounts gekoppeld", "Accounts en providers uit de vault verschijnen hier met status."),
+            &empty_state(
+                "Geen accounts gekoppeld",
+                "Accounts en providers uit de vault verschijnen hier met status.",
+            ),
             false,
             false,
             0,
@@ -304,14 +351,21 @@ fn render_providers(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .providers
         .iter()
-        .filter(|r| ql.is_empty() || r.label.to_lowercase().contains(&ql) || r.usage_text.to_lowercase().contains(&ql))
+        .filter(|r| {
+            ql.is_empty()
+                || r.label.to_lowercase().contains(&ql)
+                || r.usage_text.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Providers", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Nog geen providers", "Koppel een account in de vault of vernieuw de status."),
+            &empty_state(
+                "Nog geen providers",
+                "Koppel een account in de vault of vernieuw de status.",
+            ),
             false,
             false,
             0,
@@ -406,14 +460,21 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .crm_deals
         .iter()
-        .filter(|d| ql.is_empty() || d.title.to_lowercase().contains(&ql) || d.meta.to_lowercase().contains(&ql))
+        .filter(|d| {
+            ql.is_empty()
+                || d.title.to_lowercase().contains(&ql)
+                || d.meta.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "CRM", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen deals bekend", "Organisaties en deals uit de CRM verschijnen hier met bedrag en status."),
+            &empty_state(
+                "Geen deals bekend",
+                "Organisaties en deals uit de CRM verschijnen hier met bedrag en status.",
+            ),
             false,
             false,
             0,
@@ -456,14 +517,19 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     let all: Vec<_> = entries
         .iter()
-        .filter(|(k, v)| ql.is_empty() || k.to_lowercase().contains(&ql) || v.to_lowercase().contains(&ql))
+        .filter(|(k, v)| {
+            ql.is_empty() || k.to_lowercase().contains(&ql) || v.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Share", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Share-sync is stil", "Zodra de vault share-sync rapporteert, staan de statussen hier."),
+            &empty_state(
+                "Share-sync is stil",
+                "Zodra de vault share-sync rapporteert, staan de statussen hier.",
+            ),
             false,
             false,
             0,
@@ -472,7 +538,8 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ok = v.to_lowercase().contains("ok") || v.to_lowercase().contains("synced") || v == "true";
+        let ok =
+            v.to_lowercase().contains("ok") || v.to_lowercase().contains("synced") || v == "true";
         group.pack_start(
             &domain_row(if ok { "ok" } else { "" }, k, Some(v), None),
             false,
@@ -492,14 +559,25 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .clipboard
         .iter()
-        .filter(|e| ql.is_empty() || e.title.to_lowercase().contains(&ql) || e.text.to_lowercase().contains(&ql))
+        .filter(|e| {
+            ql.is_empty()
+                || e.title.to_lowercase().contains(&ql)
+                || e.text.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
-    section_title(content, "Clipboard", &format!("{} · klik om te kopiëren", count_sub(q, shown, total)));
+    section_title(
+        content,
+        "Clipboard",
+        &format!("{} · klik om te kopiëren", count_sub(q, shown, total)),
+    );
     if total == 0 {
         content.pack_start(
-            &empty_state("Klembord is leeg", "Gekopieerde teksten uit de vault verschijnen hier."),
+            &empty_state(
+                "Klembord is leeg",
+                "Gekopieerde teksten uit de vault verschijnen hier.",
+            ),
             false,
             false,
             0,
@@ -549,14 +627,19 @@ fn render_desktop(content: &gtk::Box, snap: &Snapshot, q: &str) {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     let all: Vec<_> = entries
         .iter()
-        .filter(|(k, v)| ql.is_empty() || k.to_lowercase().contains(&ql) || v.to_lowercase().contains(&ql))
+        .filter(|(k, v)| {
+            ql.is_empty() || k.to_lowercase().contains(&ql) || v.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Desktop", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Webtop niet bereikbaar", "Zodra de desktop-status rapporteert, staan status en adres hier."),
+            &empty_state(
+                "Webtop niet bereikbaar",
+                "Zodra de desktop-status rapporteert, staan status en adres hier.",
+            ),
             false,
             false,
             0,
@@ -565,7 +648,8 @@ fn render_desktop(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ok = v.to_lowercase().contains("ok") || v.to_lowercase().contains("running") || v == "true";
+        let ok =
+            v.to_lowercase().contains("ok") || v.to_lowercase().contains("running") || v == "true";
         group.pack_start(
             &domain_row(if ok { "ok" } else { "" }, k, Some(v), None),
             false,
@@ -585,14 +669,21 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .commander_tasks
         .iter()
-        .filter(|t| ql.is_empty() || t.title.to_lowercase().contains(&ql) || t.meta.to_lowercase().contains(&ql))
+        .filter(|t| {
+            ql.is_empty()
+                || t.title.to_lowercase().contains(&ql)
+                || t.meta.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Taken", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen taken", "Commander-taken verschijnen hier met status zodra ze bestaan."),
+            &empty_state(
+                "Geen taken",
+                "Commander-taken verschijnen hier met status zodra ze bestaan.",
+            ),
             false,
             false,
             0,
@@ -631,14 +722,25 @@ fn render_linear(
     let all: Vec<_> = snap
         .linear_issues
         .iter()
-        .filter(|i| ql.is_empty() || i.title.to_lowercase().contains(&ql) || i.meta.to_lowercase().contains(&ql) || i.project.as_deref().map(|p| p.to_lowercase().contains(&ql)).unwrap_or(false))
+        .filter(|i| {
+            ql.is_empty()
+                || i.title.to_lowercase().contains(&ql)
+                || i.meta.to_lowercase().contains(&ql)
+                || i.project
+                    .as_deref()
+                    .map(|p| p.to_lowercase().contains(&ql))
+                    .unwrap_or(false)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
     section_title(content, "Linear", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen issues", "Assigned-to-me en sprint-issues verschijnen hier met project en status."),
+            &empty_state(
+                "Geen issues",
+                "Assigned-to-me en sprint-issues verschijnen hier met project en status.",
+            ),
             false,
             false,
             0,
@@ -692,14 +794,28 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let all: Vec<_> = snap
         .secrets_meta
         .iter()
-        .filter(|s| ql.is_empty() || s.title.to_lowercase().contains(&ql) || s.meta.to_lowercase().contains(&ql))
+        .filter(|s| {
+            ql.is_empty()
+                || s.title.to_lowercase().contains(&ql)
+                || s.meta.to_lowercase().contains(&ql)
+        })
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
-    section_title(content, "Secrets", &format!("{} · alleen meta, nooit plaintext", count_sub(q, shown, total)));
+    section_title(
+        content,
+        "Secrets",
+        &format!(
+            "{} · alleen meta, nooit plaintext",
+            count_sub(q, shown, total)
+        ),
+    );
     if total == 0 {
         content.pack_start(
-            &empty_state("Geen secrets gekoppeld", "Vaultwarden-collecties verschijnen hier als meta — geen plaintext in de UI."),
+            &empty_state(
+                "Geen secrets gekoppeld",
+                "Vaultwarden-collecties verschijnen hier als meta — geen plaintext in de UI.",
+            ),
             false,
             false,
             0,
@@ -736,22 +852,38 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
         &domain_row(
             if online { "ok" } else { "down" },
             "Kater gateway",
-            Some(if k.status.is_empty() { "onbekend" } else { &k.status }),
-            Some((if online { "ONLINE" } else { "OFFLINE" }, if online { "ok" } else { "down" })),
+            Some(if k.status.is_empty() {
+                "onbekend"
+            } else {
+                &k.status
+            }),
+            Some((
+                if online { "ONLINE" } else { "OFFLINE" },
+                if online { "ok" } else { "down" },
+            )),
         ),
         false,
         false,
         0,
     );
     if let Some(profile) = k.profile.as_deref() {
-        group.pack_start(&domain_row("", "Profiel", Some(profile), None), false, false, 0);
+        group.pack_start(
+            &domain_row("", "Profiel", Some(profile), None),
+            false,
+            false,
+            0,
+        );
     }
     let obs = &snap.observability;
     group.pack_start(
         &domain_row(
             if obs.ok { "ok" } else { "warn" },
             "Observability",
-            Some(if obs.status.is_empty() { "onbekend" } else { &obs.status }),
+            Some(if obs.status.is_empty() {
+                "onbekend"
+            } else {
+                &obs.status
+            }),
             None,
         ),
         false,
@@ -759,7 +891,12 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
         0,
     );
     for err in obs.errors.iter().take(3) {
-        group.pack_start(&domain_row("down", err, None, Some(("FOUT", "error"))), false, false, 0);
+        group.pack_start(
+            &domain_row("down", err, None, Some(("FOUT", "error"))),
+            false,
+            false,
+            0,
+        );
     }
     let j = &snap.jcode_memory;
     if j.online || !j.host.is_empty() {
