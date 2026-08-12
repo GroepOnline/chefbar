@@ -224,12 +224,13 @@ impl Panel {
         // GtkOverlay voor palette-overlay bovenop root
         let window_overlay = gtk::Overlay::new();
         window_overlay.add(&root);
-        // Palette overlay: gecentreerd, pass-through wanneer hidden
+        // Palette overlay: zwevend boven het canvas (pass-through wanneer
+        // hidden, zodat het canvas gewoon klikbaar blijft).
         overlay.widget().set_halign(gtk::Align::Center);
         overlay.widget().set_valign(gtk::Align::Start);
-        overlay.widget().set_margin_top(80);
-        overlay.widget().set_margin_start(120);
-        overlay.widget().set_margin_end(120);
+        overlay.widget().set_margin_top(56);
+        overlay.widget().set_margin_start(96);
+        overlay.widget().set_margin_end(96);
         window_overlay.add_overlay(overlay.widget());
         window_overlay.set_overlay_pass_through(overlay.widget(), true);
         window.add(&window_overlay);
