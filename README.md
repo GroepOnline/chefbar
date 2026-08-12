@@ -155,7 +155,10 @@ steps:
   - upload artifact: target/release/chefbar
 ```
 
-Lokaal telt alleen `cargo test` als je de toolchain al hebt. Release-artifacts komen uit CI.
+Lokaal telt alleen `cargo test` als je de toolchain al hebt (de laptop heeft die
+bewust niet — bouw/valideer op de runner). De QA-gate draait op de self-hosted
+runner (`chef-runner-01-1`) en bestaat uit `scripts/gate.sh`: fmt · clippy
+(`-D warnings`) · tests. Release-artifacts komen uit CI.
 
 | Onderdeel | Waar |
 | --- | --- |

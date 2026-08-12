@@ -44,10 +44,10 @@ jobs:
         run: cargo check --all-targets
 
       - name: Shellcheck
-        run: shellcheck install.sh scripts/visual-shot.sh
+        run: shellcheck install.sh scripts/visual-shot.sh scripts/gate.sh
 
-      - name: Test
-        run: cargo test --all-targets
+      - name: QA-gate (fmt · clippy · tests)
+        run: scripts/gate.sh
 
       - name: Build release
         run: cargo build --release
