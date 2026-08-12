@@ -57,6 +57,6 @@ de nieuwe IPC-preview. Review-loop: screenshots → mimo-v2.5 vision-subagent.
 - [x] css-v2-basis + density + theme-toggle
 - [x] 15 per-domein views + dispatch
 - [x] gepinde footer, drawer/palette/sidebar-polish
-- [ ] gates groen op runner (bezige build)
-- [ ] visuele matrix + vision-review-ronde
-- [ ] PR tegen feat/chefapp-5.0
+- [x] gates groen op runner (fmt/clippy/test/release)
+- [x] visuele matrix dark+light OK, 2 vision-review-rondes (6.5 → 7.5, restpunten gefixt)
+- [x] PR tegen feat/chefapp-5.0: GroepOnline/chefbar#36 (merge-ready, dirigent merged volgens trein)
