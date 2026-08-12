@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn acquire_is_exclusief() {
         // Twee gelijktijdige starts: precies één Owner, de rest Occupied.
-        let dir = std::env::temp_dir().join(format!("chefbar-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chefbar-test-ipc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("test.sock");
         let _ = std::fs::remove_file(&path);

@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn profile_loads_remote_surfaces() {
-        let dir = std::env::temp_dir().join(format!("chefbar-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("chefbar-test-config-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("endpoints.json");
         std::fs::write(
