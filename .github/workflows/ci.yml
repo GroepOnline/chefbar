@@ -131,6 +131,14 @@ jobs:
           if [ "$rc1" -eq 2 ] || [ "$rc2" -eq 2 ]; then echo "density: X-stack niet beschikbaar — zachte skip"; exit 0; fi
           [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ] || echo "density: warning-only (rc1=$rc1 rc2=$rc2)"
 
+      - name: Visual assert — 15 domain shots (warning-only)
+        continue-on-error: true
+        run: |
+          scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain
+          rc=$?
+          if [ "$rc" -eq 2 ]; then echo "domain shots: X-stack niet beschikbaar — zachte skip"; exit 0; fi
+          exit "$rc"
+
       - name: Upload screenshot artifacts
         if: always()
         uses: actions/upload-artifact@v4
