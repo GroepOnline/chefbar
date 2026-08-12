@@ -544,13 +544,17 @@ mod tests {
 
     #[test]
     fn tier_invariant_prefix_nooit_onder_gappy_met_boost() {
-        // prefix 700 vs gappy ~500: gappy met max boost mag nooit boven prefix komen
+        // prefix 700 vs gappy ~500: gappy met max boost mag nooit boven prefix komen.
+        // "stu pro" is prefix voor "Stuur prompt" (tokens stu→stuur, pro→prompt) maar
+        // niet als aaneengesloten substring, dus tier 700. Voor gappy-actie is het gappy.
         let prefix = action("Stuur prompt", "herdr", "stuur prompt");
-        // gappy: ordered chars s-t-u-u-r verspreid, niet als substring/prefix
         let gappy = action("Snel terug uur", "overzicht", "snel terug uur");
-        let score_prefix = fuzzy_score("stuur", &prefix).unwrap();
-        let score_gappy = fuzzy_score("stuur", &gappy).unwrap();
-        assert_eq!(score_prefix, 700);
+        let score_prefix = fuzzy_score("stu pro", &prefix).unwrap();
+        let score_gappy = fuzzy_score("stu pro", &gappy).unwrap();
+        assert_eq!(
+            score_prefix, 700,
+            "prefix tier verwacht voor stu pro -> stuur prompt"
+        );
         assert!(
             score_gappy < 700 && score_gappy >= 1,
             "gappy score {score_gappy:?} moet 1..699 zijn"
