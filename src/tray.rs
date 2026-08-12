@@ -336,10 +336,14 @@ fn menu_items(
             "waiting" | "blocked" | "failed" => "JOUW",
             _ => "…",
         };
-        let label = if session.title.len() > 38 {
-            format!("{}…", &session.title[..38])
+        // Char-veilige truncatie: byte-slicen op [..38] zou kunnen pannen op
+        // een UTF-8-grens bij meertalige titels (was pre-bestaand in menu()).
+        let mut chars = session.title.chars();
+        let label: String = chars.by_ref().take(38).collect();
+        let label = if chars.next().is_some() {
+            format!("{label}…")
         } else {
-            session.title.clone()
+            label
         };
         let focus = session
             .attach
@@ -687,5 +691,36 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn lange_event_titel_wordt_char_veilig_afgekapt() {
+        // 40 meertalige tekens: byte 38 valt midden in een multi-byte char —
+        // chars().take() mag nooit pannen en kapt netjes af op 38 + "…".
+        let mut snap = Snapshot::default();
+        snap.events.push(serde_json::json!({
+            "kind": "session",
+            "payload": {
+                "id": "s-long",
+                "source": "kater",
+                "state": "working",
+                "title": "é".repeat(40),
+            }
+        }));
+        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let event_row = items.iter().find_map(|i| match i {
+            MenuItemSpec::Action {
+                label,
+                cmd: UiCommand::FocusAgent(_),
+                ..
+            } => Some(label.as_str()),
+            _ => None,
+        });
+        let label = event_row.expect("eventrij aanwezig");
+        assert!(
+            label.starts_with(&"é".repeat(38)),
+            "afkappen mislukt: {label}"
+        );
+        assert!(label.contains('…'), "ellipsis ontbreekt: {label}");
     }
 }
