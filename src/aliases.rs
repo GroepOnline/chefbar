@@ -8,6 +8,16 @@ use std::collections::{HashMap, HashSet};
 /// Canoniek: elke key → lijst synoniemen (lager-case, zonder duplicaten).
 /// Minstens 20 synoniem-regels; beide richtingen expliciet waar gewenst.
 const ALIAS_ENTRIES: &[(&str, &[&str])] = &[
+    // Legacy command vocabulary kept for compatibility with the original
+    // palette shortcuts; the canonical search path still lives here.
+    ("cfg", &["config"]),
+    ("config", &["cfg", "configuration", "settings"]),
+    ("dash", &["dashboard"]),
+    ("dashboard", &["dash", "overview"]),
+    ("ops", &["operations"]),
+    ("operations", &["ops"]),
+    ("k8s", &["kubernetes"]),
+    ("kubernetes", &["k8s"]),
     ("fleet", &["herdr", "nodes"]),
     ("herdr", &["fleet", "nodes"]),
     ("nodes", &["fleet", "herdr"]),

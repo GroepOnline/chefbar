@@ -191,8 +191,17 @@ impl Panel {
                     fade_out(&window_esc, PANEL_MS);
                     return gtk::glib::Propagation::Stop;
                 }
-                if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
+                let ctrl_or_cmd = event.state().contains(
+                    gdk::ModifierType::CONTROL_MASK
+                        | gdk::ModifierType::META_MASK
+                        | gdk::ModifierType::SUPER_MASK,
+                );
+                if (kv == gdk::keys::constants::slash
+                    || (kv == gdk::keys::constants::k && ctrl_or_cmd))
+                    && !search_focus.has_focus()
+                {
                     search_focus.grab_focus();
+                    search_focus.select_region(0, -1);
                     return gtk::glib::Propagation::Stop;
                 }
                 gtk::glib::Propagation::Proceed
@@ -359,10 +368,12 @@ impl Panel {
             let profile = crate::config::global_profile().clone();
             let sessions = crate::sessions::load_ranked_sessions(&snap.events);
             let actions = build_actions(&ops, &snap, &profile, sessions);
-            let ranked = rank_actions_with(&actions, &query, 8, None);
+            let rank_ctx = RankContext::local();
+            let ranked = rank_actions_with(&actions, &query, 8, Some(&rank_ctx));
             let overlay_for_action = overlay.clone();
             let executor_for_action = executor.clone();
             overlay.render_actions(&ranked, move |action| {
+                let frecency_id = action.frecency_id();
                 let spec = action.run.clone();
                 if let crate::actions::RunSpec::CopyText(text) = &spec {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
@@ -371,6 +382,7 @@ impl Panel {
                 } else {
                     executor_for_action.run_for_ui(&spec);
                 }
+                crate::frecency::record(&frecency_id);
                 overlay_for_action.hide();
             });
         });
@@ -604,10 +616,7 @@ fn render_into(
     let mut seen = std::collections::HashSet::new();
     boost_terms.retain(|term| seen.insert(term.clone()));
     boost_terms.truncate(16);
-    let rank_ctx = RankContext {
-        boost_terms,
-        ..Default::default()
-    };
+    let rank_ctx = RankContext::local_with_terms(boost_terms);
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
     // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
@@ -814,6 +823,7 @@ fn render_into(
                 let drawer_for_action = drawer.clone();
                 let executor = executor.clone();
                 let spec = spec.clone();
+                let frecency_id = action.frecency_id();
                 drawer.show_for_with(&action, move || {
                     if let crate::actions::RunSpec::CopyText(text) = &spec {
                         let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
@@ -822,6 +832,7 @@ fn render_into(
                     } else {
                         executor.run_for_ui(&spec);
                     }
+                    crate::frecency::record(&frecency_id);
                     drawer_for_action.hide();
                 });
             }
