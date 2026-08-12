@@ -218,7 +218,12 @@ run_shot() {
       ipc_try "drawer" || ipc_try "open-drawer" || ipc_try "bar" || "$BIN" --bar >/dev/null 2>&1 || true
       ;;
     domain:*)
-      ipc_try "focus-domain $domain" || ipc_try "focus $domain" || true
+      # Socket-race: soms is de listener bij t+4s nog niet klaar — retry.
+      for _ in 1 2 3; do
+        ipc_try "focus-domain $domain" && break
+        sleep 1
+      done
+      sleep 1
       ipc_try "bar" || "$BIN" --bar >/dev/null 2>&1 || true
       ;;
   esac
