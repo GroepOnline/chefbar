@@ -82,6 +82,18 @@ fn cf_access() -> Option<(String, String)> {
     }
 }
 
+fn linear_token() -> Option<String> {
+    for env_name in ["LINEAR_API_KEY", "CHEFBAR_LINEAR_TOKEN", "LINEAR_API_TOKEN"] {
+        if let Ok(value) = env::var(env_name) {
+            let value = value.trim().to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 /// Request-headers voor vault/ops HTTPS-calls.
 pub fn get_headers(json_body: bool) -> Vec<(String, String)> {
     let mut headers = vec![("Accept".to_string(), "application/json".to_string())];
@@ -96,6 +108,16 @@ pub fn get_headers(json_body: bool) -> Vec<(String, String)> {
     if json_body {
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
     }
+    headers
+}
+
+/// Headers voor Linear API-calls — zelfde pair-check als CF; geen fallback naar vault-token.
+pub fn get_linear_headers() -> Vec<(String, String)> {
+    let mut headers = vec![("Accept".to_string(), "application/json".to_string())];
+    if let Some(token) = linear_token() {
+        headers.push(("Authorization".to_string(), token));
+    }
+    headers.push(("Content-Type".to_string(), "application/json".to_string()));
     headers
 }
 

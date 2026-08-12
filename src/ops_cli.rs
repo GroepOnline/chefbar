@@ -48,3 +48,44 @@ pub fn send_prompt(terminal_id: &str, pane_id: Option<&str>, text: &str) -> bool
     }
     true
 }
+
+/// Fleet deploy — eerst via ops API, dan CLI fallback.
+pub fn fleet_deploy(ops_client: &Client, node: &str) -> bool {
+    match ops_client.post_json("/api/fleet/deploy", &json!({"node": node})) {
+        Ok(payload) => {
+            if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                return true;
+            }
+            run_herdr(&["fleet", "deploy", node])
+        }
+        Err(_) => run_herdr(&["fleet", "deploy", node]),
+    }
+}
+
+/// Fleet exec — template-commando op node.
+pub fn fleet_exec(ops_client: &Client, node: &str, template: &str) -> bool {
+    match ops_client.post_json(
+        "/api/fleet/exec",
+        &json!({"node": node, "template": template}),
+    ) {
+        Ok(payload) => {
+            if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                return true;
+            }
+            run_herdr(&["fleet", "exec", node, template])
+        }
+        Err(_) => run_herdr(&["fleet", "exec", node, template]),
+    }
+}
+
+/// Prune preview — via vault of ops; geeft Ok(summary) of Err.
+pub fn prune_preview(vault_client: &Client) -> Result<String, String> {
+    match vault_client.get_json("/containers/prune-preview") {
+        Ok(val) => Ok(val
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("prune preview klaar")
+            .to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
