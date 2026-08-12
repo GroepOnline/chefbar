@@ -232,7 +232,9 @@ run_shot() {
     return 1
   fi
 
-  found="$(convert "$out" -fuzz 8% -fill black +opaque "$ACCENT_HEX" -fill white -opaque "$ACCENT_HEX" -format "%[fx:mean*w*h]" info: 2>/dev/null | cut -d. -f1)"
+  # 20% fuzz: GTK3 rendert de accentkleur met kleurbeheer/antialiasing, exact
+  # matchen (8%) gaf false-negatives voor palette/drawer-streaks.
+  found="$(convert "$out" -fuzz 20% -fill black +opaque "$ACCENT_HEX" -fill white -opaque "$ACCENT_HEX" -format "%[fx:mean*w*h]" info: 2>/dev/null | cut -d. -f1)"
   echo "visual-shot [$mode]: accent-pixels ≈ ${found:-0} (${ACCENT_HEX}) in $out"
   if [ -z "${found:-}" ] || [ "$found" -eq 0 ] 2>/dev/null; then
     echo "visual-shot [$mode]: GEEN accent-pixels gevonden — paneel waarschijnlijk niet zichtbaar" >&2
