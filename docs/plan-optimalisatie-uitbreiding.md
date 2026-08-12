@@ -180,15 +180,16 @@ De E0382/E0597-breuk overleefde een merge. Borging:
   binnen via een werkstroom die CI niet doorliep).
 
 ### Q3 — tests
-- **Tray-menu refactoren:** `menu()` bouwt items + closures inline (precies
-  waar de lifetime-fout zat). Splits in een pure data-builder
-  (`menu_items(snap, profile) -> Vec<MenuItemSpec>`) + dunne ksni-adapter →
-  unit-testbaar zonder ksni-closures.
+✅ **Tray-menu refactoren** (2026-08-12): `menu()` is nu een dunne ksni-adapter;
+alle inhoud komt uit de pure data-builder `menu_items(snap, profile, autostart)
+-> Vec<MenuItemSpec>` (geen ksni-types/closures). 7 unit-tests dekken de
+rijlogica (basisrijen, account-submenu, desktop-state, autostart-checkmark,
+geen-events, char-veilige titel-truncatie) — precies waar de E0382/E0597-breuk zat.
 - **state.rs testbaar maken:** `http::Client` achter een trait of mock-`Client`
   zodat `fetch_all`/`poll_vault` (fan-out, budget, coalescing) zonder netwerk
-  getest kunnen worden.
+  getest kunnen worden (nog open).
 - **Golden CLI-tests uitbreiden:** de bestaande clap-tests (`src/main.rs`)
-  blijven; voeg `--ipc state <x>` en `switch-account`-varianten toe.
+  blijven; voeg `--ipc state <x>` en `switch-account`-varianten toe (nog open).
 
 ### Q4 — logging
 ✅ Gedaan (2026-08-12): `src/log.rs` — lichte bestand-logger (append) naar
