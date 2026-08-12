@@ -22,7 +22,7 @@ pub fn build_header() -> (
     header.set_margin_bottom(0);
 
     let title_block = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    let title = gtk::Label::new(Some("ChefBar"));
+    let title = gtk::Label::new(Some("ChefApp"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.set_ellipsize(pango::EllipsizeMode::End);
@@ -31,7 +31,7 @@ pub fn build_header() -> (
     attrs.insert(pango::AttrInt::new_letter_spacing(-380));
     title.set_attributes(Some(&attrs));
     title_block.pack_start(&title, false, false, 0);
-    let title_sub = gtk::Label::new(Some("agentische assistent \u{00b7} signaal v2"));
+    let title_sub = gtk::Label::new(Some("chefgroep-online \u{00b7} 15 domeinen"));
     title_sub.set_halign(gtk::Align::Start);
     title_sub.set_xalign(0.0);
     title_sub.set_ellipsize(pango::EllipsizeMode::End);
@@ -40,7 +40,9 @@ pub fn build_header() -> (
     header.pack_start(&title_block, false, false, 0);
 
     let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some("Zoek acties, agents, providers, sessies\u{2026}"));
+    search.set_placeholder_text(Some(
+        "Zoek acties, agents, providers, sessies \u{00b7} / of Ctrl+K",
+    ));
     search.style_context().add_class("chefbar-search");
     search.set_hexpand(true);
     search.set_halign(gtk::Align::Fill);

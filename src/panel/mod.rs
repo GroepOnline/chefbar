@@ -1,4 +1,4 @@
-//! ChefBar-hoofdvenster: één echte app (Signaal v2), geen floating bar.
+//! ChefApp-hoofdvenster: één echte app (Signaal v2), geen floating bar.
 //!
 //! Undecorated window met custom header (drag + minimize + sluiten), zoek-
 //! input die alle secties live filtert, gegroepeerde cards per sectie
@@ -59,7 +59,7 @@ pub struct Panel {
 impl Panel {
     pub fn new(shared: Shared, executor: Executor) -> Self {
         let window = gtk::Window::new(gtk::WindowType::Toplevel);
-        window.set_title("ChefBar");
+        window.set_title("ChefApp");
         window.set_decorated(false);
         // Vaste geometrie 860×880 (plan §4.3 / §5.1): min==max via size_request + resizable(false)
         window.set_default_size(860, 880);
@@ -191,8 +191,17 @@ impl Panel {
                     fade_out(&window_esc, PANEL_MS);
                     return gtk::glib::Propagation::Stop;
                 }
-                if kv == gdk::keys::constants::slash && !search_focus.has_focus() {
+                let ctrl_or_cmd = event.state().contains(
+                    gdk::ModifierType::CONTROL_MASK
+                        | gdk::ModifierType::META_MASK
+                        | gdk::ModifierType::SUPER_MASK,
+                );
+                if (kv == gdk::keys::constants::slash
+                    || (kv == gdk::keys::constants::k && ctrl_or_cmd))
+                    && !search_focus.has_focus()
+                {
                     search_focus.grab_focus();
+                    search_focus.select_region(0, -1);
                     return gtk::glib::Propagation::Stop;
                 }
                 gtk::glib::Propagation::Proceed
@@ -232,11 +241,10 @@ impl Panel {
                         &window_clone,
                         &q,
                         &harness_state_clone,
+                        &drawer_clone,
                     );
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
-                    // density klas wisselt alleen via setting, niet per nav — dus geen update hier
                     let _ = &density_clone;
-                    let _ = &drawer_clone;
                 });
             }
         }
@@ -257,6 +265,7 @@ impl Panel {
             window_overlay,
         };
         panel.wire_search();
+        panel.wire_overlay();
         let initial_query = panel.search.text().to_string();
         panel.render(&initial_query);
         panel
@@ -343,6 +352,37 @@ impl Panel {
         &self.overlay
     }
 
+    fn wire_overlay(&self) {
+        let overlay = self.overlay.clone();
+        let shared = self.shared.clone();
+        let executor = self.executor.clone();
+        self.overlay.entry.connect_changed(move |entry| {
+            let query = entry.text().to_string();
+            let snap = shared.snapshot.read().unwrap().clone();
+            let ops = shared.ops.read().unwrap().clone();
+            let profile = crate::config::global_profile().clone();
+            let sessions = crate::sessions::load_ranked_sessions(&snap.events);
+            let actions = build_actions(&ops, &snap, &profile, sessions);
+            let rank_ctx = RankContext::local();
+            let ranked = rank_actions_with(&actions, &query, 8, Some(&rank_ctx));
+            let overlay_for_action = overlay.clone();
+            let executor_for_action = executor.clone();
+            overlay.render_actions(&ranked, move |action| {
+                let frecency_id = action.frecency_id();
+                let spec = action.run.clone();
+                if let crate::actions::RunSpec::CopyText(text) = &spec {
+                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                    clipboard.set_text(text);
+                    notify_copied();
+                } else {
+                    executor_for_action.run_for_ui(&spec);
+                }
+                crate::frecency::record(&frecency_id);
+                overlay_for_action.hide();
+            });
+        });
+    }
+
     fn wire_search(&self) {
         let content = self.content.clone();
         let shared = self.shared.clone();
@@ -350,6 +390,7 @@ impl Panel {
         let window = self.window.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
+        let drawer = self.drawer.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
@@ -361,6 +402,7 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
+                    &drawer,
                 );
             }
         });
@@ -388,6 +430,7 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
+            &self.drawer,
         );
     }
 
@@ -430,6 +473,7 @@ impl Panel {
         let harness_state = self.harness_state.clone();
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
+        let drawer = self.drawer.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
@@ -440,6 +484,7 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
+                    &drawer,
                 );
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
@@ -512,6 +557,7 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
+    drawer: &Rc<Drawer>,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -565,10 +611,7 @@ fn render_into(
     let mut seen = std::collections::HashSet::new();
     boost_terms.retain(|term| seen.insert(term.clone()));
     boost_terms.truncate(16);
-    let rank_ctx = RankContext {
-        boost_terms,
-        ..Default::default()
-    };
+    let rank_ctx = RankContext::local_with_terms(boost_terms);
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
     // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
@@ -766,10 +809,17 @@ fn render_into(
         row_inner.set_margin_end(10);
         row_inner.set_margin_top(6);
         row_inner.set_margin_bottom(6);
+        let drawer = drawer.clone();
         row.connect_clicked(move |_| {
             if needs_text {
                 prompt_for(&executor, &window, &action);
-            } else {
+                return;
+            }
+            let drawer_for_action = drawer.clone();
+            let executor = executor.clone();
+            let spec = spec.clone();
+            let frecency_id = action.frecency_id();
+            drawer.show_for_with(&action, move || {
                 if let crate::actions::RunSpec::CopyText(text) = &spec {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                     clipboard.set_text(text);
@@ -777,7 +827,9 @@ fn render_into(
                 } else {
                     executor.run_for_ui(&spec);
                 }
-            }
+                crate::frecency::record(&frecency_id);
+                drawer_for_action.hide();
+            });
         });
         group.pack_start(&row, false, false, 0);
     }

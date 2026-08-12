@@ -1,6 +1,8 @@
-//! Pure command-palette fuzzy ranking voor ChefBar.
+//! Pure command-palette fuzzy ranking voor ChefApp.
 
 use std::collections::HashMap;
+
+use crate::aliases::expanded_terms as expand_query;
 
 /// Actiebeschrijving: data, geen closures. Executie loopt in één executor.
 #[derive(Debug, Clone)]
@@ -21,62 +23,13 @@ impl Action {
     pub fn matches(&self, query: &str) -> bool {
         fuzzy_score(query, self).is_some()
     }
-}
 
-// ---------------------------------------------------------------------------
-// Aliases — inline fallback (Lane B levert src/aliases.rs)
-// ---------------------------------------------------------------------------
-
-/// Inline alias-map fallback — 5 aliases.
-/// TODO(Lane B): vervang door `crate::aliases::expand_query` zodra
-/// `src/aliases.rs` op `feat/chefapp-4.0-lane-b` landt en naar `feat/chefapp-4.0`
-/// gemerged is. Poll: `git fetch origin && git log origin/feat/chefapp-4.0-lane-b --oneline`.
-mod aliases {
-    use std::collections::{HashMap, HashSet};
-
-    fn alias_map() -> HashMap<&'static str, &'static str> {
-        let mut m = HashMap::new();
-        m.insert("cfg", "config");
-        m.insert("dash", "dashboard");
-        m.insert("ops", "operations");
-        m.insert("fleet", "infra");
-        m.insert("k8s", "kubernetes");
-        m
-    }
-
-    /// Expand query tokens via alias-map (bidirectioneel).
-    /// Retourneert gededupte lowercase termen incl. origineel + alias.
-    pub fn expand_query(query: &str) -> Vec<String> {
-        let map = alias_map();
-        // reverse lookup helper
-        let mut out: Vec<String> = Vec::new();
-        for token in query.split_whitespace() {
-            let lower = token.to_lowercase();
-            if lower.is_empty() {
-                continue;
-            }
-            out.push(lower.clone());
-            if let Some(exp) = map.get(lower.as_str()) {
-                out.push(exp.to_string());
-            }
-            for (k, v) in map.iter() {
-                if *v == lower && *k != lower {
-                    out.push(k.to_string());
-                }
-            }
-        }
-        let mut seen = HashSet::new();
-        out.retain(|s| seen.insert(s.clone()));
-        out
-    }
-
-    #[allow(dead_code)]
-    pub fn alias_map_for_test() -> HashMap<&'static str, &'static str> {
-        alias_map()
+    /// Stable lokale frecency-key; dezelfde titel met andere uitvoering blijft
+    /// daardoor een afzonderlijke actie in de ranking.
+    pub fn frecency_id(&self) -> String {
+        format!("{}::{:?}", self.title, self.run)
     }
 }
-
-pub use aliases::expand_query;
 
 // ---------------------------------------------------------------------------
 // Frecency
@@ -96,12 +49,13 @@ pub fn apply_frecency_boost(action: &Action, frecency: &HashMap<String, (u32, St
         action.section.to_lowercase(),
         action.keywords.to_lowercase()
     );
+    let action_id = action.frecency_id().to_lowercase();
     for (key, (_count, ts)) in frecency.iter() {
         let k = key.to_lowercase();
         if k.is_empty() {
             continue;
         }
-        if !haystack.contains(&k) {
+        if k != action_id && !haystack.contains(&k) {
             continue;
         }
         if is_within_24h(ts) {
@@ -128,6 +82,9 @@ fn is_within_24h(ts: &str) -> bool {
 
 fn parse_rfc3339_to_epoch(s: &str) -> Option<u64> {
     let s = s.trim();
+    if let Ok(epoch) = s.parse::<u64>() {
+        return Some(epoch);
+    }
     if s.len() < 10 {
         return None;
     }
@@ -301,6 +258,26 @@ pub struct RankContext {
 }
 
 impl RankContext {
+    /// Laad de lokale frecency-store expliciet voor productie-ranking.
+    /// `Default` blijft puur zodat tests en callers zonder I/O kunnen bouwen.
+    pub fn local() -> Self {
+        let frecency = crate::frecency::load()
+            .into_iter()
+            .map(|entry| (entry.id, (entry.open_count, entry.last_opened)))
+            .collect();
+        Self {
+            frecency,
+            ..Self::default()
+        }
+    }
+
+    pub fn local_with_terms(boost_terms: Vec<String>) -> Self {
+        Self {
+            boost_terms,
+            ..Self::local()
+        }
+    }
+
     /// Totale boost voor een actie: lopende agents (+150) + active_group (+150)
     /// + frecency (+60) + pinned (+80, verrekend in rank_actions_with).
     fn boost(&self, action: &Action) -> i32 {
@@ -619,6 +596,9 @@ mod tests {
         recent_map.insert("fleet".into(), (3, format_now_rfc3339()));
         let boost_recent = apply_frecency_boost(&action_a, &recent_map);
         assert_eq!(boost_recent, 60);
+        let mut id_map = HashMap::new();
+        id_map.insert(action_a.frecency_id(), (1, format_now_rfc3339()));
+        assert_eq!(apply_frecency_boost(&action_a, &id_map), 60);
         // oud frecency (>24u) — 2020
         let mut old_map = HashMap::new();
         old_map.insert("fleet".into(), (3, "2020-01-01T00:00:00Z".into()));

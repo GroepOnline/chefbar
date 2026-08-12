@@ -287,7 +287,7 @@ impl Harness {
 /// - fleet/herdr: uit fleet-info + ops agents
 /// - commerce/vault/crm: uit providers
 /// - sync/share/clipboard/desktop: uit share_sync/clipboard/desktop
-/// - tasks/linear: uit tasks (linear placeholder tot Lane A)
+/// - tasks/linear: uit tasks + linear_issues
 /// - inbox/health/kater/containers/secrets: tolerant (0 als snapshot leeg)
 ///
 /// Geen nieuwe netwerk-calls; alles komt uit `snapshot` en `ops`.

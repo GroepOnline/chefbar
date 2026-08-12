@@ -220,7 +220,6 @@ pub fn build_fleet_actions(
 }
 
 /// Vault: accounts/providers/CRM — D3.
-/// Tolerant: bestaande providers-logica, CRM placeholder tot Lane A.
 pub fn build_vault_actions(
     snap: &Snapshot,
     _ops: &OpsSnapshot,

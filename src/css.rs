@@ -404,12 +404,29 @@ pub fn styles_css(theme: &str) -> String {
 }}
 
 /* ============ Overlay (palette, center, 560px, radius 10, shadow) ============ */
-.chefbar-overlay {{
+.chefbar-overlay,
+.chefbar-palette-overlay {{
   min-width: 560px;
   background-color: {surface};
   border: 1px solid {line};
   border-radius: 10px;
   box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
+  padding: 12px;
+}}
+.chefbar-palette-entry {{
+  min-height: 36px;
+}}
+.chefbar-palette-results {{
+  padding-top: 4px;
+}}
+.chefbar-drawer-title {{
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: {text};
+}}
+.chefbar-drawer-actions {{
+  padding-top: 8px;
 }}
 
 /* ============ Zone header + card grid (2-col waar past) ============ */

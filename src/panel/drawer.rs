@@ -1,9 +1,4 @@
 //! Detail-drawer voor het ChefApp-panel: slide + focus-trap + Esc.
-//!
-//! Rechts uitklappende drawer (300 px). In Fase 0 een compileerbare shell
-//! die via `GtkRevealer` 160 ms slide biedt en focus-trap + Esc laat Panel
-//! afhandelen. Inhoud (velden + acties-rij) wordt door `panel::mod` gevuld
-//! zodra een card geselecteerd is.
 
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -96,20 +91,31 @@ impl Drawer {
         }
     }
 
-    /// Toon de drawer voor een action (titel + meta), met slide-animatie.
     pub fn show_for(&self, action: &crate::palette::Action) {
+        self.show_for_with(action, || {});
+    }
+
+    pub fn show_for_with<F>(&self, action: &crate::palette::Action, on_activate: F)
+    where
+        F: Fn() + 'static,
+    {
         self.title.set_text(&action.title);
         self.meta.set_text(&action.meta);
         for child in self.actions.children() {
             self.actions.remove(&child);
         }
+        let execute = gtk::Button::with_label("Uitvoeren");
+        execute.style_context().add_class("chefbar-btn");
+        execute.style_context().add_class("chefbar-primary");
+        execute.connect_clicked(move |_| on_activate());
+        self.actions.pack_start(&execute, false, false, 0);
+        self.actions.show_all();
         self.title.set_can_focus(true);
         self.title.grab_focus();
         slide_drawer(&self.container, true);
         self.open.set(true);
     }
 
-    /// Verberg de drawer.
     pub fn hide(&self) {
         if !self.open.get() {
             return;
