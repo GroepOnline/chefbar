@@ -23,6 +23,7 @@ pub mod palette;
 pub mod panel;
 pub mod panel_state;
 pub mod policy;
+pub mod quiet;
 pub mod sessions;
 pub mod state;
 pub mod tray;

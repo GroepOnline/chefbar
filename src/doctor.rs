@@ -112,6 +112,20 @@ pub fn run_checks() -> DoctorReport {
                                                                          //     verwezen er al naar, nu bestaat het bestand ook.
     lines.push(format!("log      {}", crate::log::log_path().display()));
 
+    // 7b. Rustige uren (DND-schema): venster tonen, nooit een failure — het
+    //     is een keuze, geen gezondheid.
+    match crate::quiet::quiet_window() {
+        Some(window) => {
+            let active = crate::quiet::in_quiet_hours(&window);
+            lines.push(format!(
+                "rustig   {} · {}",
+                crate::quiet::window_label(&window),
+                if active { "actief" } else { "stil" }
+            ));
+        }
+        None => lines.push("rustig   uit (zet CHEFBAR_QUIET=\"22:00-07:00\")".into()),
+    }
+
     // 8. Latency-probes (Q5): vault + ops, gemeten round-trip. Transportfouten
     //    (DNS/TLS/connect) tellen als failure; HTTP-statuscodes zijn alleen
     //    informatief (401 zonder token is een secrets-zaak, geen probe-fout).

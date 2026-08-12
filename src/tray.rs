@@ -260,7 +260,17 @@ impl ksni::Tray for ChefTray {
         let snap = self.shared.read().map(|s| s.clone()).unwrap_or_default();
         let profile = crate::config::global_profile();
         let mutes = crate::mutes::load();
-        let specs = menu_items(&snap, profile, crate::tray::autostart_enabled(), &mutes);
+        let quiet = crate::quiet::quiet_window().map(|w| {
+            let active = crate::quiet::in_quiet_hours(&w);
+            (crate::quiet::window_label(&w), active)
+        });
+        let specs = menu_items(
+            &snap,
+            profile,
+            crate::tray::autostart_enabled(),
+            &mutes,
+            quiet,
+        );
         specs.into_iter().map(MenuItemSpec::into_ksni).collect()
     }
 }
@@ -359,6 +369,7 @@ fn menu_items(
     profile: &crate::config::EndpointProfile,
     autostart: bool,
     mutes: &std::collections::HashSet<String>,
+    quiet: Option<(String, bool)>,
 ) -> Vec<MenuItemSpec> {
     let mut items: Vec<MenuItemSpec> = Vec::new();
 
@@ -483,12 +494,18 @@ fn menu_items(
     }
     items.push(MenuItemSpec::Separator);
 
-    // Notificaties pauzeren + meelopen vanaf login.
+    // Notificaties pauzeren + rustige uren (DND-schema) + meelopen vanaf login.
     items.push(MenuItemSpec::Action {
         label: "Notificaties pauzeren (1u)".into(),
         icon: "notification-disabled-symbolic".into(),
         cmd: UiCommand::PauseNotifications,
     });
+    if let Some((label, active)) = quiet {
+        items.push(MenuItemSpec::Disabled(format!(
+            "Rustige uren {label} · {}",
+            if active { "actief" } else { "stil" }
+        )));
+    }
     items.push(MenuItemSpec::Checkmark {
         label: "Meelopen vanaf login".into(),
         checked: autostart,
@@ -653,6 +670,7 @@ mod tests {
             &EndpointProfile::default(),
             false,
             &no_mutes(),
+            None,
         );
         let labels = labels(&items);
         for expected in [
@@ -677,6 +695,7 @@ mod tests {
             &EndpointProfile::default(),
             false,
             &no_mutes(),
+            None,
         );
         assert!(items.iter().any(|i| matches!(i, MenuItemSpec::Disabled(_))));
     }
@@ -694,7 +713,7 @@ mod tests {
             ],
             ..Default::default()
         });
-        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes(), None);
         let submenu = items.iter().find_map(|i| match i {
             MenuItemSpec::Submenu { label, items, .. } if label == "Account wisselen" => {
                 Some(items)
@@ -726,7 +745,7 @@ mod tests {
         let mut snap = Snapshot::default();
         snap.desktop
             .insert("state".into(), serde_json::Value::String("running".into()));
-        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes(), None);
         let desktop = items.iter().find_map(|i| match i {
             MenuItemSpec::Action { label, cmd, .. } if label.starts_with("Desktop") => {
                 Some((label.as_str(), cmd.clone()))
@@ -747,6 +766,7 @@ mod tests {
             &EndpointProfile::default(),
             true,
             &no_mutes(),
+            None,
         );
         assert!(items
             .iter()
@@ -756,6 +776,7 @@ mod tests {
             &EndpointProfile::default(),
             false,
             &no_mutes(),
+            None,
         );
         assert!(items
             .iter()
@@ -769,6 +790,7 @@ mod tests {
             &EndpointProfile::default(),
             false,
             &no_mutes(),
+            None,
         );
         assert!(!items.iter().any(|i| matches!(
             i,
@@ -803,7 +825,7 @@ mod tests {
         });
         let mut mutes = std::collections::HashSet::new();
         mutes.insert("cursor::commerce".into());
-        let items = menu_items(&snap, &EndpointProfile::default(), false, &mutes);
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &mutes, None);
         let sub = items
             .iter()
             .find_map(|i| match i {
@@ -846,11 +868,50 @@ mod tests {
             &EndpointProfile::default(),
             false,
             &no_mutes(),
+            None,
         );
         assert!(items.iter().any(|i| matches!(
             i,
             MenuItemSpec::Disabled(label) if label.contains("geen agents")
         )));
+    }
+
+    #[test]
+    fn rustige_uren_regel_toont_venster_en_status() {
+        // DND-schema: geconfigureerd venster → info-regel met actief/stil;
+        // geen venster → geen regel.
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+            Some(("22:00–07:00".into(), true)),
+        );
+        assert!(items.iter().any(|i| matches!(
+            i,
+            MenuItemSpec::Disabled(label) if label == "Rustige uren 22:00–07:00 · actief"
+        )));
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+            Some(("22:00–07:00".into(), false)),
+        );
+        assert!(items.iter().any(|i| matches!(
+            i,
+            MenuItemSpec::Disabled(label) if label == "Rustige uren 22:00–07:00 · stil"
+        )));
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+            None,
+        );
+        assert!(!items.iter().any(
+            |i| matches!(i, MenuItemSpec::Disabled(label) if label.starts_with("Rustige uren"))
+        ));
     }
 
     #[test]
@@ -867,7 +928,7 @@ mod tests {
                 "title": "é".repeat(40),
             }
         }));
-        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes(), None);
         let event_row = items.iter().find_map(|i| match i {
             MenuItemSpec::Action {
                 label,

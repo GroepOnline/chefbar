@@ -16,6 +16,7 @@ url = "2"
 dirs = "5"
 clap = { version = "4", features = ["derive"] }
 sha2 = "0.10"
+libc = "0.2"
 pango = "0.18"
 gdk = "0.18"
 # E2: Wayland layer-shell (optioneel — systeembibliotheek libgtk-layer-shell

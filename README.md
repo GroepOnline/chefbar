@@ -39,7 +39,7 @@ chefbar --show-config
 | **Zoeken** | `/` focust, typen filtert de hele surface, geen aparte modi. Ranking kiest: recency-boost uit sessies die om jou vragen en lopende agents (`RankContext` in `src/palette.rs`). Raycast-geest, geen Raycast-kopie. |
 | **Harnas-filtering** | Acties matchen op harnas via keyword-prefixen (`src/harness.rs`). Statuskleuren per harnas, geen generieke badges. |
 | **Tray + IPC** | ksni-tray met command-menu. Externe commando's via Unix-socket op `$XDG_RUNTIME_DIR/chefbar.sock`. Hotkey en scripts praten tegen een draaiende instantie, niet tegen een tweede proces. |
-| **Meldingen** | Watcher-transities gecoalesceerd tot hooguit één toast per poll-cyclus (`coalesce_toasts` in `src/models.rs`). Per-agent dempen via paneel-rij of tray-submenu (`src/mutes.rs`). Geen ticker, geen storm. |
+| **Meldingen** | Watcher-transities gecoalesceerd tot hooguit één toast per poll-cyclus (`coalesce_toasts` in `src/models.rs`). Per-agent dempen via paneel-rij of tray-submenu (`src/mutes.rs`); rustige uren via `CHEFBAR_QUIET` dempen niet-kritieke toasts (`src/quiet.rs`). FOUT gaat altijd door, inbox blijft gevuld. Geen ticker, geen storm. |
 | **Panel-state** | Laatste harnas + zoekterm bewaard in `~/.config/chefbar/panel-state.json` (`src/panel_state.rs`). Heropenen zonder verrassingen. |
 | **Doctor** | `chefbar --doctor` beoordeelt profiel, policy, credentials (alleen fingerprints), watchdog, laatste poll én latency-probes per endpoint (vault/ops, ms). Exit 0 bij OK, anders 1. Ook als desktop-melding + tray-tooltip. |
 | **Serve** | `chefbar --serve` draait alleen de actor. Poll-ritme vault 5s, ops 15s. Geen UI, zelfde snapshot. |
@@ -111,6 +111,7 @@ Env overschrijft het profiel per veld, niet als geheel. Dit is de warden-laag vo
 | poll vault | `CHEFBAR_VAULT_POLL_MS` | `5000` |
 | poll ops | `CHEFBAR_OPS_POLL_MS` | `15000` |
 | demp-lijst | `CHEFBAR_MUTED_AGENTS` | `~/.config/chefbar/muted-agents.json` |
+| rustige uren | `CHEFBAR_QUIET` | uit (bijv. `22:00-07:00`) |
 
 Lege env-waarden worden genegeerd. Ongeldige URL's vallen terug op de default (zie `clean_url` in `src/config.rs`). Optionele velden blijven `None` als ze leeg zijn.
 
@@ -219,7 +220,9 @@ Zie `docs/plan-optimalisatie-uitbreiding.md` voor detail. Wat 3.2 bracht:
 
 * **Sneller bij de les** — vaste worker-pool (geen thread-churn meer, `src/state.rs`), revisie-check die dure re-renders overslaat, en een **lazy panel**: de GTK-UI wordt pas bij de eerste `Super+Space` gebouwd (start→tray <500ms; bouwtijd staat in `chefbar.log`). Release-build met `panic = abort` + `strip` + `lto`.
 * **Meer oppervlak** — Herdr-agents met pane/focus + inline prompt, Commander-queue met per-taak Stop, toetsenbord-first (↑/↓ + Enter + Ctrl+K).
-* **Per-agent dempen** — demp één agent in het paneel of tray-submenu (`mute` via `--ipc`); de watcher slaat hem over bij toasts.
+* **Per-agent dempen + rustige uren** — demp één agent in het paneel of tray-submenu (`mute` via `--ipc`); `CHEFBAR_QUIET="22:00-07:00"` dempt buiten werktijd alle niet-kritieke toasts (FOUT gaat door; `--doctor`/`--show-config` tonen het venster).
+* **Deep-links in sessie-rijen** — evidence/workspace/browser/kater-links als knoppen naast de primaire actie in de aandacht-sectie.
+* **P4-metingen** — `scripts/measure-p4.sh` meet binary, start→gereed (**57ms**), start→panel (**64ms**) en RSS (78–93 MiB) op de release-build; alle doelen gehaald.
 * **Doctor kijkt mee** — latency-probes per endpoint (vault/ops), draait in de achtergrond vanaf tray, resultaat ook in de tray-tooltip.
 * **Config 3.2** — poll-intervallen per env (`CHEFBAR_VAULT_POLL_MS`/`CHEFBAR_OPS_POLL_MS`), demp-lijst via `CHEFBAR_MUTED_AGENTS`; `chefbar.log` voor actor/executor-fouten.
 * **QA** — tray-menu uit de ksni-closures naar een pure testbare builder, state-mock-tests zonder netwerk, golden CLI-tests (waaronder `--ipc mute`), 80+ tests groen op de runner en in CI.

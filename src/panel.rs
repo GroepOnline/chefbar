@@ -1435,6 +1435,7 @@ fn render_into(
         // Toon max 4, maar footer hint als er meer zijn
         for session in attention.iter().take(4) {
             let spec_and_label = session_cta(session, &profile);
+            let primary_spec = spec_and_label.as_ref().map(|(_, spec)| spec.clone());
             let row_btn = gtk::Button::new();
             row_btn.set_relief(gtk::ReliefStyle::None);
             row_btn.set_hexpand(true);
@@ -1518,7 +1519,35 @@ fn render_into(
             } else {
                 row_btn.set_sensitive(false);
             }
-            group.pack_start(&row_btn, false, false, 0);
+            // M5-staart: deep-links (evidence/workspace/browser/kater/focus)
+            // als kleine knoppen naast de primaire CTA — alleen de links die
+            // niet óók de CTA zijn, max 2; tooltip toont het doel.
+            let deep_links: Vec<(String, crate::actions::RunSpec)> =
+                crate::actions::session_deep_links(session, &profile)
+                    .into_iter()
+                    .filter(|(_, spec)| primary_spec.as_ref() != Some(spec))
+                    .take(2)
+                    .collect();
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            row.pack_start(&row_btn, true, true, 0);
+            if !deep_links.is_empty() {
+                let links_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+                for (label, spec) in deep_links {
+                    let btn = gtk::Button::with_label(&format!("{label} ↗"));
+                    let tip = match &spec {
+                        crate::actions::RunSpec::OpenUrl(url) => url.clone(),
+                        crate::actions::RunSpec::FocusAgent(id) => format!("focus {id}"),
+                        _ => label.clone(),
+                    };
+                    btn.set_tooltip_text(Some(&tip));
+                    btn.style_context().add_class("chefbar-btn");
+                    let executor_c = executor.clone();
+                    btn.connect_clicked(move |_| executor_c.run_for_ui(&spec));
+                    links_box.pack_start(&btn, false, false, 0);
+                }
+                row.pack_start(&links_box, false, false, 0);
+            }
+            group.pack_start(&row_wrap(&row), false, false, 0);
         }
         if attention.len() > 4 {
             let more = gtk::Label::new(Some(&format!(

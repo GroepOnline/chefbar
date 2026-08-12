@@ -90,6 +90,19 @@ fn main() {
         println!("ops      {}", profile.label("opsApi"));
         println!("kater    {}", profile.label("katerWorkspace"));
         println!("vastzet  {}", profile.dashboard);
+        // DND-schema (rustige uren) — warden-laag zichtbaar zonder bestand.
+        match chefbar::quiet::quiet_window() {
+            Some(window) => println!(
+                "rustig   {} ({})",
+                chefbar::quiet::window_label(&window),
+                if chefbar::quiet::in_quiet_hours(&window) {
+                    "actief"
+                } else {
+                    "stil"
+                }
+            ),
+            None => println!("rustig   uit"),
+        }
         std::process::exit(0);
     }
 

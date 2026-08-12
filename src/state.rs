@@ -297,12 +297,10 @@ impl<C: HttpClient> Poller<C> {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(snap.revision);
             snap.providers = build_providers(Some(&providers));
-            snap.raw["providers"] = providers;
             any_ok = true;
         }
         if let Some(agents) = results.get("agents").cloned().flatten() {
             snap.agents = build_agents(Some(&agents));
-            snap.raw["agents"] = agents;
             any_ok = true;
         }
         if let Some(events) = results.get("agent_events").cloned().flatten() {
@@ -315,7 +313,6 @@ impl<C: HttpClient> Poller<C> {
         }
         if let Some(fleet) = results.get("fleet").cloned().flatten() {
             snap.fleet = build_fleet(Some(&fleet));
-            snap.raw["fleet"] = fleet;
             any_ok = true;
         }
         if let Some(tasks) = results.get("tasks").cloned().flatten() {
@@ -373,9 +370,7 @@ impl<C: HttpClient> Poller<C> {
                 .or_else(|| payload.get("sessions").and_then(|s| s.as_array()).cloned())
                 .unwrap_or_default();
             if !events.is_empty() {
-                snap.events.extend(events.clone());
-                // sessies worden elders gerankt op basis van events; hier alleen cache.
-                snap.raw["sessions"] = Value::Array(events);
+                snap.events.extend(events);
             }
             any_ok = true;
         }
@@ -390,7 +385,15 @@ impl<C: HttpClient> Poller<C> {
             .collect();
         if !fresh.is_empty() {
             if let Some((title, body, status)) = crate::models::coalesce_toasts(&fresh) {
-                crate::notify::notify(&title, &body, status);
+                // DND-schema (rustige uren): niet-kritieke toasts zwijgen buiten
+                // het venster; FOUT (error) gaat altijd door. De inbox-rijen
+                // blijven hoe dan ook gevuld — alleen de toast-route dempt.
+                let quiet = crate::quiet::quiet_window()
+                    .map(|w| crate::quiet::in_quiet_hours(&w))
+                    .unwrap_or(false);
+                if !(quiet && status != "error") {
+                    crate::notify::notify(&title, &body, status);
+                }
             }
             snap.suggestions.retain(|s| {
                 s.fresh(SUGGESTION_TTL_SECONDS)

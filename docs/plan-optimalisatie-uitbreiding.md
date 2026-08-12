@@ -99,7 +99,27 @@ bij open paneel (goed), maar: herbouw kost allocaties en forceert herlayout.
   paniek de hele app uitschakelen, dus de tray start alleen als er een bus is
   (`DBUS_SESSION_BUS_ADDRESS` of `$XDG_RUNTIME_DIR/bus`) en skipt netjes met
   een logregel anders (alle UI-paden guarden al op TRAY_HANDLE).
-- Snapshot-`raw`-trim en RSS-doelen blijven meetpunten (niet-buildend nu).
+- **Snapshot-`raw`-trim** ✅ gedaan (2026-08-12): `poll_vault` bewaart nu
+  alleen nog `raw["status"]` (de enige consument is `tray_state`, leest
+  `raw.status.services`); providers/agents/fleet/sessions worden niet meer
+  in `raw` geassigned — de geparsede velden (ProviderRow/AgentRow/…) zijn de
+  echte UI-bron. De snapshot-clone per cyclus (nodig voor de watcher-diff)
+  wordt daarmee lichter. (Geverifieerd: `grep '\.raw' src/` → alleen
+  models.rs:736 + state.rs.)
+- **P4-metingen** ✅ gedaan (2026-08-12) — `scripts/measure-p4.sh` (Xvfb,
+  zelfde isolatie als visual-shot) meet op de release-build: binary-grootte,
+  start→gereed (logregel "gestart", gepollt vanaf launch), start→panel
+  (latentie vanaf de IPC-poke tot de "panel opgebouwd"-logregel), RSS
+  vóór/na paneel (`VmHWM` uit /proc). Resultaten op chef-runner-01-1
+  (release 3.2.0, headless Xvfb → tray skipt door de D-Bus-guard):
+
+  | Meting | Waarde | Doel | Status |
+  |---|---|---|---|
+  | Binary | 3770 KiB | kleiner | ✅ |
+  | start→gereed | **57 ms** | <500 ms | ✅ |
+  | start→panel (poke→klaar) | **64 ms** | <1 s | ✅ |
+  | RSS rust | 78,2 MiB | <80 MiB | ✅ |
+  | RSS met paneel | 93,2 MiB | <120 MiB | ✅ |
 - Doel-RSS < 80MB in rust, < 120MB bij open paneel.
 
 ---
@@ -161,9 +181,36 @@ Rustige meldingen en deep-links blijven open (M5-staart).
   `CHEFBAR_MUTED_AGENTS`); de watcher slaat gedempte agents over bij toasts
   (en haalt hun oude inbox-suggesties weg); paneel-rij met Demp/Ontdemp-togg
   en een tray-submenu "Demp agenten" (pure builder); `--ipc "mute <key>"` +
-  golden test. Do-not-disturb-schema blijft open.
-- **Deep-links benutten:** evidence-urls, kater-sessies en workspace-urls zitten
-  al in `AttachPoints` (`src/sessions.rs`) — zichtbaarder maken in sessie-rijen.
+  golden test.
+- **Do-not-disturb-schema (rustige uren)** ✅ gedaan (2026-08-12):
+  - **Doel:** buiten werktijd geen niet-kritieke toasts. FOUT (error) gaat
+    altijd door; KLAAR/HULP/LIMIET zwijgen. De inbox blijft gewoon gevuld
+    (panel toont de suggesties), alleen de toast-route dempt.
+  - **Config:** env `CHEFBAR_QUIET="HH:MM-HH:MM"` — één venster, overnight
+    toegestaan (22:00-07:00). Warden-laag per veld, geen nieuw bestand.
+    Geen venster = uit.
+  - **Bouw:** `src/quiet.rs` — `quiet_window()` (parse, minuten mogen
+    ontbreken), pure `in_quiet_hours_at(window, h, m)` (overnight-wrap en
+    grensgevallen getest: `from` exact = actief, `to` exact = niet meer,
+    gelijke grenzen = veilig uit), dunne `in_quiet_hours()` met lokale tijd
+    via `libc::localtime_r` (libc al in de lock; geen chrono-dep).
+  - **Waar:** `state.rs::poll_vault` (toast-route filtert `status != error`
+    in rustige uren), tray-menu info-regel ("Rustige uren 22:00–07:00 ·
+    actief/stil", puur in `menu_items`), doctor-regel en `--show-config`-regel.
+  - **Acceptatie:** 7 unit-tests voor parse/wrap/grenzen + tray-test; rustige
+    uren dempen KLAAR/HULP maar nooit FOUT.
+- **Deep-links benutten** ✅ gedaan (2026-08-12): evidence-urls, kater-
+  sessies en workspace-urls zaten al in `AttachPoints` (`src/sessions.rs`)
+  maar alleen de primaire actie (één CTA per sessie) was zichtbaar.
+  - Pure `session_deep_links(session, profile) -> Vec<(String, RunSpec)>` in
+    `src/actions.rs`: alle aanhechtbare links in vaste volgorde (evidence >
+    workspace > browser > kater-sessie > focus), max 3; kater-URL uit het
+    profiel, focus als `FocusAgent`-run.
+  - In de "Heeft jou nodig"-sectie per sessie max 2 kleine knoppen ("Bewijs
+    ↗" enz.) voor de links die níet óók de primaire CTA zijn; tooltip toont
+    het doel (URL of focus-id).
+  - Unit-tests: volgorde (alle vijf attach-punten → top-3), kater+focus,
+    lege attach → geen links.
 
 ### E6 — toetsenbord-first
 ✅ Gedaan (2026-08-12): pijltjes ↑/↓ door de actie-rijen van het actieve harnas

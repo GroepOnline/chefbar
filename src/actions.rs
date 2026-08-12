@@ -431,6 +431,39 @@ fn session_open_spec(
     }
 }
 
+/// Alle aanhechtbare deep-links van een sessie (M5-staart), in vaste volgorde:
+/// evidence > workspace > browser > kater-sessie > focus, max 3. Puur — het
+/// paneel toont ze als extra knoppen naast de primaire CTA (`session_open_spec`).
+pub fn session_deep_links(
+    session: &crate::sessions::Session,
+    profile: &EndpointProfile,
+) -> Vec<(String, RunSpec)> {
+    let mut out: Vec<(String, RunSpec)> = Vec::new();
+    if let Some(url) = session.attach.evidence_url.as_deref() {
+        out.push(("Bewijs".into(), RunSpec::OpenUrl(url.to_string())));
+    }
+    if let Some(url) = session.attach.workspace_url.as_deref() {
+        out.push(("Workspace".into(), RunSpec::OpenUrl(url.to_string())));
+    }
+    if let Some(url) = session.attach.browser.as_deref() {
+        out.push(("Browser".into(), RunSpec::OpenUrl(url.to_string())));
+    }
+    if let (Some(base), Some(kid)) = (
+        profile.kater_workspace.as_deref(),
+        session.attach.kater_session_id.as_deref(),
+    ) {
+        out.push((
+            "Sessie".into(),
+            RunSpec::OpenUrl(format!("{}/{kid}", base.trim_end_matches('/'))),
+        ));
+    }
+    if let Some(focus) = session.attach.focus.as_deref() {
+        out.push(("Neem over".into(), RunSpec::FocusAgent(focus.to_string())));
+    }
+    out.truncate(3);
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Executor — één plek die RunSpec uitvoert (altijd in een achtergrond-thread
 // behalve UI-only zaken zoals CopyText/OpenUrl).
@@ -697,6 +730,84 @@ mod tests {
             &EndpointProfile::default(),
             Vec::new(),
         )
+    }
+
+    #[test]
+    fn deep_links_volgen_attach_volgorde() {
+        // M5-staart: alle aanhechtbare links, evidence eerst — max 3.
+        use crate::sessions::{AttachPoints, Session};
+        let session = Session {
+            id: "s1".into(),
+            source: "kater".into(),
+            state: "blocked".into(),
+            title: "Review".into(),
+            summary: String::new(),
+            updated_at: None,
+            attach: AttachPoints {
+                focus: Some("pane-9".into()),
+                browser: Some("https://b.example".into()),
+                workspace_url: Some("https://ws.example".into()),
+                kater_session_id: Some("kid-1".into()),
+                evidence_url: Some("https://ev.example/1".into()),
+            },
+        };
+        let profile = EndpointProfile {
+            kater_workspace: Some("https://kater.chefgroep.online/agents/".into()),
+            ..Default::default()
+        };
+        let links = session_deep_links(&session, &profile);
+        let labels: Vec<&str> = links.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(labels, vec!["Bewijs", "Workspace", "Browser"]);
+        assert_eq!(links[0].1, RunSpec::OpenUrl("https://ev.example/1".into()));
+        assert_eq!(links[2].1, RunSpec::OpenUrl("https://b.example".into()));
+    }
+
+    #[test]
+    fn deep_links_kater_sessie_en_focus() {
+        // Alleen kater + focus: kater-URL komt uit het profiel, focus is een
+        // FocusAgent-run (geen URL).
+        use crate::sessions::{AttachPoints, Session};
+        let session = Session {
+            id: "s3".into(),
+            source: "kater".into(),
+            state: "waiting".into(),
+            title: "Vragen".into(),
+            summary: String::new(),
+            updated_at: None,
+            attach: AttachPoints {
+                focus: Some("pane-9".into()),
+                kater_session_id: Some("kid-1".into()),
+                ..Default::default()
+            },
+        };
+        let profile = EndpointProfile {
+            kater_workspace: Some("https://kater.chefgroep.online/agents/".into()),
+            ..Default::default()
+        };
+        let links = session_deep_links(&session, &profile);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].0, "Sessie");
+        assert_eq!(
+            links[0].1,
+            RunSpec::OpenUrl("https://kater.chefgroep.online/agents/kid-1".into())
+        );
+        assert_eq!(links[1].0, "Neem over");
+        assert_eq!(links[1].1, RunSpec::FocusAgent("pane-9".into()));
+    }
+
+    #[test]
+    fn deep_links_zonder_attach_zijn_leeg() {
+        use crate::sessions::{AttachPoints, Session};
+        let session = Session {
+            id: "s2".into(),
+            source: "opencodex".into(),
+            state: "working".into(),
+            title: "Werk".into(),
+            summary: String::new(),
+            updated_at: None,
+            attach: AttachPoints::default(),
+        };
+        assert!(session_deep_links(&session, &EndpointProfile::default()).is_empty());
     }
 
     #[test]
