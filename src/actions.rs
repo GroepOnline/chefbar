@@ -49,6 +49,7 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
+    SendControlChat,
 }
 
 fn action(
@@ -814,6 +815,19 @@ pub fn build_actions(
             "toggle palette zoek overlay",
             RunSpec::TogglePalette,
         ),
+        action(
+            "Open control-chat",
+            "devops en overzicht — directe agent-praat",
+            "STIL",
+            "control chat devops overzicht agent prompt",
+            RunSpec::FocusDomain("control".into()),
+        ),
+        task_action(
+            "Vraag control",
+            "typ je vraag en kies deze regel",
+            "control chat stuur vraag devops fleet",
+            RunSpec::SendControlChat,
+        ),
     ]);
 
     // Sync-acties alleen als share-sync gezond is; bij fout één uitleg-actie
@@ -1145,6 +1159,37 @@ impl Executor {
             RunSpec::TogglePalette => {
                 crate::notify::notify("Palette", "toggle — Super+Space", "ok");
             }
+            RunSpec::SendControlChat => {
+                let text = query.to_string();
+                if text.trim().is_empty() {
+                    crate::notify::notify("Control", "typ eerst een vraag", "hulp");
+                    return;
+                }
+                let target = std::env::var("CHEFBAR_CONTROL_AGENT")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| {
+                        std::env::var("CHEFBAR_CONTROL_PANE")
+                            .ok()
+                            .filter(|s| !s.trim().is_empty())
+                    });
+                match target {
+                    Some(target) => {
+                        self.spawn_bg(move || {
+                            if crate::ops_cli::send_control_prompt(&target, &text) {
+                                crate::notify::notify("Control", "vraag verstuurd", "ok");
+                            } else {
+                                crate::notify::notify("Control", "sturen lukte niet", "error");
+                            }
+                        });
+                    }
+                    None => crate::notify::notify(
+                        "Control",
+                        "zet CHEFBAR_CONTROL_AGENT of open het Control-domein",
+                        "hulp",
+                    ),
+                }
+            }
         }
     }
 
@@ -1321,6 +1366,13 @@ mod tests {
         assert!(actions
             .iter()
             .any(|a| matches!(a.run, RunSpec::TogglePalette)));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::SendControlChat)));
+        assert!(actions.iter().any(|a| matches!(
+            a.run,
+            RunSpec::FocusDomain(ref d) if d == "control"
+        )));
     }
 
     #[test]

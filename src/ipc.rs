@@ -54,6 +54,7 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
                     "inbox",
                     "fleet",
                     "herdr",
+                    "control",
                     "vault",
                     "accounts",
                     "providers",
@@ -351,8 +352,8 @@ mod tests {
             Some(UiCommand::FocusDomain("vault".into()))
         );
         assert_eq!(
-            parse_command("focus fleet"),
-            Some(UiCommand::FocusDomain("fleet".into()))
+            parse_command("focus control"),
+            Some(UiCommand::FocusDomain("control".into()))
         );
         assert_eq!(
             parse_command("focus-domain kater"),

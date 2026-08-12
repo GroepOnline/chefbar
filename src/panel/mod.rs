@@ -13,6 +13,7 @@
 //! Lane C: 1504 r monoliet gesplitst in 5 modules. Dit bestand blijft de
 //! lifecycle (Panel struct, new(), show/toggle, refresh-loop).
 
+pub mod chat;
 pub mod drawer;
 pub mod header;
 pub mod overlay;
@@ -39,6 +40,8 @@ use zones::{
 pub struct Panel {
     pub window: gtk::Window,
     content: gtk::Box,
+    scroller: gtk::ScrolledWindow,
+    chat: Rc<chat::ChatPane>,
     search: gtk::SearchEntry,
     shared: Shared,
     executor: Executor,
@@ -150,6 +153,11 @@ impl Panel {
         content.set_margin_bottom(8);
         scroller.add(&content);
 
+        let chat = Rc::new(chat::ChatPane::new(shared.clone()));
+        chat.root.set_no_show_all(true);
+        chat.root.set_visible(false);
+        main.pack_start(&chat.root, true, true, 0);
+
         root.pack_start(&main, true, true, 0);
 
         // Drawer als derde kolom naast main (Revealer 300px)
@@ -228,12 +236,14 @@ impl Panel {
                 let dirty_clone = persist_dirty.clone();
                 let density_clone = density.clone();
                 let drawer_clone = drawer.clone();
+                let scroller_clone = scroller.clone();
+                let chat_clone = chat.clone();
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
-                    // recent_domains wordt bij persist meegeschreven (push hier is impliciet via dirty)
                     let q = search_clone.text().to_string();
+                    apply_canvas_mode(&scroller_clone, &chat_clone, &id);
                     render_into(
                         &content_clone,
                         &shared_clone,
@@ -251,6 +261,8 @@ impl Panel {
         let panel = Self {
             window,
             content,
+            scroller,
+            chat,
             search,
             shared,
             executor,
@@ -423,15 +435,19 @@ impl Panel {
             }
         }
         self.sync_sidebar_nav();
-        render_into(
-            &self.content,
-            &self.shared,
-            &self.executor,
-            &self.window,
-            query,
-            &self.harness_state,
-            &self.drawer,
-        );
+        let current = self.harness_state.borrow().clone();
+        apply_canvas_mode(&self.scroller, &self.chat, &current);
+        if current != "control" {
+            render_into(
+                &self.content,
+                &self.shared,
+                &self.executor,
+                &self.window,
+                query,
+                &self.harness_state,
+                &self.drawer,
+            );
+        }
     }
 
     fn sync_sidebar_nav(&self) {
@@ -474,19 +490,24 @@ impl Panel {
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
         let drawer = self.drawer.clone();
+        let scroller = self.scroller.clone();
+        let chat = self.chat.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                    &drawer,
-                );
                 let active = harness_state.borrow().clone();
+                apply_canvas_mode(&scroller, &chat, &active);
+                if active != "control" {
+                    render_into(
+                        &content,
+                        &shared,
+                        &executor,
+                        &window,
+                        &query,
+                        &harness_state,
+                        &drawer,
+                    );
+                }
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
             ControlFlow::Continue
@@ -533,6 +554,18 @@ fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
         }
     }
     false
+}
+
+fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harness: &str) {
+    let control = harness == "control";
+    scroller.set_visible(!control);
+    chat.root.set_visible(control);
+    chat.root.set_no_show_all(!control);
+    if control {
+        chat.root.show_all();
+        chat.refresh();
+        chat.focus_composer();
+    }
 }
 
 fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -> Vec<Action> {

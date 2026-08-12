@@ -32,6 +32,65 @@ pub fn herdr_enter_args(pane: &str) -> Vec<String> {
     ]
 }
 
+pub fn herdr_read_args(target: &str) -> Vec<String> {
+    vec![
+        "agent".into(),
+        "read".into(),
+        target.into(),
+        "--source".into(),
+        "recent".into(),
+        "--lines".into(),
+        "80".into(),
+        "--format".into(),
+        "text".into(),
+    ]
+}
+
+pub fn herdr_prompt_wait_args(target: &str, text: &str) -> Vec<String> {
+    vec![
+        "agent".into(),
+        "prompt".into(),
+        target.into(),
+        text.into(),
+        "--wait".into(),
+        "--until".into(),
+        "idle".into(),
+        "--until".into(),
+        "done".into(),
+        "--until".into(),
+        "blocked".into(),
+        "--timeout".into(),
+        "45000".into(),
+    ]
+}
+
+fn run_herdr_output(args: &[String]) -> Option<String> {
+    let output = Command::new("herdr").args(args).output().ok()?;
+    if output.stdout.is_empty() && !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Read-only snapshot of an agent pane. Never used by the poll actor.
+pub fn read_agent(target: &str) -> Option<String> {
+    if target.trim().is_empty() {
+        return None;
+    }
+    run_herdr_output(&herdr_read_args(target))
+}
+
+/// Control-chat send: prompt + wait for idle/done/blocked, then Enter as fallback.
+pub fn send_control_prompt(target: &str, text: &str) -> bool {
+    if target.trim().is_empty() || text.trim().is_empty() {
+        return false;
+    }
+    if run_herdr(&herdr_prompt_wait_args(target, text)) {
+        return true;
+    }
+    send_prompt(target, None, text)
+}
+
 /// Fleet-health plugin scan. `herdr fleet …` is not a real command.
 pub fn herdr_scan_node_args() -> Vec<String> {
     vec![
@@ -189,5 +248,23 @@ mod tests {
         assert!(fleet_template_is_scan("health"));
         assert!(fleet_template_is_scan("status"));
         assert!(!fleet_template_is_scan("deploy-prod"));
+    }
+
+    #[test]
+    fn read_args_are_agent_read_not_poll() {
+        let args = herdr_read_args("w2R:p2");
+        assert_eq!(args[0], "agent");
+        assert_eq!(args[1], "read");
+        assert!(args.contains(&"recent".into()));
+        assert!(!args.iter().any(|a| a == "watch"));
+    }
+
+    #[test]
+    fn prompt_wait_stays_on_agent_prompt() {
+        let args = herdr_prompt_wait_args("control", "status");
+        assert_eq!(args[0], "agent");
+        assert_eq!(args[1], "prompt");
+        assert!(args.contains(&"--wait".into()));
+        assert!(!args.iter().any(|a| a == "send"));
     }
 }

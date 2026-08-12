@@ -65,6 +65,7 @@ pub enum HarnessKind {
     Secrets,
     Kater,
     Health,
+    Control,
 }
 
 impl HarnessKind {
@@ -88,6 +89,7 @@ impl HarnessKind {
             HarnessKind::Secrets => "secrets",
             HarnessKind::Kater => "kater",
             HarnessKind::Health => "health",
+            HarnessKind::Control => "control",
         }
     }
 
@@ -111,6 +113,7 @@ impl HarnessKind {
             HarnessKind::Secrets => "Secrets",
             HarnessKind::Kater => "Kater",
             HarnessKind::Health => "Health",
+            HarnessKind::Control => "Control",
         }
     }
 
@@ -134,6 +137,7 @@ impl HarnessKind {
             HarnessKind::Secrets => "#f97316",
             HarnessKind::Kater => "#14b8a6",
             HarnessKind::Health => "#22c55e",
+            HarnessKind::Control => "#317CFF",
         }
     }
 
@@ -161,15 +165,17 @@ impl HarnessKind {
             }
             HarnessKind::Kater => vec!["kater", "gateway", "proxy", "profile"],
             HarnessKind::Health => vec!["health", "status", "eval", "dagscore", "doctor"],
+            HarnessKind::Control => vec!["control", "chat", "devops", "overzicht", "prompt"],
         }
     }
 
     /// Groep waartoe dit harnas behoort (sidebar-sectie).
     pub fn group(&self) -> HarnessGroup {
         match self {
-            HarnessKind::Fleet | HarnessKind::Herdr | HarnessKind::Containers => {
-                HarnessGroup::Fleet
-            }
+            HarnessKind::Fleet
+            | HarnessKind::Herdr
+            | HarnessKind::Containers
+            | HarnessKind::Control => HarnessGroup::Fleet,
             HarnessKind::Vault | HarnessKind::Commerce | HarnessKind::Crm => HarnessGroup::Commerce,
             HarnessKind::Share
             | HarnessKind::Clipboard
@@ -188,6 +194,7 @@ impl HarnessKind {
             HarnessKind::Inbox,
             HarnessKind::Fleet,
             HarnessKind::Herdr,
+            HarnessKind::Control,
             HarnessKind::Vault,
             HarnessKind::Commerce,
             HarnessKind::Crm,
@@ -484,6 +491,18 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         herdr_status,
         herdr_queue,
         herdr_active,
+        None,
+    ));
+
+    // ---- Control chat (devops / overzicht) --------------------------------
+    let control_target = crate::chat::resolve_target(ops);
+    out.push(Harness::new(
+        HarnessKind::Control.id(),
+        "Control",
+        HarnessKind::Control,
+        HarnessStatus::Idle,
+        0,
+        control_target,
         None,
     ));
 
@@ -854,6 +873,8 @@ mod tests {
     fn harness_groups_zijn_correct() {
         assert_eq!(HarnessKind::Fleet.group(), HarnessGroup::Fleet);
         assert_eq!(HarnessKind::Herdr.group(), HarnessGroup::Fleet);
+        assert_eq!(HarnessKind::Control.group(), HarnessGroup::Fleet);
+        assert_eq!(HarnessKind::Containers.group(), HarnessGroup::Fleet);
         assert_eq!(HarnessKind::Vault.group(), HarnessGroup::Commerce);
         assert_eq!(HarnessKind::Commerce.group(), HarnessGroup::Commerce);
         assert_eq!(HarnessKind::Crm.group(), HarnessGroup::Commerce);

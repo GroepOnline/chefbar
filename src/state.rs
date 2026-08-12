@@ -63,6 +63,8 @@ pub struct Shared {
     pub revision: Arc<AtomicI64>,
     pub vault_online: Arc<RwLock<bool>>,
     pub last_error: Arc<RwLock<Option<String>>>,
+    pub chat: Arc<RwLock<crate::chat::ChatLog>>,
+    pub chat_revision: Arc<AtomicI64>,
 }
 
 impl Default for Shared {
@@ -79,6 +81,8 @@ impl Shared {
             revision: Arc::new(AtomicI64::new(0)),
             vault_online: Arc::new(RwLock::new(false)),
             last_error: Arc::new(RwLock::new(None)),
+            chat: Arc::new(RwLock::new(crate::chat::ChatLog::default())),
+            chat_revision: Arc::new(AtomicI64::new(0)),
         }
     }
 }
