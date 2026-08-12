@@ -31,6 +31,26 @@ pub fn vault_online() -> bool {
     VAULT_ONLINE.load(Ordering::Relaxed)
 }
 
+/// Laatste poll-tijdstip van de actor (Unix; doctor-observability, E1).
+pub static LAST_POLL_UNIX: AtomicI64 = AtomicI64::new(0);
+
+/// Laatste ops-poll: online-flag + statusregel (ok / HTTP-code / offline).
+pub static OPS_ONLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static OPS_STATUS: Mutex<Option<String>> = Mutex::new(None);
+
+/// Poll-gezondheid als compacte regel — voor doctor en panel zonder
+/// Shared-handle (parity met `VAULT_ONLINE`):
+/// "poll 4s · vault ok · ops 302".
+pub fn last_poll_label() -> String {
+    crate::models::PollHealth {
+        last_poll_unix: LAST_POLL_UNIX.load(Ordering::Relaxed),
+        vault_ok: vault_online(),
+        ops_ok: OPS_ONLINE.load(Ordering::Relaxed),
+        ops_status: OPS_STATUS.lock().unwrap().clone(),
+    }
+    .label()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActorCommand {
     RefreshNow,
@@ -274,6 +294,9 @@ impl Poller {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+        // Poll-gezondheid (E1): vault-secties ok? Laatste poll = dit moment.
+        snap.poll.last_poll_unix = snap.fetched_at_unix;
+        snap.poll.vault_ok = any_ok;
 
         let mut errors: Vec<String> = Vec::new();
         for (key, value) in &results {
@@ -294,6 +317,7 @@ impl Poller {
             *vault_online = any_ok;
         }
         VAULT_ONLINE.store(any_ok, Ordering::Relaxed);
+        LAST_POLL_UNIX.store(snap.fetched_at_unix, Ordering::Relaxed);
         {
             let mut last_error = self.shared.last_error.write().unwrap();
             *last_error = if errors.is_empty() {
@@ -367,17 +391,30 @@ impl Poller {
     }
 
     fn poll_ops(&self) {
-        let payload = match self.ops.get_json("/api/snapshot") {
-            Ok(payload) => payload,
-            Err(_) => {
-                // behoud laatste goede ops-snapshot
-                return;
+        let result = self.ops.get_json("/api/snapshot");
+        // Status + snapshot; bij fout behouden we de laatste goede ops-snapshot,
+        // maar de poll-gezondheid wordt wél bijgewerkt (E1: "ops 302").
+        let (ops_status, ops_ok) = match &result {
+            Ok(payload) => {
+                let ops = build_ops_snapshot(Some(payload));
+                *self.shared.ops.write().unwrap() = ops;
+                (Some("ok".to_string()), true)
             }
+            Err(ApiError::Http(code, _)) => (Some(code.to_string()), false),
+            Err(ApiError::Transport(_)) => (Some("offline".to_string()), false),
+            Err(ApiError::Blocked(_)) => (Some("geblokkeerd".to_string()), false),
         };
-        let ops = build_ops_snapshot(Some(&payload));
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
         {
-            let mut current = self.shared.ops.write().unwrap();
-            *current = ops;
+            let mut snap = self.shared.snapshot.write().unwrap();
+            snap.poll.last_poll_unix = now;
+            snap.poll.ops_ok = ops_ok;
+            snap.poll.ops_status = ops_status.clone();
         }
+        OPS_ONLINE.store(ops_ok, Ordering::Relaxed);
+        *OPS_STATUS.lock().unwrap() = ops_status;
     }
 }

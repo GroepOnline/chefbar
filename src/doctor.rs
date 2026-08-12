@@ -8,6 +8,8 @@ use std::time::Instant;
 pub struct DoctorReport {
     pub lines: Vec<String>,
     pub failures: Vec<String>,
+    /// Doorlooptijd van de checks (ms) — voor de "alles ok"-melding.
+    pub elapsed_ms: u128,
 }
 
 impl DoctorReport {
@@ -17,6 +19,7 @@ impl DoctorReport {
 }
 
 pub fn run_checks() -> DoctorReport {
+    let started = Instant::now();
     let mut lines: Vec<String> = Vec::new();
     let mut failures: Vec<String> = Vec::new();
     let profile = global_profile().clone();
@@ -76,7 +79,10 @@ pub fn run_checks() -> DoctorReport {
                 health.total
             ));
         }
-        _ => lines.push(format!("watchdog ontbreekt: {} (nog geen poll gedraaid?)", watchdog.display())),
+        _ => lines.push(format!(
+            "watchdog ontbreekt: {} (nog geen poll gedraaid?)",
+            watchdog.display()
+        )),
     }
 
     // 5. Versie + IPC-socket.
@@ -88,29 +94,28 @@ pub fn run_checks() -> DoctorReport {
         "ipc      socket nog niet gestart (ook ok voor --doctor)".into()
     });
 
-    // 6. Korte netwerk-probe tegen de vault-API (niet blokkerend hier: de
-    //    poll-actor is de echte bron; doctor rapporteert alleen de laatste
-    //    online-status).
-    let online = crate::state::vault_online();
-    lines.push(if online {
-        "netwerk  vault bereikbaar (laatste poll ok)".into()
-    } else {
-        "netwerk  vault offline (laatste poll faalde of nog geen poll)".into()
-    });
+    // 6. Poll-gezondheid (E1): de actor meldt de laatste poll (vault + ops) —
+    //    via dezelfde statics die hij elke cyclus bijwerkt. Zonder draaiende
+    //    actor toont dit eerlijk "poll nooit".
+    lines.push(format!("poll     {}", crate::state::last_poll_label()));
 
-    DoctorReport { lines, failures }
+    DoctorReport {
+        lines,
+        failures,
+        elapsed_ms: started.elapsed().as_millis(),
+    }
 }
 
 /// Latency-probe in een aparte thread; resultaat gemeld via notify.
 pub fn run_checks_async(report: DoctorReport) {
-    let check_time = Instant::now().elapsed();
+    let check_time = report.elapsed_ms;
     if !report.ok() {
         let joined = report.failures.join("; ");
         crate::notify::notify("ChefBar-doctor", &joined, "error");
     } else {
         crate::notify::notify(
             "ChefBar-doctor",
-            &format!("alles ok · {:.0}ms", check_time.as_millis()),
+            &format!("alles ok · {:.0}ms", check_time),
             "ok",
         );
     }

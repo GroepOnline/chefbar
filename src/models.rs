@@ -173,9 +173,9 @@ pub fn eval_dir() -> PathBuf {
 /// load_day_score: geen reports-bestand, dan de chef-eval summary-score).
 pub fn day_score_from_agent_summary(agents_payload: Option<&Value>) -> Option<DayScore> {
     let items = agents_payload?.get("agents")?.as_array()?;
-    let item = items.iter().find(|a| {
-        a.get("agent").and_then(|v| v.as_str()) == Some("chef-eval")
-    })?;
+    let item = items
+        .iter()
+        .find(|a| a.get("agent").and_then(|v| v.as_str()) == Some("chef-eval"))?;
     let summary = item.get("summary").and_then(|v| v.as_str())?;
     let (letter, score) = score_regex_letter(summary)?;
     Some(DayScore {
@@ -327,10 +327,7 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             || refresh.and_then(|r| r.get("error")).is_some();
         // Freshness-contract: toon een concrete reden, nooit alleen "STALE".
         let stale_reason: Option<String> = if unavailable {
-            let err = provider
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let err = provider.get("error").and_then(|v| v.as_str()).unwrap_or("");
             if err.contains("401") || err.contains("unauthor") || err.contains("token") {
                 Some("401 · auth verlopen".into())
             } else if !err.is_empty() {
@@ -339,7 +336,9 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
                 Some("endpoint onbereikbaar".into())
             }
         } else if stale {
-            let err = refresh.and_then(|r| r.get("error")).and_then(|v| v.as_str());
+            let err = refresh
+                .and_then(|r| r.get("error"))
+                .and_then(|v| v.as_str());
             match err {
                 Some(e) if !e.is_empty() => Some(format!("connector oud · {e}")),
                 _ => Some("connector-data oud".into()),
@@ -640,12 +639,57 @@ pub fn build_ops_snapshot(data: Option<&Value>) -> OpsSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Poll-gezondheid (E1): hoe vers en gezond is de actor zelf?
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default)]
+pub struct PollHealth {
+    /// Unix-timestamp van de laatste poll die resultaten opleverde (0 = nooit).
+    pub last_poll_unix: i64,
+    /// Laatste vault-poll leverde minimaal één sectie op.
+    pub vault_ok: bool,
+    /// Laatste ops-poll leverde een snapshot op.
+    pub ops_ok: bool,
+    /// Status van de laatste ops-poll: Some("ok") / Some("302") /
+    /// Some("offline") / Some("geblokkeerd"); None = nog nooit gepollt.
+    pub ops_status: Option<String>,
+}
+
+impl PollHealth {
+    /// Compacte regel voor de statuslijn en doctor:
+    /// "poll 4s · vault ok · ops 302" of "poll nooit · vault offline · ops n.v.t.".
+    pub fn label(&self) -> String {
+        if self.last_poll_unix == 0 {
+            // Nog nooit gepollt: geen alarm-taal ("offline"), alleen de feiten.
+            return "nog geen poll".to_string();
+        }
+        let age = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let s = (now - self.last_poll_unix).max(0);
+            if s < 90 {
+                format!("{s}s")
+            } else {
+                format!("{}min", s / 60)
+            }
+        };
+        let vault = if self.vault_ok { "ok" } else { "offline" };
+        let ops = self.ops_status.as_deref().unwrap_or("n.v.t.");
+        format!("poll {age} · vault {vault} · ops {ops}")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot (één consistent beeld voor de hele app)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default)]
 pub struct Snapshot {
     pub fetched_at_unix: i64,
+    pub poll: PollHealth,
     pub health: HealthInfo,
     pub day_score: DayScore,
     pub providers: Vec<ProviderRow>,
@@ -794,7 +838,10 @@ pub fn coalesce_toasts(fresh: &[Suggestion]) -> Option<(String, String, &'static
     }
     let worst = if fresh.iter().any(|s| s.stamp == "FOUT") {
         "error"
-    } else if fresh.iter().any(|s| matches!(s.stamp.as_str(), "HULP" | "LIMIET")) {
+    } else if fresh
+        .iter()
+        .any(|s| matches!(s.stamp.as_str(), "HULP" | "LIMIET"))
+    {
         "warn"
     } else {
         "ok"
@@ -805,7 +852,11 @@ pub fn coalesce_toasts(fresh: &[Suggestion]) -> Option<(String, String, &'static
     if fresh.len() > 3 {
         body.push_str(&format!(" +{} meer", fresh.len() - 3));
     }
-    Some((format!("ChefGroep · {} meldingen", fresh.len()), body, worst))
+    Some((
+        format!("ChefGroep · {} meldingen", fresh.len()),
+        body,
+        worst,
+    ))
 }
 
 pub const SUGGESTION_TTL_SECONDS: i64 = 45;
@@ -825,11 +876,8 @@ fn now_unix() -> i64 {
 /// stuurt ze daarna als toast + slaat ze in de snapshot.
 pub fn watcher_events(prev: &Snapshot, next: &Snapshot) -> Vec<Suggestion> {
     let mut out: Vec<Suggestion> = Vec::new();
-    let prev_agents: HashMap<String, &AgentRow> = prev
-        .agents
-        .iter()
-        .map(|a| (a.key.clone(), a))
-        .collect();
+    let prev_agents: HashMap<String, &AgentRow> =
+        prev.agents.iter().map(|a| (a.key.clone(), a)).collect();
     for agent in &next.agents {
         // Alleen transities van agents die al bekend waren (geen startup-spam).
         let Some(was_agent) = prev_agents.get(&agent.key) else {
@@ -921,8 +969,14 @@ mod watcher_tests {
         })));
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].stale_reason.as_deref(), Some("401 · auth verlopen"));
-        assert_eq!(rows[1].stale_reason.as_deref(), Some("endpoint onbereikbaar"));
-        assert_eq!(rows[2].stale_reason.as_deref(), Some("connector oud · timeout"));
+        assert_eq!(
+            rows[1].stale_reason.as_deref(),
+            Some("endpoint onbereikbaar")
+        );
+        assert_eq!(
+            rows[2].stale_reason.as_deref(),
+            Some("connector oud · timeout")
+        );
         assert_eq!(rows[3].stale_reason, None);
         assert!(rows[0].stale_reason.is_some());
     }

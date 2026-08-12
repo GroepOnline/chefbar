@@ -11,6 +11,10 @@ pub struct Client {
     base: String,
     policy: EndpointPolicy,
     timeout: Duration,
+    /// Eén gedeelde transport-agent per Client (P2): keep-alive en TLS-sessies
+    /// worden hergebruikt tussen polls. Was: een nieuwe Agent per call → elke
+    /// request opnieuw verbinden/handshake.
+    agent: ureq::Agent,
 }
 
 impl Client {
@@ -19,11 +23,13 @@ impl Client {
             base: base.trim_end_matches('/').to_string(),
             policy,
             timeout: DEFAULT_TIMEOUT,
+            agent: build_agent(DEFAULT_TIMEOUT),
         }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self.agent = build_agent(timeout);
         self
     }
 
@@ -40,17 +46,9 @@ impl Client {
         self.policy.safe_join(&self.base, &url_path)
     }
 
-    fn agent(&self) -> ureq::Agent {
-        ureq::AgentBuilder::new()
-            .timeout(self.timeout)
-            .redirects(0) // bearer-tokens volgen nooit redirects
-            .build()
-    }
-
     pub fn get_json(&self, path: &str) -> Result<serde_json::Value, ApiError> {
         let url = self.url(path)?;
-        let agent = self.agent();
-        let mut request = agent.get(&url);
+        let mut request = self.agent.get(&url);
         for (name, value) in auth::get_headers(false) {
             request = request.set(&name, &value);
         }
@@ -72,8 +70,7 @@ impl Client {
         extra: &[(String, String)],
     ) -> Result<serde_json::Value, ApiError> {
         let url = self.url(path)?;
-        let agent = self.agent();
-        let mut request = agent.post(&url);
+        let mut request = self.agent.post(&url);
         for (name, value) in auth::get_headers(true) {
             request = request.set(&name, &value);
         }
@@ -85,13 +82,19 @@ impl Client {
 
     pub fn delete_json(&self, path: &str) -> Result<serde_json::Value, ApiError> {
         let url = self.url(path)?;
-        let agent = self.agent();
-        let mut request = agent.delete(&url);
+        let mut request = self.agent.delete(&url);
         for (name, value) in auth::get_headers(false) {
             request = request.set(&name, &value);
         }
         run(request.call())
     }
+}
+
+fn build_agent(timeout: Duration) -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout(timeout)
+        .redirects(0) // bearer-tokens volgen nooit redirects
+        .build()
 }
 
 #[derive(Debug)]
