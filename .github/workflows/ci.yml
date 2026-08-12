@@ -44,7 +44,7 @@ jobs:
         run: cargo check --all-targets
 
       - name: Shellcheck
-        run: shellcheck install.sh
+        run: shellcheck install.sh scripts/visual-shot.sh
 
       - name: Test
         run: cargo test --all-targets
@@ -66,3 +66,46 @@ jobs:
           # profile bootstrap smoke (no network, no daemon)
           ls -la config/endpoints.example.json config/endpoints.tailnet.example.json chefbar.service
           systemd-analyze verify chefbar.service 2>&1 || echo "verify skip (no systemd target in runner, non-fatal)"
+
+  visual:
+    name: Visual shot (Xvfb + accent assert)
+    needs: build
+    runs-on: [self-hosted, Linux, X64, company-control]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install X stack
+        run: |
+          if command -v Xvfb >/dev/null 2>&1 && command -v import >/dev/null 2>&1; then
+            echo "X-tools al aanwezig"
+          else
+            sudo -n apt-get update -qq && sudo -n apt-get install -y -qq xvfb imagemagick
+          fi
+          command -v Xvfb && command -v import
+
+      - name: Fetch release binary from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: chefbar-release
+          path: artifact
+
+      - name: Place binary at expected path
+        run: |
+          mkdir -p target/release
+          mv artifact/chefbar target/release/chefbar
+          chmod +x target/release/chefbar
+
+      - name: Visual assert (dark)
+        run: |
+          scripts/visual-shot.sh dark /tmp/chefbar-dark.png
+          # zachte skip (exit 2) is acceptabel, harde fail (1) niet
+          rc=$?
+          [ "$rc" -eq 2 ] && echo "visual-shot: X-stack niet beschikbaar — zachte skip" || exit "$rc"
+
+      - name: Upload screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chefbar-visual-shot
+          path: /tmp/chefbar-*.png
+          if-no-files-found: ignore
