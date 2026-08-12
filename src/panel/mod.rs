@@ -533,17 +533,17 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
-        let render_ctx = RenderCtx {
-            executor: &executor,
-            window: &window,
-            drawer: &drawer,
-            footer_label: &footer_label,
-            header_title: &header_title,
-        };
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
+                let render_ctx = RenderCtx {
+                    executor: &executor,
+                    window: &window,
+                    drawer: &drawer,
+                    footer_label: &footer_label,
+                    header_title: &header_title,
+                };
                 render_into(&content, &shared, &query, &harness_state, &render_ctx);
             }
         });
@@ -625,15 +625,15 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
-        let render_ctx = RenderCtx {
-            executor: &executor,
-            window: &window,
-            drawer: &drawer,
-            footer_label: &footer_label,
-            header_title: &header_title,
-        };
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
+                let render_ctx = RenderCtx {
+                    executor: &executor,
+                    window: &window,
+                    drawer: &drawer,
+                    footer_label: &footer_label,
+                    header_title: &header_title,
+                };
                 let query = search.text().to_string();
                 render_into(&content, &shared, &query, &harness_state, &render_ctx);
                 let active = harness_state.borrow().clone();
