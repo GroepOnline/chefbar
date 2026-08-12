@@ -105,17 +105,20 @@ fi
 if [ "$SYSTEMD" -eq 1 ]; then
   install -m 644 "$APP_DIR/chefbar.service" "$UNIT_DIR/chefbar.service"
 
-  # Global hotkey: Super+Space opent de command-bar (GNOME custom shortcut).
+  # Global hotkeys:
+  #   chefbar0 = Super+Space -> chefbar --ipc bar (panel)
+  #   chefapp1 = Super+Shift+Space -> chefbar --ipc palette (palette-overlay, Lane E)
   # Super+Space is standaard geclaimd door input-source switching; met één
   # layout doet die niets, dus we geven de combinatie aan de bar.
   if command -v gsettings >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
     KB="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/chefbar0/"
+    KB1="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/chefapp1/"
     # gsettings kan "@as []" (GVariant) teruggeven; python-snippet is daar robuust tegen.
     if CUR="$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null)"; then
-      NEW="$(python3 - "$CUR" "$KB" <<'PY' 2>/dev/null || echo "['$KB']"
+      NEW="$(python3 - "$CUR" "$KB" "$KB1" <<'PY' 2>/dev/null || echo "['$KB', '$KB1']"
 import ast, sys
 raw = sys.argv[1].strip()
-kb = sys.argv[2]
+kbs = sys.argv[2:]
 # "@as []" → []
 if raw.startswith("@as"):
     raw = raw[3:].strip()
@@ -125,8 +128,9 @@ try:
         cur = []
 except Exception:
     cur = []
-if kb not in cur:
-    cur.append(kb)
+for kb in kbs:
+    if kb not in cur:
+        cur.append(kb)
 print(repr(cur))
 PY
 )"
@@ -134,8 +138,12 @@ PY
       gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" name 'ChefBar bar' 2>/dev/null || true
       gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" command "$BIN_DIR/chefbar --ipc bar" 2>/dev/null || true
       gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB" binding '<Super>space' 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB1" name 'ChefApp palette' 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB1" command "$BIN_DIR/chefbar --ipc palette" 2>/dev/null || true
+      gsettings set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KB1" binding '<Super><Shift>space' 2>/dev/null || true
       gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['XF86Keyboard']" 2>/dev/null || true
       echo "hotkey    Super+Space → chefbar --ipc bar"
+      echo "hotkey    Super+Shift+Space → chefbar --ipc palette"
     fi
   else
     echo "hotkey    overgeslagen (geen gsettings of geen display)"

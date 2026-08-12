@@ -36,6 +36,15 @@ release-artifact heet `chefbar-release`.
 - PR's naar `main` worden squash-gemerged; geen force-push naar `main`.
 - Wijzigingen aan `install.sh` of systemd-units: `shellcheck` + dry-run in CI.
 
+## ChefApp 4.0 lanes — file-disjoint
+
+`feat/chefapp-4.0` draait 7 lanes parallel naar één stack. Regels:
+
+- **File-disjoint:** elke lane raakt alleen zijn eigen matrix (zie `docs/plan-full-chefapp.md` §6.2). Lane G raakt alleen `scripts/**`, `.github/workflows/ci.yml`, `docs/**`, `README.md`, `CONTRIBUTING.md`, `Cargo.toml` (dev-deps/scripts).
+- **Worktree per lane:** `git worktree add ~/ChefFactory/chefbar-worktrees/chefapp-<x> feat/chefapp-4.0-lane-<x>`.
+- **No-local-build blijft:** build/test alleen op `chef@chef-runner-01-1` (zie boven).
+- **Merge-train:** `A → F,G → B → C,D,E`, squash naar `feat/chefapp-4.0`, dan squash naar `main`. Lane G (tooling) hoeft niet te wachten — schrijft alleen scripts/docs.
+
 ## Conventional commits
 
 `feat:`, `fix:`, `docs:`, `test:`, `chore:` met scope, bijv.

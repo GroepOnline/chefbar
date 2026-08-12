@@ -25,6 +25,8 @@ pub struct RawProfile {
     pub desktop: Option<String>,
     pub opencodex_dashboard: Option<String>,
     pub kater_workspace: Option<String>,
+    pub linear_api: Option<String>,
+    pub vaultwarden_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +38,8 @@ pub struct EndpointProfile {
     pub desktop: String,
     pub opencodex_dashboard: Option<String>,
     pub kater_workspace: Option<String>,
+    pub linear_api: Option<String>,
+    pub vaultwarden_url: Option<String>,
 }
 
 impl Default for EndpointProfile {
@@ -48,6 +52,8 @@ impl Default for EndpointProfile {
             desktop: DEFAULT_DESKTOP.into(),
             opencodex_dashboard: None,
             kater_workspace: None,
+            linear_api: None,
+            vaultwarden_url: None,
         }
     }
 }
@@ -61,6 +67,8 @@ impl EndpointProfile {
             "desktop" => Some(&self.desktop),
             "opencodexDashboard" => self.opencodex_dashboard.as_deref(),
             "katerWorkspace" => self.kater_workspace.as_deref(),
+            "linearApi" => self.linear_api.as_deref(),
+            "vaultwardenUrl" => self.vaultwarden_url.as_deref(),
             _ => None,
         }
     }
@@ -93,6 +101,12 @@ impl EndpointProfile {
             urls.push(url);
         }
         if let Some(url) = &self.kater_workspace {
+            urls.push(url);
+        }
+        if let Some(url) = &self.linear_api {
+            urls.push(url);
+        }
+        if let Some(url) = &self.vaultwarden_url {
             urls.push(url);
         }
         urls
@@ -159,6 +173,8 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
             desktop: None,
             opencodex_dashboard: None,
             kater_workspace: None,
+            linear_api: None,
+            vaultwarden_url: None,
         });
 
     let env_or = |env_name: &str, raw: Option<String>, fallback: &str| -> String {
@@ -187,6 +203,12 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
                 .ok()
                 .or(raw.kater_workspace),
         ),
+        linear_api: clean_optional(env::var("CHEFBAR_LINEAR_API").ok().or(raw.linear_api)),
+        vaultwarden_url: clean_optional(
+            env::var("CHEFBAR_VAULTWARDEN_URL")
+                .ok()
+                .or(raw.vaultwarden_url),
+        ),
     }
 }
 
@@ -201,7 +223,7 @@ mod tests {
         let path = dir.join("endpoints.json");
         std::fs::write(
             &path,
-            r#"{"name":"online","vaultApi":"https://vault-api.chefgroep.online/api","opsApi":"https://ops.chefgroep.online","katerWorkspace":"https://kater.chefgroep.online/agents/"}"#,
+            r#"{"name":"online","vaultApi":"https://vault-api.chefgroep.online/api","opsApi":"https://ops.chefgroep.online","katerWorkspace":"https://kater.chefgroep.online/agents/","linearApi":"https://api.linear.app/graphql","vaultwardenUrl":"https://vault.bitwarden.example"}"#,
         )
         .unwrap();
         let profile = load_profile(Some(&path));
@@ -211,6 +233,14 @@ mod tests {
         assert_eq!(
             profile.kater_workspace.as_deref(),
             Some("https://kater.chefgroep.online/agents/").map(|s| s.trim_end_matches('/'))
+        );
+        assert_eq!(
+            profile.linear_api.as_deref(),
+            Some("https://api.linear.app/graphql")
+        );
+        assert_eq!(
+            profile.vaultwarden_url.as_deref(),
+            Some("https://vault.bitwarden.example")
         );
         std::fs::remove_dir_all(&dir).ok();
     }

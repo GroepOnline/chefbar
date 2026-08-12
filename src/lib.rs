@@ -5,10 +5,12 @@
 //! (actions.rs), uitvoer loopt door één executor met policy-clients.
 
 pub mod actions;
+pub mod aliases;
 pub mod auth;
 pub mod config;
 pub mod css;
 pub mod doctor;
+pub mod frecency;
 pub mod harness;
 pub mod http;
 pub mod ipc;
