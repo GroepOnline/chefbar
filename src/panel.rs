@@ -626,6 +626,9 @@ fn status_right_text(shared: &Shared) -> String {
     )
 }
 
+// render_into is bewust één monolithische renderer (Signaal v2-secties); de
+// P3.1-slots (handtekening + statusregel) zijn er daarom bij gekomen.
+#[allow(clippy::too_many_arguments)]
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
