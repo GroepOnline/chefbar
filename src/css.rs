@@ -642,6 +642,16 @@ scrollbar slider {{
 scrollbar slider:hover {{
   background-color: {control_border};
 }}
+
+/* Tooltips — thema-kleurig i.p.v. GTK-default zwarte box */
+tooltip,
+tooltip.background,
+tooltip * {{
+  background-color: {surface_raised};
+  color: {text};
+  border: 1px solid {control_border};
+  border-radius: 6px;
+}}
 "#,
         canvas = t.canvas,
         surface = t.surface,

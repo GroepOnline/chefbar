@@ -832,7 +832,7 @@ fn render_into(
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
     updated.set_line_wrap(false);
-    updated.set_max_width_chars(28);
+    updated.set_max_width_chars(34);
     updated.style_context().add_class("chefbar-card-meta");
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
