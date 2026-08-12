@@ -1226,6 +1226,8 @@ impl Snapshot {
 #[derive(Debug, Clone)]
 pub struct Suggestion {
     pub key: String,
+    /// Agent-key voor per-agent demping; leeg voor niet-agent meldingen.
+    pub agent: String,
     pub title: String,
     pub meta: String,
     pub stamp: String, // KLAAR | HULP | FOUT | LIMIET
@@ -1351,6 +1353,7 @@ pub fn watcher_events(prev: &Snapshot, next: &Snapshot) -> Vec<Suggestion> {
         };
         out.push(Suggestion {
             key,
+            agent: agent.key.clone(),
             title,
             meta,
             stamp: stamp.into(),

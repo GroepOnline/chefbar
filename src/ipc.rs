@@ -92,6 +92,10 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
                 Some("desktop") => parts
                     .next()
                     .map(|verb| UiCommand::DesktopAction(verb.trim().to_string())),
+                Some("mute") => parts.next().and_then(|key| {
+                    let key = key.trim();
+                    (!key.is_empty()).then(|| UiCommand::ToggleMute(key.to_string()))
+                }),
                 Some("switch-account") => {
                     let rest = parts.next().unwrap_or("").trim();
                     let mut fields = rest.split_whitespace();
@@ -138,6 +142,7 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::PauseNotifications => "pause-notify\n".to_string(),
         UiCommand::ToggleAutostart => "toggle-autostart\n".to_string(),
         UiCommand::DesktopAction(verb) => format!("desktop {verb}\n"),
+        UiCommand::ToggleMute(key) => format!("mute {key}\n"),
         UiCommand::ForceState(state) => format!("state {state}\n"),
         UiCommand::FocusDomain(domain) => format!("focus-domain {domain}\n"),
         UiCommand::TogglePalette => "palette\n".to_string(),
@@ -283,6 +288,11 @@ mod tests {
             Some(UiCommand::DesktopAction("stop".into()))
         );
         assert_eq!(
+            parse_command("mute agent-7"),
+            Some(UiCommand::ToggleMute("agent-7".into()))
+        );
+        assert_eq!(parse_command("mute "), None);
+        assert_eq!(
             parse_command("open-url http://127.0.0.1:10101"),
             Some(UiCommand::OpenUrl("http://127.0.0.1:10101".into()))
         );
@@ -371,6 +381,7 @@ mod tests {
         // add fresh inbox item → hulp + suffix
         snap.suggestions.push(Suggestion {
             key: "k1".into(),
+            agent: "a".into(),
             title: "blocked item".into(),
             meta: "".into(),
             stamp: "FOUT".into(),

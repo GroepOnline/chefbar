@@ -97,6 +97,18 @@ pub fn run_checks() -> DoctorReport {
         profile.name,
         profile.label("vaultApi")
     ));
+    match crate::quiet::quiet_window() {
+        Some(window) => lines.push(format!(
+            "rustig    {} · {}",
+            crate::quiet::window_label(&window),
+            if crate::quiet::in_quiet_hours(&window) {
+                "actief"
+            } else {
+                "stil"
+            }
+        )),
+        None => lines.push("rustig    uit (zet CHEFBAR_QUIET=\"22:00-07:00\")".into()),
+    }
 
     // 1. Profiel: endpoints mogen niet op de defaults blijven in productie.
     if profile.name != "local" && profile.vault_api.starts_with("http://127.0.0.1") {

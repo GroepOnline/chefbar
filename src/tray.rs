@@ -33,6 +33,8 @@ pub enum UiCommand {
     ToggleAutostart,
     /// Desktop webtop starten/stoppen via de executor.
     DesktopAction(String),
+    /// Demp of ont-demp één agent in de watcher/inbox.
+    ToggleMute(String),
     /// Forceer de tray-glyph-state (testhook: stil/bezig/hulp/fout/offline)
     /// voor live verificatie op een echt GNOME-panel (brief W3).
     ForceState(String),
@@ -467,6 +469,41 @@ impl ksni::Tray for ChefTray {
             }),
             ..Default::default()
         }));
+
+        // Per-agent mute: de state-poller filtert deze keys vóór toast/inbox.
+        let mutes = crate::mutes::load();
+        let mut mute_items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        if let Some(snapshot) = snap.as_ref() {
+            for agent in &snapshot.agents {
+                let key = agent.key.clone();
+                let label = format!("{} · {}", agent.agent, agent.workspace);
+                let checked = mutes.contains(&key);
+                mute_items.push(ksni::MenuItem::Checkmark(
+                    ksni::menu::CheckmarkItem::<Self> {
+                        label,
+                        checked,
+                        activate: Box::new(move |tray: &mut Self| {
+                            tray.send(UiCommand::ToggleMute(key.clone()));
+                        }),
+                        ..Default::default()
+                    },
+                ));
+            }
+        }
+        if mute_items.is_empty() {
+            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                label: "Meldingen: geen agents actief".into(),
+                enabled: false,
+                ..Default::default()
+            }));
+        } else {
+            items.push(ksni::MenuItem::SubMenu(ksni::menu::SubMenu::<Self> {
+                label: "Demp agenten".into(),
+                icon_name: "notification-disabled-symbolic".into(),
+                submenu: mute_items,
+                ..Default::default()
+            }));
+        }
         items.push(ksni::MenuItem::Separator);
 
         // Domein-nav: FocusDomain per domein (group-dots impliciet via labels).
@@ -492,13 +529,25 @@ impl ksni::Tray for ChefTray {
             items.push(ksni::MenuItem::Separator);
         }
 
-        // Notificaties pauzeren + meelopen vanaf login.
+        // Notificaties pauzeren + rustige uren + meelopen vanaf login.
         items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
             label: "Notificaties pauzeren (1u)".into(),
             icon_name: "notification-disabled-symbolic".into(),
             activate: Box::new(|tray: &mut Self| tray.send(UiCommand::PauseNotifications)),
             ..Default::default()
         }));
+        if let Some(window) = crate::quiet::quiet_window() {
+            let active = crate::quiet::in_quiet_hours(&window);
+            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                label: format!(
+                    "Rustige uren {} · {}",
+                    crate::quiet::window_label(&window),
+                    if active { "actief" } else { "stil" }
+                ),
+                enabled: false,
+                ..Default::default()
+            }));
+        }
         let autostart = crate::tray::autostart_enabled();
         items.push(ksni::MenuItem::Checkmark(
             ksni::menu::CheckmarkItem::<Self> {
