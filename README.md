@@ -207,6 +207,26 @@ Zie `docs/roadmap.md` voor detail. Samenvatting van wat 3.1 bracht:
 
 Bewust uitgesteld: Wayland layer-shell (eigen change met CI-afhankelijkheid) en OIDC via de `get_headers` seam (wacht op `auth.chefgroep.online`).
 
+## ChefApp 4.0 (in ontwikkeling)
+
+Van hulpje naar volwaardige app — één venster, één shortcut, alle domeinen. Branch: [`feat/chefapp-4.0`](docs/plan-full-chefapp.md) (stack root, 7 file-disjointe lanes parallel).
+
+| Domein | Wat het doet |
+| --- | --- |
+| D1 Inbox & Meldingen | Unified inbox (watcher + fleet + Linear + share), coalesced toasts, snooze |
+| D2 Fleet & Herdr | Tailnet-nodes, containers, Herdr workspaces/agents, logs |
+| D3 Vault Commerce | Accounts, providers, CRM/Neon deals, Commander-taken |
+| D4 Containers & Workloads | Observed vs desired diff, prune/migrate hints |
+| D5 Secrets & Vaultwarden | Doorzoekbare collecties, veilig copy met auto-clear |
+| D6 Clipboard, Share & Desktop | CopyQ-geschiedenis, share-sync, webtop |
+| D7 Linear & Tasks | Assigned-to-me, sprints, Commander+Linear in één Taken-zone |
+| D8 Kater, Observability & Dev | Gateway-status, event-catalog, doctor inline, logs |
+
+Drie surfaces op één snapshot (tray · palette-overlay · panel 860×880 + drawer) — zie §4 van het plan.
+
+Docs: [plan-full-chefapp.md](docs/plan-full-chefapp.md) (SSOT, requirement atlas, UX/tech-architectuur, lane-contracts) · [chefapp-qa.md](docs/chefapp-qa.md) (handmatige checklist: Super+Space <300 ms, één venster, offline-banner, tray-glyphs, palette, drawer, density).
+QA: `scripts/visual-shot.sh` (panel/palette/drawer/density, Xvfb + accent-assert) · `shellcheck` · `cargo fmt/clippy/test` op runner.
+
 Scope blijft strak. Geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
 
 ## Licentie

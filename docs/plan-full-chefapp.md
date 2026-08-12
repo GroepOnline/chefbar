@@ -1,7 +1,8 @@
 # ChefApp — van hulpje naar volwaardige app (plan 2026-08-12)
 
-> Status: **plan / wacht op groen licht**. Dit document is de SSOT voor de sprong van ChefBar 3.1 (dun, stabiel) naar **ChefApp 4.0** — de native mission-control app voor alles ChefGroep.
+> Status: **in uitvoering — Fase 0 done (2026-08-12)**. Dit document is de SSOT voor de sprong van ChefBar 3.1 (dun, stabiel) naar **ChefApp 4.0** — de native mission-control app voor alles ChefGroep.
 > Branch: `main` → `feat/chefapp-4.0` stack. Uitvoer: 7 file-disjointe lanes parallel, één merge-train.
+> Fase 0: `feat/chefapp-4.0` stack root + `src/panel/` split + `4.0.0-dev` — gemerged.
 
 ---
 
