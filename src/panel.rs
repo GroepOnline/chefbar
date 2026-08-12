@@ -1306,7 +1306,8 @@ fn render_into(
         let window_c = window.clone();
         let hstate_c = harness_state.clone();
         let slots_c = slots.clone();
-        let q_c = q.clone();
+        // Originele (niet-verlaagde) zoekterm, consistent met de nav-knoppen.
+        let query_c = query.to_string();
         mute_btn.connect_clicked(move |_| {
             crate::mutes::toggle(&agent_key);
             // Direct opnieuw renderen: de knoplabel en tooltip kloppen meteen.
@@ -1315,7 +1316,7 @@ fn render_into(
                 &shared_c,
                 &executor_c,
                 &window_c,
-                &q_c,
+                &query_c,
                 &hstate_c,
                 &slots_c,
             );

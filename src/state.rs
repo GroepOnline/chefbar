@@ -683,6 +683,10 @@ mod tests {
     #[test]
     fn watcher_meldt_statusovergang_eenmalig() {
         // Coalescing: transitie → één suggestie; zelfde status → geen nieuwe.
+        // Lege demp-lijst pinnen: de assertie is precies 1 suggestie en mag
+        // nooit afhangen van een echte demp-config op de runner.
+        let _lock = ENV_LOCK.lock().unwrap();
+        let (_guard, dir) = pin_empty_mutes();
         let poller = poller_met();
         poller.vault.stub_all_ok();
         poller.vault.stub_ok("/agents", agents_payload("running"));
@@ -713,11 +717,26 @@ mod tests {
             1,
             "zelfde status geeft geen nieuwe suggestie"
         );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // E7/env-tests muteren process-globale env; parallelle tests in dit
     // module delen dezelfde var-names — één lock serialiseert ze.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Pinnen van een lege demp-lijst (temp-bestand): poll_vault-tests mogen
+    /// nooit de echte ~/.config/chefbar/muted-agents.json lezen — die kan op
+    /// de runner ooit een sleutel bevatten die een test-assertie breekt.
+    fn pin_empty_mutes() -> (EnvVar, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("chefbar-mutes-pin-{}", std::process::id()));
+        let path = dir.join("muted-agents.json");
+        let _ = std::fs::create_dir_all(&dir);
+        crate::mutes::save_to(&path, &std::collections::HashSet::new());
+        (
+            EnvVar::set("CHEFBAR_MUTED_AGENTS", &path.to_string_lossy()),
+            dir,
+        )
+    }
 
     /// Zet een env-var en herstelt de oude waarde bij drop (zelfs bij panic).
     struct EnvVar {
