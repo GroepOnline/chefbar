@@ -9,7 +9,7 @@ use gtk::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub const PRESS_MS: u32 = 100;
+pub const PRESS_MS: u32 = 140;
 pub const HOVER_MS: u32 = 140;
 pub const PANEL_MS: u32 = 280;
 const FADE_STEPS: u32 = 8;
