@@ -1,0 +1,37 @@
+# ChefBar / ChefGroep v2-look voor mako (notificatie-daemon).
+# Bron: .ulpi/design/chefbar-tray.md — warm off-white/basalt surface,
+# hairline edge, 10px radius, General Sans body, amber rand bij critical.
+# Installeren: `install.sh` (alleen als mako bestaat) of handmatig kopiëren
+# naar ~/.config/mako/config.
+
+[global]
+font=General Sans 10
+background-color=#1B1A19
+text-color=#F5F3F0
+border-color=rgba(255, 255, 255, 0.09)
+border-size=1
+border-radius=10
+padding=10
+margin=8
+width=360
+height=100
+max-visible=5
+default-timeout=5000
+anchor=top-right
+sort=-time
+icons=0
+history=1
+group-by=app-name
+format=<b>%s</b>\n%b
+
+[urgency=low]
+default-timeout=4000
+
+[urgency=normal]
+default-timeout=8000
+
+# Hulp / critical: amber 3px rand (groen blijft gereserveerd voor git/PR).
+[urgency=critical]
+default-timeout=0
+border-color=#D9A038
+border-size=3

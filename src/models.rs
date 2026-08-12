@@ -241,6 +241,9 @@ pub struct ProviderRow {
     pub refresh_at: Option<String>,
     /// Data is ouder dan de connector-refresh (stale/error) → UI-waarschuwing.
     pub stale: bool,
+    /// Waarom de data stale/onbeschikbaar is (endpoint onbereikbaar / 401 /
+    /// connector oud). None bij verse data. Toont in de badge-tooltip.
+    pub stale_reason: Option<String>,
 }
 
 pub const OCX_REQ_BUDGET: i64 = 500;
@@ -322,6 +325,28 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
             || refresh.and_then(|r| r.get("error")).is_some();
+        // Freshness-contract: toon een concrete reden, nooit alleen "STALE".
+        let stale_reason: Option<String> = if unavailable {
+            let err = provider
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if err.contains("401") || err.contains("unauthor") || err.contains("token") {
+                Some("401 · auth verlopen".into())
+            } else if !err.is_empty() {
+                Some(format!("endpoint onbereikbaar · {err}"))
+            } else {
+                Some("endpoint onbereikbaar".into())
+            }
+        } else if stale {
+            let err = refresh.and_then(|r| r.get("error")).and_then(|v| v.as_str());
+            match err {
+                Some(e) if !e.is_empty() => Some(format!("connector oud · {e}")),
+                _ => Some("connector-data oud".into()),
+            }
+        } else {
+            None
+        };
         let (level, text) = if unavailable {
             ("down".to_string(), text)
         } else if stale {
@@ -366,6 +391,7 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             available: !unavailable && !stale,
             refresh_at,
             stale,
+            stale_reason,
         });
     }
     rows
@@ -854,6 +880,52 @@ pub fn watcher_events(prev: &Snapshot, next: &Snapshot) -> Vec<Suggestion> {
 mod watcher_tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn stale_reason_is_specific() {
+        // 401 → auth verlopen; onbereikbaar zonder error → endpoint; connector
+        // error → connector oud; verse data → None.
+        let rows = build_providers(Some(&json!({
+            "providers": [
+                {
+                    "id": "p1",
+                    "source": "vault",
+                    "label": "Auth",
+                    "error": "401 Unauthorized",
+                    "availability": "unavailable",
+                    "accounts": []
+                },
+                {
+                    "id": "p2",
+                    "source": "vault",
+                    "label": "Down",
+                    "availability": "unavailable",
+                    "accounts": []
+                },
+                {
+                    "id": "p3",
+                    "source": "cpm:ocx",
+                    "label": "Oud",
+                    "stale": true,
+                    "refresh": { "error": "timeout", "updatedAt": "2026-08-12T00:00:00Z" },
+                    "accounts": []
+                },
+                {
+                    "id": "p4",
+                    "source": "vault",
+                    "label": "Vers",
+                    "refresh": { "updatedAt": "2026-08-12T08:00:00Z" },
+                    "accounts": []
+                }
+            ]
+        })));
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0].stale_reason.as_deref(), Some("401 · auth verlopen"));
+        assert_eq!(rows[1].stale_reason.as_deref(), Some("endpoint onbereikbaar"));
+        assert_eq!(rows[2].stale_reason.as_deref(), Some("connector oud · timeout"));
+        assert_eq!(rows[3].stale_reason, None);
+        assert!(rows[0].stale_reason.is_some());
+    }
 
     fn snap_with(agents: Vec<(&str, &str)>) -> Snapshot {
         Snapshot {

@@ -81,6 +81,27 @@ else
 fi
 echo "env       CHEFBAR_ENDPOINT_PROFILE=$CONFIG_DIR/endpoints.json (of eigen pad via env)"
 
+# v2-look notificaties (chefbar-tray.md): plaats de template alleen als de
+# daemon aanwezig is — start nooit zelf een nieuwe daemon.
+if command -v mako >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/mako"
+  if [ ! -f "$HOME/.config/mako/config" ]; then
+    install -m 644 "$APP_DIR/config/mako/config" "$HOME/.config/mako/config"
+    echo "notify    ~/.config/mako/config (v2-look geplaatst)"
+  else
+    echo "notify    ~/.config/mako/config (bestaand, ongewijzigd)"
+  fi
+fi
+if command -v dunst >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/dunst"
+  if [ ! -f "$HOME/.config/dunst/dunstrc" ]; then
+    install -m 644 "$APP_DIR/config/dunst/dunstrc" "$HOME/.config/dunst/dunstrc"
+    echo "notify    ~/.config/dunst/dunstrc (v2-look geplaatst)"
+  else
+    echo "notify    ~/.config/dunst/dunstrc (bestaand, ongewijzigd)"
+  fi
+fi
+
 if [ "$SYSTEMD" -eq 1 ]; then
   install -m 644 "$APP_DIR/chefbar.service" "$UNIT_DIR/chefbar.service"
 

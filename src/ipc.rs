@@ -19,13 +19,54 @@ pub fn socket_path() -> PathBuf {
 }
 
 pub fn parse_command(line: &str) -> Option<UiCommand> {
-    match line.trim() {
+    let trimmed = line.trim();
+    match trimmed {
         "bar" | "panel" | "open" | "show" | "dashboard" => Some(UiCommand::ShowPanel),
         "toggle-panel" => Some(UiCommand::TogglePanel),
         "refresh" | "reload" => Some(UiCommand::Refresh),
         "doctor" | "check" => Some(UiCommand::Doctor),
         "quit" | "exit" | "stop" => Some(UiCommand::Quit),
-        _ => None,
+        "pause-notify" => Some(UiCommand::PauseNotifications),
+        "toggle-autostart" => Some(UiCommand::ToggleAutostart),
+        _ if trimmed.starts_with("state ") => {
+            let state = trimmed.trim_start_matches("state ").trim();
+            if matches!(state, "stil" | "bezig" | "hulp" | "fout" | "offline") {
+                Some(UiCommand::ForceState(state.to_string()))
+            } else {
+                None
+            }
+        }
+        _ => {
+            let mut parts = trimmed.splitn(2, ' ');
+            match parts.next() {
+                Some("open-url") => parts
+                    .next()
+                    .map(|url| UiCommand::OpenUrl(url.trim().to_string())),
+                Some("focus") => parts
+                    .next()
+                    .map(|id| UiCommand::FocusAgent(id.trim().to_string())),
+                Some("desktop") => parts
+                    .next()
+                    .map(|verb| UiCommand::DesktopAction(verb.trim().to_string())),
+                Some("switch-account") => {
+                    let rest = parts.next().unwrap_or("").trim();
+                    let mut fields = rest.split_whitespace();
+                    let account_id = fields.next().unwrap_or("").to_string();
+                    let source = fields.next().unwrap_or("").to_string();
+                    let driver = fields.next().map(String::from);
+                    if account_id.is_empty() || source.is_empty() {
+                        None
+                    } else {
+                        Some(UiCommand::SwitchAccount {
+                            account_id,
+                            source,
+                            driver,
+                        })
+                    }
+                }
+                _ => None,
+            }
+        }
     }
 }
 
@@ -33,11 +74,23 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
     let path = socket_path();
     let stream = UnixStream::connect(&path).map_err(|e| e.to_string())?;
     let line = match command {
-        UiCommand::ShowPanel => "show\n",
-        UiCommand::TogglePanel => "toggle-panel\n",
-        UiCommand::Refresh => "refresh\n",
-        UiCommand::Doctor => "doctor\n",
-        UiCommand::Quit => "quit\n",
+        UiCommand::ShowPanel => "show\n".to_string(),
+        UiCommand::TogglePanel => "toggle-panel\n".to_string(),
+        UiCommand::Refresh => "refresh\n".to_string(),
+        UiCommand::Doctor => "doctor\n".to_string(),
+        UiCommand::Quit => "quit\n".to_string(),
+        UiCommand::OpenUrl(url) => format!("open-url {url}\n"),
+        UiCommand::FocusAgent(id) => format!("focus {id}\n"),
+        UiCommand::SwitchAccount { account_id, source, driver } => format!(
+            "switch-account {} {} {}\n",
+            account_id,
+            source,
+            driver.unwrap_or_default()
+        ),
+        UiCommand::PauseNotifications => "pause-notify\n".to_string(),
+        UiCommand::ToggleAutostart => "toggle-autostart\n".to_string(),
+        UiCommand::DesktopAction(verb) => format!("desktop {verb}\n"),
+        UiCommand::ForceState(state) => format!("state {state}\n"),
     };
     use std::io::Write;
     let mut stream = stream;
@@ -153,6 +206,55 @@ mod tests {
         assert_eq!(parse_command("refresh"), Some(UiCommand::Refresh));
         assert_eq!(parse_command("quit"), Some(UiCommand::Quit));
         assert_eq!(parse_command("onzin"), None);
+    }
+
+    #[test]
+    fn parses_statusline_commands() {
+        assert_eq!(
+            parse_command("pause-notify"),
+            Some(UiCommand::PauseNotifications)
+        );
+        assert_eq!(
+            parse_command("toggle-autostart"),
+            Some(UiCommand::ToggleAutostart)
+        );
+        assert_eq!(
+            parse_command("desktop stop"),
+            Some(UiCommand::DesktopAction("stop".into()))
+        );
+        assert_eq!(
+            parse_command("open-url http://127.0.0.1:10101"),
+            Some(UiCommand::OpenUrl("http://127.0.0.1:10101".into()))
+        );
+        assert_eq!(
+            parse_command("focus pane-7"),
+            Some(UiCommand::FocusAgent("pane-7".into()))
+        );
+        assert_eq!(
+            parse_command("switch-account acc-1 vault cpm:opencodex"),
+            Some(UiCommand::SwitchAccount {
+                account_id: "acc-1".into(),
+                source: "vault".into(),
+                driver: Some("cpm:opencodex".into()),
+            })
+        );
+        assert_eq!(
+            parse_command("switch-account acc-1 vault"),
+            Some(UiCommand::SwitchAccount {
+                account_id: "acc-1".into(),
+                source: "vault".into(),
+                driver: None,
+            })
+        );
+        assert_eq!(
+            parse_command("state bezig"),
+            Some(UiCommand::ForceState("bezig".into()))
+        );
+        assert_eq!(
+            parse_command("state fout"),
+            Some(UiCommand::ForceState("fout".into()))
+        );
+        assert_eq!(parse_command("state onzin"), None);
     }
 
     #[test]

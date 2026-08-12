@@ -187,6 +187,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     // Eén UI-commando-kanaal voor tray + ipc + refresh-loop. De dispatcher
     // draait op de UI-thread (glib-timeout), dus widgets zijn hier veilig.
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<chefbar::tray::UiCommand>();
+    let executor = executor.clone();
     // De closure vangt GTK-widgets (Rc, niet Send/Sync) maar verlaat de
     // UI-thread nooit: de glib-bridge dispatcht alleen op de main-loop.
     #[allow(clippy::arc_with_non_send_sync)]
@@ -202,6 +203,37 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             chefbar::tray::UiCommand::Quit => {
                 panel.flush_panel_state();
                 gtk::main_quit();
+            }
+            chefbar::tray::UiCommand::OpenUrl(url) => {
+                executor.run(&chefbar::actions::RunSpec::OpenUrl(url), "");
+            }
+            chefbar::tray::UiCommand::FocusAgent(id) => {
+                executor.run(&chefbar::actions::RunSpec::FocusAgent(id), "");
+            }
+            chefbar::tray::UiCommand::SwitchAccount {
+                account_id,
+                source,
+                driver,
+            } => executor.run(
+                &chefbar::actions::RunSpec::SwitchAccount {
+                    account_id,
+                    source,
+                    driver,
+                },
+                "",
+            ),
+            chefbar::tray::UiCommand::PauseNotifications => {
+                chefbar::tray::pause_notifications();
+            }
+            chefbar::tray::UiCommand::ToggleAutostart => {
+                chefbar::tray::toggle_autostart();
+                panel.show();
+            }
+            chefbar::tray::UiCommand::DesktopAction(verb) => {
+                executor.run(&chefbar::actions::RunSpec::DesktopAction(verb), "");
+            }
+            chefbar::tray::UiCommand::ForceState(state) => {
+                chefbar::tray::force_state(&state);
             }
         });
 
