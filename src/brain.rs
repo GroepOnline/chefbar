@@ -142,8 +142,10 @@ mod tests {
 
     #[test]
     fn fetch_unreachable_endpoint_fails_closed() {
-        let mut profile = EndpointProfile::default();
-        profile.brain_api = Some("http://127.0.0.1:1".into()); // gegarandeerd dicht
+        let profile = EndpointProfile {
+            brain_api: Some("http://127.0.0.1:1".into()), // gegarandeerd dicht
+            ..Default::default()
+        };
         let digest = fetch_digest(&profile);
         assert!(digest.chunks.is_empty());
         assert!(digest.source.is_none());

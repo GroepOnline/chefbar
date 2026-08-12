@@ -1321,24 +1321,25 @@ mod tests {
     }
 
     fn snap_met_digest() -> Snapshot {
-        let mut snap = Snapshot::default();
-        snap.brain_digest = BrainDigest {
-            chunks: vec![
-                BrainChunk {
-                    title: "hard constraints".into(),
-                    path: Some("/brain/hard.md".into()),
-                    ..Default::default()
-                },
-                BrainChunk {
-                    title: "compute ssot".into(),
-                    url: Some("https://vault.chefgroep.online/brain/compute".into()),
-                    excerpt: Some("live compute latch".into()),
-                    ..Default::default()
-                },
-            ],
+        Snapshot {
+            brain_digest: BrainDigest {
+                chunks: vec![
+                    BrainChunk {
+                        title: "hard constraints".into(),
+                        path: Some("/brain/hard.md".into()),
+                        ..Default::default()
+                    },
+                    BrainChunk {
+                        title: "compute ssot".into(),
+                        url: Some("https://vault.chefgroep.online/brain/compute".into()),
+                        excerpt: Some("live compute latch".into()),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
             ..Default::default()
-        };
-        snap
+        }
     }
 
     #[test]
