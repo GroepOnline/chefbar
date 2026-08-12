@@ -14,7 +14,7 @@ use crate::actions::{build_actions, Executor};
 use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions_with, Action, RankContext};
-use crate::state::{Shared, VAULT_POLL_MS};
+use crate::state::{vault_poll_ms, Shared};
 use gtk::glib::ControlFlow;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -524,32 +524,36 @@ impl Panel {
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
         let slots = self.slots.clone();
-        gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
-            if !window.is_visible() {
-                return ControlFlow::Continue;
-            }
-            // P3.1: bij onveranderde snapshot geen dure full-rebuild — alleen
-            // de statusregel (poll-leeftijd + versheid) blijft live tikken.
-            if *slots.sig.borrow() == Some(render_signature(&shared)) {
-                if let Some(label) = slots.updated_label.borrow().as_ref() {
-                    label.set_text(&status_right_text(&shared));
+        // E7: refresh-loop volgt het (env-overschrijfbare) vault-interval.
+        gtk::glib::timeout_add_local(
+            std::time::Duration::from_millis(vault_poll_ms()),
+            move || {
+                if !window.is_visible() {
+                    return ControlFlow::Continue;
                 }
-                return ControlFlow::Continue;
-            }
-            let query = search.text().to_string();
-            render_into(
-                &content,
-                &shared,
-                &executor,
-                &window,
-                &query,
-                &harness_state,
-                &slots,
-            );
-            let active = harness_state.borrow().clone();
-            sync_nav_buttons(&nav_buttons, &shared_nav, &active);
-            ControlFlow::Continue
-        });
+                // P3.1: bij onveranderde snapshot geen dure full-rebuild — alleen
+                // de statusregel (poll-leeftijd + versheid) blijft live tikken.
+                if *slots.sig.borrow() == Some(render_signature(&shared)) {
+                    if let Some(label) = slots.updated_label.borrow().as_ref() {
+                        label.set_text(&status_right_text(&shared));
+                    }
+                    return ControlFlow::Continue;
+                }
+                let query = search.text().to_string();
+                render_into(
+                    &content,
+                    &shared,
+                    &executor,
+                    &window,
+                    &query,
+                    &harness_state,
+                    &slots,
+                );
+                let active = harness_state.borrow().clone();
+                sync_nav_buttons(&nav_buttons, &shared_nav, &active);
+                ControlFlow::Continue
+            },
+        );
         let dirty_persist = self.persist_dirty.clone();
         let harness_persist = self.harness_state.clone();
         let search_persist = self.search.clone();
@@ -566,6 +570,72 @@ impl Panel {
             }
             ControlFlow::Continue
         });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P4: lazy panel — de GTK-UI wordt pas bij de eerste show() opgebouwd.
+// ---------------------------------------------------------------------------
+
+/// P4: trage opstart versnellen — `Panel::new` bouwt het hele venster, de
+/// sidebar, de zoekinput én start de glib-timers. Bij tray-only levens
+/// (systemd-autostart bij login, `--serve`) is dat weggegooid werk vóór het
+/// eerste `Super+Space`. `LazyPanel` stelt de build uit tot de eerste `show()`
+/// (doel: start→tray <500ms, start→panel <1s) en logt de bouwtijd.
+pub struct LazyPanel {
+    shared: Shared,
+    executor: Executor,
+    slot: RefCell<Option<Panel>>,
+    started: std::time::Instant,
+}
+
+impl LazyPanel {
+    pub fn new(shared: Shared, executor: Executor) -> Self {
+        Self {
+            shared,
+            executor,
+            slot: RefCell::new(None),
+            started: std::time::Instant::now(),
+        }
+    }
+
+    /// Bouw het paneel éénmalig bij de eerste aanroep; daarna alleen nog
+    /// de referentie. De refresh-loop start pas met het paneel mee.
+    fn ensure(&self) -> std::cell::Ref<'_, Panel> {
+        if self.slot.borrow().is_none() {
+            let panel = Panel::new(self.shared.clone(), self.executor.clone());
+            panel.start_refresh_loop();
+            crate::log::log(&format!(
+                "panel opgebouwd na {}ms (lazy)",
+                self.started.elapsed().as_millis()
+            ));
+            *self.slot.borrow_mut() = Some(panel);
+        }
+        std::cell::Ref::map(self.slot.borrow(), |opt| {
+            opt.as_ref().expect("panel gebouwd")
+        })
+    }
+
+    pub fn show(&self) {
+        self.ensure().show();
+    }
+
+    pub fn toggle(&self) {
+        self.ensure().toggle();
+    }
+
+    /// Re-render als het paneel al bestaat (bijv. na een mute-toggle via tray).
+    pub fn refresh_if_built(&self) {
+        if let Some(panel) = self.slot.borrow().as_ref() {
+            let query = panel.search.text().to_string();
+            panel.render(&query);
+        }
+    }
+
+    pub fn flush_panel_state(&self) {
+        if let Some(panel) = self.slot.borrow().as_ref() {
+            panel.flush_panel_state();
+        }
     }
 }
 
@@ -630,12 +700,16 @@ fn render_signature(shared: &Shared) -> u64 {
         desktop_state: Option<&'a str>,             // desktop-actielabel (start/stop)
         share_sync: (Option<&'a str>, i64),         // status, pendingFiles (sync-harnas)
         ops: (bool, Vec<(&'a str, &'a str, bool)>), // ok, (terminal_id, status, focused)
+        muted: Vec<&'a str>,                        // per-agent mute (E5-staart): gedempte keys
     }
 
     let mut hasher = DefaultHasher::new();
     {
         let snap = shared.snapshot.read().unwrap();
         let ops = shared.ops.read().unwrap();
+        let mutes = crate::mutes::load();
+        let mut muted: Vec<&str> = mutes.iter().map(|k| k.as_str()).collect();
+        muted.sort_unstable();
         let sig = Sig {
             revision: snap.revision,
             error: snap.error.as_deref(),
@@ -687,6 +761,7 @@ fn render_signature(shared: &Shared) -> u64 {
                     .map(|a| (a.terminal_id.as_str(), a.status.as_str(), a.focused))
                     .collect(),
             ),
+            muted,
         };
         sig.hash(&mut hasher);
     }
@@ -1215,6 +1290,37 @@ fn render_into(
             text.pack_start(&summary, false, false, 0);
         }
         row.pack_start(&text, true, true, 0);
+        // Per-agent mute (E5-staart): kleine toggle direct in de agent-rij.
+        let agent_key = agent.key.clone();
+        let muted = crate::mutes::is_muted(&agent_key);
+        let mute_btn = gtk::Button::with_label(if muted { "Ontdemp" } else { "Demp" });
+        mute_btn.set_tooltip_text(Some(if muted {
+            "Meldingen voor deze agent weer aan"
+        } else {
+            "Meldingen voor deze agent uit"
+        }));
+        mute_btn.style_context().add_class("chefbar-btn");
+        let content_c = content.clone();
+        let shared_c = shared.clone();
+        let executor_c = executor.clone();
+        let window_c = window.clone();
+        let hstate_c = harness_state.clone();
+        let slots_c = slots.clone();
+        let q_c = q.clone();
+        mute_btn.connect_clicked(move |_| {
+            crate::mutes::toggle(&agent_key);
+            // Direct opnieuw renderen: de knoplabel en tooltip kloppen meteen.
+            render_into(
+                &content_c,
+                &shared_c,
+                &executor_c,
+                &window_c,
+                &q_c,
+                &hstate_c,
+                &slots_c,
+            );
+        });
+        row.pack_end(&mute_btn, false, false, 0);
         row.pack_end(&stamp_label(stamp), false, false, 0);
         let wrap = row_wrap(&row);
         group.pack_start(&wrap, false, false, 0);

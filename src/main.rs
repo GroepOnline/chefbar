@@ -198,8 +198,9 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
         revision,
     };
 
-    let panel = chefbar::panel::Panel::new(shared.clone(), executor.clone());
-    panel.start_refresh_loop();
+    // P4: lazy panel — de GTK-UI wordt pas bij de eerste show() opgebouwd
+    // (tray-only levens duiken sneller op; bouwtijd wordt gelogd).
+    let panel = chefbar::panel::LazyPanel::new(shared.clone(), executor.clone());
 
     // Eén UI-commando-kanaal voor tray + ipc + refresh-loop. De dispatcher
     // draait op de UI-thread (glib-timeout), dus widgets zijn hier veilig.
@@ -213,10 +214,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             chefbar::tray::UiCommand::ShowPanel => panel.show(),
             chefbar::tray::UiCommand::TogglePanel => panel.toggle(),
             chefbar::tray::UiCommand::Refresh => chefbar::state::refresh_global(),
-            chefbar::tray::UiCommand::Doctor => {
-                let report = chefbar::doctor::run_checks();
-                chefbar::doctor::run_checks_async(report);
-            }
+            chefbar::tray::UiCommand::Doctor => chefbar::doctor::run_checks_background(),
             chefbar::tray::UiCommand::Quit => {
                 panel.flush_panel_state();
                 gtk::main_quit();
@@ -245,6 +243,10 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             chefbar::tray::UiCommand::ToggleAutostart => {
                 chefbar::tray::toggle_autostart();
                 panel.show();
+            }
+            chefbar::tray::UiCommand::ToggleMute(key) => {
+                chefbar::mutes::toggle(&key);
+                panel.refresh_if_built();
             }
             chefbar::tray::UiCommand::DesktopAction(verb) => {
                 executor.run(&chefbar::actions::RunSpec::DesktopAction(verb), "");
@@ -314,6 +316,20 @@ mod cli_tests {
         assert_eq!(
             cmd,
             Some(chefbar::tray::UiCommand::ForceState("fout".into()))
+        );
+    }
+
+    #[test]
+    fn ipc_mute_variant_parses_en_roundtript() {
+        // Golden: per-agent mute via --ipc "mute <agent-key>".
+        let cli = parse(&["--ipc", "mute cursor::commerce"]);
+        assert_eq!(cli.ipc.as_deref(), Some("mute cursor::commerce"));
+        let cmd = cli.ipc.as_deref().and_then(chefbar::ipc::parse_command);
+        assert_eq!(
+            cmd,
+            Some(chefbar::tray::UiCommand::ToggleMute(
+                "cursor::commerce".into()
+            ))
         );
     }
 

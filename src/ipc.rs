@@ -48,6 +48,9 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
                 Some("desktop") => parts
                     .next()
                     .map(|verb| UiCommand::DesktopAction(verb.trim().to_string())),
+                Some("mute") => parts
+                    .next()
+                    .map(|key| UiCommand::ToggleMute(key.trim().to_string())),
                 Some("switch-account") => {
                     let rest = parts.next().unwrap_or("").trim();
                     let mut fields = rest.split_whitespace();
@@ -95,6 +98,7 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::ToggleAutostart => "toggle-autostart\n".to_string(),
         UiCommand::DesktopAction(verb) => format!("desktop {verb}\n"),
         UiCommand::ForceState(state) => format!("state {state}\n"),
+        UiCommand::ToggleMute(key) => format!("mute {key}\n"),
     };
     use std::io::Write;
     let mut stream = stream;
@@ -258,6 +262,10 @@ mod tests {
                 source: "vault".into(),
                 driver: None,
             })
+        );
+        assert_eq!(
+            parse_command("mute cursor::commerce"),
+            Some(UiCommand::ToggleMute("cursor::commerce".into()))
         );
         assert_eq!(
             parse_command("state bezig"),

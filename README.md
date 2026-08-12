@@ -1,4 +1,4 @@
-# ChefBar 3.1
+# ChefBar 3.2
 
 Mission control aan je menubalk. Eén venster, één actor, alle harnassen.
 
@@ -39,9 +39,9 @@ chefbar --show-config
 | **Zoeken** | `/` focust, typen filtert de hele surface, geen aparte modi. Ranking kiest: recency-boost uit sessies die om jou vragen en lopende agents (`RankContext` in `src/palette.rs`). Raycast-geest, geen Raycast-kopie. |
 | **Harnas-filtering** | Acties matchen op harnas via keyword-prefixen (`src/harness.rs`). Statuskleuren per harnas, geen generieke badges. |
 | **Tray + IPC** | ksni-tray met command-menu. Externe commando's via Unix-socket op `$XDG_RUNTIME_DIR/chefbar.sock`. Hotkey en scripts praten tegen een draaiende instantie, niet tegen een tweede proces. |
-| **Meldingen** | Watcher-transities gecoalesceerd tot hooguit één toast per poll-cyclus (`coalesce_toasts` in `src/models.rs`). Geen ticker, geen storm. |
+| **Meldingen** | Watcher-transities gecoalesceerd tot hooguit één toast per poll-cyclus (`coalesce_toasts` in `src/models.rs`). Per-agent dempen via paneel-rij of tray-submenu (`src/mutes.rs`). Geen ticker, geen storm. |
 | **Panel-state** | Laatste harnas + zoekterm bewaard in `~/.config/chefbar/panel-state.json` (`src/panel_state.rs`). Heropenen zonder verrassingen. |
-| **Doctor** | `chefbar --doctor` beoordeelt profiel, policy, credentials (alleen fingerprints), watchdog en laatste poll. Exit 0 bij OK, anders 1. Ook als desktop-melding. |
+| **Doctor** | `chefbar --doctor` beoordeelt profiel, policy, credentials (alleen fingerprints), watchdog, laatste poll én latency-probes per endpoint (vault/ops, ms). Exit 0 bij OK, anders 1. Ook als desktop-melding + tray-tooltip. |
 | **Serve** | `chefbar --serve` draait alleen de actor. Poll-ritme vault 5s, ops 15s. Geen UI, zelfde snapshot. |
 
 Acties zijn declaratieve data (`src/actions.rs`). Uitvoer loopt door één executor met policy-begrensde HTTP-clients (`src/http.rs` + `src/policy.rs`). UI-threads doen geen netwerk.
@@ -58,7 +58,7 @@ chefbar --profile /pad/endpoints.json
 chefbar --version
 ```
 
-IPC-aliasen: `panel`, `bar`, `toggle-panel`, `dashboard`, `open`, `show` → TogglePanel. `refresh` / `reload` → Refresh. `doctor` / `check` → Doctor. `quit` / `exit` / `stop` → Quit.
+IPC-aliasen: `panel`, `bar`, `toggle-panel`, `dashboard`, `open`, `show` → TogglePanel. `refresh` / `reload` → Refresh. `doctor` / `check` → Doctor. `quit` / `exit` / `stop` → Quit. `mute <agent-key>` → per-agent dempen (nogmaals = ontdempen).
 
 ## Eén quick-command-overlay
 
@@ -108,6 +108,9 @@ Env overschrijft het profiel per veld, niet als geheel. Dit is de warden-laag vo
 | `desktop` | `CHEFBAR_DESKTOP` | `http://127.0.0.1:3000` |
 | `opencodexDashboard` | `CHEFBAR_OPENCODEX_DASHBOARD` | — |
 | `katerWorkspace` | `CHEFBAR_KATER_WORKSPACE` | — |
+| poll vault | `CHEFBAR_VAULT_POLL_MS` | `5000` |
+| poll ops | `CHEFBAR_OPS_POLL_MS` | `15000` |
+| demp-lijst | `CHEFBAR_MUTED_AGENTS` | `~/.config/chefbar/muted-agents.json` |
 
 Lege env-waarden worden genegeerd. Ongeldige URL's vallen terug op de default (zie `clean_url` in `src/config.rs`). Optionele velden blijven `None` als ze leeg zijn.
 
@@ -182,7 +185,7 @@ runner (`chef-runner-01-1`) en bestaat uit `scripts/gate.sh`: fmt · clippy
 | Doctor | `src/doctor.rs` |
 | Panel-state | `src/panel_state.rs` (harnas + zoekterm, atomair JSON) |
 
-Tests zitten inline per module (`#[cfg(test)]` in `actions`, `config`, `palette`, `models`, `motion`, `harness`, `ipc`, `policy`, `sessions`, `panel_state`).
+Tests zitten inline per module (`#[cfg(test)]` in `actions`, `config`, `palette`, `models`, `motion`, `harness`, `ipc`, `policy`, `sessions`, `panel_state`, `state`, `tray`, `mutes`).
 
 Stack: `gtk 0.18`, `ksni 0.2`, `ureq 2` (json, geen redirects), `clap 4`, `url 2`, `serde_json 1`.
 
@@ -209,6 +212,17 @@ Zie `docs/roadmap.md` voor detail. Samenvatting van wat 3.1 bracht:
 * **Zoeken dat kiest** — ranking op recente sessies en lopende agents, geen platte filter. Snel naar wat je net aanraakte.
 * **Rustige meldingen** — coalescing tot één toast per cyclus, alleen bij echte statusovergang (blocked, hulp nodig). Geen ticker.
 * **Panel dat onthoudt** — laatste harnas en zoekterm bewaard over herstart heen, geen verrassingen bij heropenen.
+
+## Roadmap 3.2 — verscheept
+
+Zie `docs/plan-optimalisatie-uitbreiding.md` voor detail. Wat 3.2 bracht:
+
+* **Sneller bij de les** — vaste worker-pool (geen thread-churn meer, `src/state.rs`), revisie-check die dure re-renders overslaat, en een **lazy panel**: de GTK-UI wordt pas bij de eerste `Super+Space` gebouwd (start→tray <500ms; bouwtijd staat in `chefbar.log`). Release-build met `panic = abort` + `strip` + `lto`.
+* **Meer oppervlak** — Herdr-agents met pane/focus + inline prompt, Commander-queue met per-taak Stop, toetsenbord-first (↑/↓ + Enter + Ctrl+K).
+* **Per-agent dempen** — demp één agent in het paneel of tray-submenu (`mute` via `--ipc`); de watcher slaat hem over bij toasts.
+* **Doctor kijkt mee** — latency-probes per endpoint (vault/ops), draait in de achtergrond vanaf tray, resultaat ook in de tray-tooltip.
+* **Config 3.2** — poll-intervallen per env (`CHEFBAR_VAULT_POLL_MS`/`CHEFBAR_OPS_POLL_MS`), demp-lijst via `CHEFBAR_MUTED_AGENTS`; `chefbar.log` voor actor/executor-fouten.
+* **QA** — tray-menu uit de ksni-closures naar een pure testbare builder, state-mock-tests zonder netwerk, golden CLI-tests (waaronder `--ipc mute`), 80+ tests groen op de runner en in CI.
 
 Bewust uitgesteld: Wayland layer-shell (eigen change met CI-afhankelijkheid) en OIDC via de `get_headers` seam (wacht op `auth.chefgroep.online`).
 

@@ -88,14 +88,15 @@ bij open paneel (goed), maar: herbouw kost allocaties en forceert herlayout.
   `present()` alleen bij verborgen→zichtbaar.
 
 ### P4 — opstart & footprint
-- **Opstart:** `Panel::new` bouwt alles bij app-start; overweeg lazy build bij
-  eerste `show()` (tray-only levens duiken sneller op). Doel: start→tray
-  <500ms, start→panel <1s.
-- **Snapshot:** `poll_vault` clonet de hele snapshot per cyclus (nodig voor de
-  watcher) — ok, maar `raw`-JSON kan getrimd worden tot wat UI/doctor leest.
-- **Release:** staat al op `lto = true` + `strip = true`; overweeg
-  `panic = "abort"` (kleinere binary, minder unwind-code) zonder gedrag te
-  veranderen.
+✅ Gedaan (2026-08-12):
+- **Lazy panel** — `Panel::new` bouwde alles bij app-start; nu bouwt
+  `LazyPanel` het venster pas bij de eerste `show()` (tray-only levens duiken
+  sneller op). Bouwtijd wordt gelogd in `chefbar.log` ("panel opgebouwd na
+  Xms (lazy)"). Doel: start→tray <500ms, start→panel <1s.
+- **Release:** `panic = "abort"` toegevoegd naast `lto = true` + `strip =
+  true` (kleinere binary, minder unwind-code; geen gedragsverschil voor deze
+  app).
+- Snapshot-`raw`-trim en RSS-doelen blijven meetpunten (niet-buildend nu).
 - Doel-RSS < 80MB in rust, < 120MB bij open paneel.
 
 ---
@@ -152,8 +153,12 @@ Rustige meldingen en deep-links blijven open (M5-staart).
   (nu alleen via de actie "Stuur naar …").
 - **Commander-queue beheren:** lijst + prioriteit + cancel (CancelTask bestaat
   al in `src/actions.rs`); voeg per-taak acties toe.
-- **Rustige meldingen uitbreiden:** per-agent mute / do-not-disturb-schema
-  (nu alleen 1u-alles-pauze via joep-notify in `src/tray.rs`).
+- **Rustige meldingen uitbreiden:** ✅ per-agent mute gedaan (2026-08-12) —
+  `src/mutes.rs` (demp-lijst per agent-key, atomair JSON, env-override
+  `CHEFBAR_MUTED_AGENTS`); de watcher slaat gedempte agents over bij toasts
+  (en haalt hun oude inbox-suggesties weg); paneel-rij met Demp/Ontdemp-togg
+  en een tray-submenu "Demp agenten" (pure builder); `--ipc "mute <key>"` +
+  golden test. Do-not-disturb-schema blijft open.
 - **Deep-links benutten:** evidence-urls, kater-sessies en workspace-urls zitten
   al in `AttachPoints` (`src/sessions.rs`) — zichtbaarder maken in sessie-rijen.
 
@@ -167,9 +172,13 @@ resultaten van het actieve harnas, Enter = uitvoeren, Ctrl+K/Cmd+K = zoeken
 focussen; focus-chain expliciet maken (komt deels al terug via GTK-traversal).
 
 ### E7 — config & versie
-- Meer `CHEFBAR_*`-velden (poll-intervallen `VAULT_POLL_MS`/`OPS_POLL_MS`,
-  notificatie-prefs) — warden-laag blijft per-veld, nooit per-bestand.
-- Changelog + bump naar 3.2 met roadmap-update in de README.
+✅ Gedaan (2026-08-12):
+- Poll-intervallen per env: `CHEFBAR_VAULT_POLL_MS` / `CHEFBAR_OPS_POLL_MS`
+  (ondergrens 500ms; defaults blijven de constanten) — de actor-loop én de
+  panel-refresh-loop volgen ze. Demp-lijst via `CHEFBAR_MUTED_AGENTS`.
+  Warden-laag blijft per-veld, nooit per-bestand.
+- Changelog + bump naar **3.2** (`Cargo.toml`) met roadmap-update in de
+  README.
 
 ---
 
@@ -210,9 +219,14 @@ en executor (alle actie-fouten) loggen nu; `--doctor` toont het pad; README
 wijst naar het echte bestand.
 
 ### Q5 — doctor & observability
-- Latency-probes per endpoint (DNS/TLS/connect), ops-status, laatste poll-tijd
-  (zie E1); exit-codes 0/1/2 bestaan al.
-- Meldingen en tray-tooltips mogen het doctor-pad tonen ("doctor · alles ok").
+✅ Gedaan (2026-08-12):
+- Latency-probes per endpoint (vault `/status`, ops `/api/snapshot`) met
+  round-trip-ms in de doctor-uitvoer; transportfouten tellen als failure,
+  HTTP-codes als info (401 zonder token is een secrets-zaak). Laatste
+  poll-tijd stond al (E1).
+- Doctor draait vanaf tray/panel in de achtergrond (`run_checks_background` —
+  probes mogen de UI-thread nooit laten wachten op timeouts) en toont het
+  resultaat óók in de tray-tooltip ("doctor · alles ok · Xms", 12s).
 
 ---
 

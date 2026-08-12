@@ -23,6 +23,25 @@ pub const FETCH_BUDGET_MS: u64 = 8_000;
 /// P1: vaste worker-pool voor de vault fan-out (i.p.v. thread-per-endpoint).
 pub const POOL_WORKERS: usize = 4;
 
+/// E7: poll-intervallen per env (CHEFBAR_VAULT_POLL_MS / CHEFBAR_OPS_POLL_MS),
+/// warden-laag per veld — defaults blijven de constanten. Ondergrens 500ms
+/// tegen pathologische strakke loops bij een tikfout in de env.
+fn poll_interval_ms(env_name: &str, default: u64) -> u64 {
+    std::env::var(env_name)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|v| v.max(500))
+        .unwrap_or(default)
+}
+
+pub fn vault_poll_ms() -> u64 {
+    poll_interval_ms("CHEFBAR_VAULT_POLL_MS", VAULT_POLL_MS)
+}
+
+pub fn ops_poll_ms() -> u64 {
+    poll_interval_ms("CHEFBAR_OPS_POLL_MS", OPS_POLL_MS)
+}
+
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
 pub static REFRESH_TX: Mutex<Option<Sender<ActorCommand>>> = Mutex::new(None);
 
@@ -202,6 +221,9 @@ impl<C: HttpClient> Poller<C> {
         let mut next_vault = Instant::now();
         let mut next_ops = Instant::now();
         let mut next_local = Instant::now();
+        // E7: intervallen eenmaal per actor-loop uitlezen (env-warden-laag).
+        let vault_ms = vault_poll_ms();
+        let ops_ms = ops_poll_ms();
         self.poll_watchdog_into_shared();
         loop {
             // Begin met onmiddellijke eerste polls.
@@ -212,11 +234,11 @@ impl<C: HttpClient> Poller<C> {
             }
             if now >= next_vault {
                 self.poll_vault();
-                next_vault = Instant::now() + Duration::from_millis(VAULT_POLL_MS);
+                next_vault = Instant::now() + Duration::from_millis(vault_ms);
             }
             if now >= next_ops {
                 self.poll_ops();
-                next_ops = Instant::now() + Duration::from_millis(OPS_POLL_MS);
+                next_ops = Instant::now() + Duration::from_millis(ops_ms);
             }
             let deadline = next_vault.min(next_ops);
             let timeout = deadline
@@ -225,7 +247,7 @@ impl<C: HttpClient> Poller<C> {
             match rx.recv_timeout(timeout) {
                 Ok(ActorCommand::RefreshNow) => {
                     self.poll_vault();
-                    next_vault = Instant::now() + Duration::from_millis(VAULT_POLL_MS);
+                    next_vault = Instant::now() + Duration::from_millis(vault_ms);
                 }
                 Ok(ActorCommand::Shutdown) => {
                     self.pool.stop();
@@ -359,16 +381,28 @@ impl<C: HttpClient> Poller<C> {
         }
 
         // Watcher-suggesties (parity): transities → één rustige toast + snapshot-feed.
-        let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap);
+        // Per-agent mute (E5-staart): gedempte agents leveren geen toast en hun
+        // oude inbox-suggesties verdwijnen ook direct.
+        let mutes = crate::mutes::load();
+        let fresh: Vec<_> = watcher_events(&prev_snapshot, &snap)
+            .into_iter()
+            .filter(|s| !mutes.contains(&s.agent))
+            .collect();
         if !fresh.is_empty() {
             if let Some((title, body, status)) = crate::models::coalesce_toasts(&fresh) {
                 crate::notify::notify(&title, &body, status);
             }
             snap.suggestions.retain(|s| {
-                s.fresh(SUGGESTION_TTL_SECONDS) && !fresh.iter().any(|n| n.key == s.key)
+                s.fresh(SUGGESTION_TTL_SECONDS)
+                    && !mutes.contains(&s.agent)
+                    && !fresh.iter().any(|n| n.key == s.key)
             });
             snap.suggestions.extend(fresh.clone());
             snap.suggestions.truncate(6);
+        } else {
+            // Zelfs zonder nieuwe transities: gemute agents uit de inbox halen.
+            snap.suggestions
+                .retain(|s| s.fresh(SUGGESTION_TTL_SECONDS) && !mutes.contains(&s.agent));
         }
 
         snap.fetched_at_unix = SystemTime::now()
@@ -587,7 +621,11 @@ mod tests {
     }
 
     fn agents_payload(status: &str) -> Value {
-        json!({"agents": [{"key": "a1", "agent": "cursor", "workspace": "commerce", "status": status, "summary": "werkt"}]})
+        agents_payload_key("a1", status)
+    }
+
+    fn agents_payload_key(key: &str, status: &str) -> Value {
+        json!({"agents": [{"key": key, "agent": "cursor", "workspace": "commerce", "status": status, "summary": "werkt"}]})
     }
 
     #[test]
@@ -675,6 +713,111 @@ mod tests {
             1,
             "zelfde status geeft geen nieuwe suggestie"
         );
+    }
+
+    // E7/env-tests muteren process-globale env; parallelle tests in dit
+    // module delen dezelfde var-names — één lock serialiseert ze.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Zet een env-var en herstelt de oude waarde bij drop (zelfs bij panic).
+    struct EnvVar {
+        name: &'static str,
+        had: Option<String>,
+    }
+    impl EnvVar {
+        fn set(name: &'static str, value: &str) -> Self {
+            let had = std::env::var(name).ok();
+            std::env::set_var(name, value);
+            Self { name, had }
+        }
+    }
+    impl Drop for EnvVar {
+        fn drop(&mut self) {
+            match &self.had {
+                Some(v) => std::env::set_var(self.name, v),
+                None => std::env::remove_var(self.name),
+            }
+        }
+    }
+
+    #[test]
+    fn watcher_slaat_gemute_agent_over() {
+        // E5-staart: per-agent mute — een gedempte agent geeft geen suggestie
+        // (geen toast) en oude inbox-suggesties van hem verdwijnen direct.
+        // Unieke agent-key: parallelle tests lezen dezelfde process-globale
+        // env-var en mogen nooit last hebben van deze demping.
+        let muted_key = "zz-muted-agent";
+        let dir = std::env::temp_dir().join(format!("chefbar-mutes-state-{}", std::process::id()));
+        let path = dir.join("muted-agents.json");
+        let mut mutes = std::collections::HashSet::new();
+        mutes.insert(muted_key.to_string());
+        assert!(crate::mutes::save_to(&path, &mutes));
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = EnvVar::set("CHEFBAR_MUTED_AGENTS", &path.to_string_lossy());
+
+        let poller = poller_met();
+        poller.vault.stub_all_ok();
+        poller
+            .vault
+            .stub_ok("/agents", agents_payload_key(muted_key, "running"));
+        poller.poll_vault();
+        // Oude inbox-rij van de (inmiddels) gemute agent: verdwijnt bij poll.
+        let created = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        poller
+            .shared
+            .snapshot
+            .write()
+            .unwrap()
+            .suggestions
+            .push(crate::models::Suggestion {
+                key: format!("{muted_key}-blocked"),
+                agent: muted_key.into(),
+                title: "zz-muted-agent · even jou nodig".into(),
+                meta: String::new(),
+                stamp: "HULP".into(),
+                action_label: "Open".into(),
+                kind: crate::models::SuggestionKind::FocusAgent(muted_key.into()),
+                created_unix: created,
+            });
+
+        poller
+            .vault
+            .stub_ok("/agents", agents_payload_key(muted_key, "blocked"));
+        poller.poll_vault();
+        let snap = poller.shared.snapshot.read().unwrap().clone();
+        assert!(
+            snap.suggestions.is_empty(),
+            "gemute agent mag geen suggesties geven of houden: {:?}",
+            snap.suggestions
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn env_poll_intervallen_worden_geehrt() {
+        // E7: CHEFBAR_VAULT_POLL_MS/OPS_POLL_MS winnen, ongeldig → default,
+        // ondergrens 500ms tegen tikfouten.
+        let _lock = ENV_LOCK.lock().unwrap();
+        {
+            let _guard = EnvVar::set("CHEFBAR_VAULT_POLL_MS", "1234");
+            assert_eq!(vault_poll_ms(), 1234);
+        }
+        {
+            let _guard = EnvVar::set("CHEFBAR_VAULT_POLL_MS", "abc");
+            assert_eq!(vault_poll_ms(), VAULT_POLL_MS);
+        }
+        {
+            let _guard = EnvVar::set("CHEFBAR_VAULT_POLL_MS", "100");
+            assert_eq!(vault_poll_ms(), 500);
+        }
+        {
+            let _guard = EnvVar::set("CHEFBAR_OPS_POLL_MS", "2500");
+            assert_eq!(ops_poll_ms(), 2500);
+        }
+        assert_eq!(ops_poll_ms(), OPS_POLL_MS);
     }
 
     #[test]

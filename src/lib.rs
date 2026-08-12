@@ -16,6 +16,7 @@ pub mod layer_shell;
 pub mod log;
 pub mod models;
 pub mod motion;
+pub mod mutes;
 pub mod notify;
 pub mod ops_cli;
 pub mod palette;

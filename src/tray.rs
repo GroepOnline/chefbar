@@ -29,6 +29,8 @@ pub enum UiCommand {
     },
     /// Notificaties pauzeren via joep-notify (1u default).
     PauseNotifications,
+    /// Per-agent mute aan/uit (E5-staart): agent-key uit de tray/paneel.
+    ToggleMute(String),
     /// Meelopen vanaf login aan/uit (autostart-desktop-bestand).
     ToggleAutostart,
     /// Desktop webtop starten/stoppen via de executor.
@@ -59,6 +61,8 @@ pub struct ChefTray {
     status_line: Mutex<String>,
     /// Door `--ipc state <x>` geforceerde glyph (testhook, W3). None = live.
     forced_state: Mutex<Option<(String, std::time::Instant)>>,
+    /// Q5: tijdelijke doctor-resultaatregel (12s), daarna live-status weer.
+    transient_line: Mutex<Option<(String, std::time::Instant)>>,
 }
 
 impl ChefTray {
@@ -73,6 +77,7 @@ impl ChefTray {
             icon: tray_icon_for(&state),
             status_line: Mutex::new(line),
             forced_state: Mutex::new(None),
+            transient_line: Mutex::new(None),
         }
     }
 
@@ -191,8 +196,36 @@ pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
                 return;
             }
         }
+        // Q5: doctor-resultaat toont kort (12s) i.p.v. de live-statuslijn.
+        let transient = tray.transient_line.lock().unwrap();
+        if let Some((tline, at)) = transient.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(12) {
+                *tray.status_line.lock().unwrap() = tline.clone();
+                return;
+            }
+        }
         tray.icon = icon;
         *tray.status_line.lock().unwrap() = line;
+    });
+}
+
+/// Q5: toon het doctor-resultaat kort in de tray-tooltip ("doctor · alles ok
+/// · 42ms"); de volgende live poll overschrijft het weer vanzelf.
+pub fn show_doctor_result(ok: bool, ms: u128) {
+    let Some(slot) = TRAY_HANDLE.get() else {
+        return;
+    };
+    let guard = slot.lock().unwrap();
+    let Some(handle) = guard.as_ref() else {
+        return;
+    };
+    let line = if ok {
+        format!("ChefGroep · doctor · alles ok · {ms}ms")
+    } else {
+        format!("ChefGroep · doctor · niet ok · {ms}ms — zie chefbar --doctor")
+    };
+    handle.update(move |tray| {
+        *tray.transient_line.lock().unwrap() = Some((line, std::time::Instant::now()));
     });
 }
 
@@ -226,7 +259,8 @@ impl ksni::Tray for ChefTray {
         // unit-testbaar zonder ksni/GTK (hier zat de E0382/E0597-breuk).
         let snap = self.shared.read().map(|s| s.clone()).unwrap_or_default();
         let profile = crate::config::global_profile();
-        let specs = menu_items(&snap, profile, crate::tray::autostart_enabled());
+        let mutes = crate::mutes::load();
+        let specs = menu_items(&snap, profile, crate::tray::autostart_enabled(), &mutes);
         specs.into_iter().map(MenuItemSpec::into_ksni).collect()
     }
 }
@@ -324,6 +358,7 @@ fn menu_items(
     snap: &Snapshot,
     profile: &crate::config::EndpointProfile,
     autostart: bool,
+    mutes: &std::collections::HashSet<String>,
 ) -> Vec<MenuItemSpec> {
     let mut items: Vec<MenuItemSpec> = Vec::new();
 
@@ -424,6 +459,28 @@ fn menu_items(
         },
         cmd: UiCommand::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
     });
+
+    // Per-agent mute (E5-staart): vinkje per agent; klik dempt/ontdempt.
+    let mut mute_items: Vec<MenuItemSpec> = Vec::new();
+    for agent in &snap.agents {
+        let muted = mutes.contains(&agent.key);
+        mute_items.push(MenuItemSpec::Checkmark {
+            label: format!("{} · {}", agent.agent, agent.workspace),
+            checked: muted,
+            cmd: UiCommand::ToggleMute(agent.key.clone()),
+        });
+    }
+    if mute_items.is_empty() {
+        items.push(MenuItemSpec::Disabled(
+            "Meldingen: geen agents actief".into(),
+        ));
+    } else {
+        items.push(MenuItemSpec::Submenu {
+            label: "Demp agenten".into(),
+            icon: "notification-disabled-symbolic".into(),
+            items: mute_items,
+        });
+    }
     items.push(MenuItemSpec::Separator);
 
     // Notificaties pauzeren + meelopen vanaf login.
@@ -585,9 +642,18 @@ mod tests {
         items.iter().map(MenuItemSpec::label).collect()
     }
 
+    fn no_mutes() -> std::collections::HashSet<String> {
+        std::collections::HashSet::new()
+    }
+
     #[test]
     fn basis_rijen_zijn_aanwezig() {
-        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+        );
         let labels = labels(&items);
         for expected in [
             "Open Thuis",
@@ -606,7 +672,12 @@ mod tests {
 
     #[test]
     fn zonder_accounts_is_de_rij_disabled() {
-        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+        );
         assert!(items.iter().any(|i| matches!(i, MenuItemSpec::Disabled(_))));
     }
 
@@ -623,7 +694,7 @@ mod tests {
             ],
             ..Default::default()
         });
-        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
         let submenu = items.iter().find_map(|i| match i {
             MenuItemSpec::Submenu { label, items, .. } if label == "Account wisselen" => {
                 Some(items)
@@ -655,7 +726,7 @@ mod tests {
         let mut snap = Snapshot::default();
         snap.desktop
             .insert("state".into(), serde_json::Value::String("running".into()));
-        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
         let desktop = items.iter().find_map(|i| match i {
             MenuItemSpec::Action { label, cmd, .. } if label.starts_with("Desktop") => {
                 Some((label.as_str(), cmd.clone()))
@@ -671,11 +742,21 @@ mod tests {
 
     #[test]
     fn autostart_checkmark_reflecteert_flag() {
-        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), true);
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            true,
+            &no_mutes(),
+        );
         assert!(items
             .iter()
             .any(|i| matches!(i, MenuItemSpec::Checkmark { checked: true, .. })));
-        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+        );
         assert!(items
             .iter()
             .any(|i| matches!(i, MenuItemSpec::Checkmark { checked: false, .. })));
@@ -683,13 +764,92 @@ mod tests {
 
     #[test]
     fn zonder_events_geen_focus_rijen() {
-        let items = menu_items(&Snapshot::default(), &EndpointProfile::default(), false);
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+        );
         assert!(!items.iter().any(|i| matches!(
             i,
             MenuItemSpec::Action {
                 cmd: UiCommand::FocusAgent(_),
                 ..
             }
+        )));
+    }
+
+    #[test]
+    fn mute_submenu_toont_agents_met_checkmark() {
+        use crate::models::AgentRow;
+        let mut snap = Snapshot::default();
+        snap.agents.push(AgentRow {
+            key: "cursor::commerce".into(),
+            agent: "cursor".into(),
+            workspace: "commerce".into(),
+            status: "running".into(),
+            summary: String::new(),
+            last_activity: None,
+            running: true,
+        });
+        snap.agents.push(AgentRow {
+            key: "kater::eval".into(),
+            agent: "kater".into(),
+            workspace: "eval".into(),
+            status: "blocked".into(),
+            summary: String::new(),
+            last_activity: None,
+            running: false,
+        });
+        let mut mutes = std::collections::HashSet::new();
+        mutes.insert("cursor::commerce".into());
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &mutes);
+        let sub = items
+            .iter()
+            .find_map(|i| match i {
+                MenuItemSpec::Submenu { label, items, .. } if label == "Demp agenten" => {
+                    Some(items)
+                }
+                _ => None,
+            })
+            .expect("mute-submenu aanwezig");
+        assert_eq!(labels(sub), vec!["cursor · commerce", "kater · eval"]);
+        let checked: Vec<bool> = sub
+            .iter()
+            .filter_map(|i| match i {
+                MenuItemSpec::Checkmark { checked, .. } => Some(*checked),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(checked, vec![true, false]);
+        // klik stuurt ToggleMute met de agent-key.
+        let cmds: Vec<&UiCommand> = sub
+            .iter()
+            .filter_map(|i| match i {
+                MenuItemSpec::Checkmark { cmd, .. } => Some(cmd),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            cmds,
+            vec![
+                &UiCommand::ToggleMute("cursor::commerce".into()),
+                &UiCommand::ToggleMute("kater::eval".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn zonder_agents_is_mute_submenu_disabled() {
+        let items = menu_items(
+            &Snapshot::default(),
+            &EndpointProfile::default(),
+            false,
+            &no_mutes(),
+        );
+        assert!(items.iter().any(|i| matches!(
+            i,
+            MenuItemSpec::Disabled(label) if label.contains("geen agents")
         )));
     }
 
@@ -707,7 +867,7 @@ mod tests {
                 "title": "é".repeat(40),
             }
         }));
-        let items = menu_items(&snap, &EndpointProfile::default(), false);
+        let items = menu_items(&snap, &EndpointProfile::default(), false, &no_mutes());
         let event_row = items.iter().find_map(|i| match i {
             MenuItemSpec::Action {
                 label,

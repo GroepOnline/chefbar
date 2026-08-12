@@ -108,11 +108,36 @@ pub fn run_checks() -> DoctorReport {
     // 6. Poll-gezondheid (E1): de actor meldt de laatste poll (vault + ops) —
     //    via dezelfde statics die hij elke cyclus bijwerkt. Zonder draaiende
     //    actor toont dit eerlijk "poll nooit".
-    lines.push(format!("poll     {}", crate::state::last_poll_label()));
-
-    // 7. Logging (Q4): het echte chefbar.log-pad — README en notificaties
-    //    verwezen er al naar, nu bestaat het bestand ook.
+    lines.push(format!("poll     {}", crate::state::last_poll_label())); // 7. Logging (Q4): het echte chefbar.log-pad — README en notificaties
+                                                                         //     verwezen er al naar, nu bestaat het bestand ook.
     lines.push(format!("log      {}", crate::log::log_path().display()));
+
+    // 8. Latency-probes (Q5): vault + ops, gemeten round-trip. Transportfouten
+    //    (DNS/TLS/connect) tellen als failure; HTTP-statuscodes zijn alleen
+    //    informatief (401 zonder token is een secrets-zaak, geen probe-fout).
+    //    Dezelfde policy als de actor, maar kortere timeouts voor snelle checks.
+    let probe_timeout = std::time::Duration::from_secs(3);
+    let vault_probe =
+        crate::http::Client::new(&profile.vault_api, policy.clone()).with_timeout(probe_timeout);
+    let ops_probe = crate::http::Client::new(&profile.ops_api, policy).with_timeout(probe_timeout);
+    for (name, client, path) in [
+        ("vault", &vault_probe, "/status"),
+        ("ops", &ops_probe, "/api/snapshot"),
+    ] {
+        let started = Instant::now();
+        let result = client.get_json(path);
+        let ms = started.elapsed().as_millis();
+        match result {
+            Ok(_) => lines.push(format!("latency  {name:<6} {ms:>4}ms · ok")),
+            Err(crate::http::ApiError::Http(code, _)) => {
+                lines.push(format!("latency  {name:<6} {ms:>4}ms · HTTP {code}"));
+            }
+            Err(e) => {
+                lines.push(format!("latency  {name:<6} {ms:>4}ms · {e}"));
+                failures.push(format!("{name} onbereikbaar ({e})"));
+            }
+        }
+    }
 
     DoctorReport {
         lines,
@@ -121,7 +146,7 @@ pub fn run_checks() -> DoctorReport {
     }
 }
 
-/// Latency-probe in een aparte thread; resultaat gemeld via notify.
+/// Doctor-resultaat melden (notify + korte tray-tooltip).
 pub fn run_checks_async(report: DoctorReport) {
     let check_time = report.elapsed_ms;
     if !report.ok() {
@@ -135,6 +160,18 @@ pub fn run_checks_async(report: DoctorReport) {
             "ok",
         );
     }
+    // Q5: het doctor-pad ook in de tray-tooltip (12s, daarna live-status).
+    crate::tray::show_doctor_result(report.ok(), report.elapsed_ms);
+}
+
+/// Doctor in de achtergrond (tray/panel): de latency-probes mogen de
+/// UI-thread nooit laten wachten op timeouts — de checks draaien in een eigen
+/// thread en melden het resultaat via notify + tray-tooltip.
+pub fn run_checks_background() {
+    std::thread::spawn(|| {
+        let report = run_checks();
+        run_checks_async(report);
+    });
 }
 
 /// Doctor via CLI: leg het rapport als tekst op stdout.

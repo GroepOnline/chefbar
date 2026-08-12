@@ -1,6 +1,6 @@
 [package]
 name = "chefbar"
-version = "3.1.0"
+version = "3.2.0"
 edition = "2021"
 description = "ChefBar — ChefGroep assistent-app (Rust native, Signaal · Huly)"
 license = "MIT"
@@ -31,6 +31,9 @@ layer-shell = ["gtk-layer-shell/v0_6"]
 [profile.release]
 lto = true
 strip = true
+# P4: footprint — abort i.p.v. unwind-landschap → kleinere binary, minder
+# runtime-code. Geen gedragsverschil voor deze app (geen catches over FFI).
+panic = "abort"
 
 [[bin]]
 name = "chefbar"
