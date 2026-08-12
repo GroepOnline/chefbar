@@ -182,6 +182,9 @@ impl Panel {
         );
         density_btn.set_relief(gtk::ReliefStyle::None);
         density_btn.style_context().add_class("chefbar-footer-btn");
+        if persisted_density == crate::panel_state::DENSITY_COMPACT {
+            density_btn.style_context().add_class("on");
+        }
         let theme_btn =
             gtk::Button::with_label(if theme.borrow().as_str() == crate::css::THEME_LIGHT {
                 "Licht"
@@ -190,6 +193,9 @@ impl Panel {
             });
         theme_btn.set_relief(gtk::ReliefStyle::None);
         theme_btn.style_context().add_class("chefbar-footer-btn");
+        if theme.borrow().as_str() == crate::css::THEME_LIGHT {
+            theme_btn.style_context().add_class("on");
+        }
         {
             let window_cls = window.clone();
             let density_toggle = density.clone();
@@ -221,6 +227,11 @@ impl Panel {
                 } else {
                     "Rustig"
                 });
+                if next == crate::panel_state::DENSITY_COMPACT {
+                    btn.style_context().add_class("on");
+                } else {
+                    btn.style_context().remove_class("on");
+                }
                 dirty_cls.set(true);
             });
         }
@@ -242,6 +253,11 @@ impl Panel {
                 } else {
                     "Donker"
                 });
+                if next == crate::css::THEME_LIGHT {
+                    btn.style_context().add_class("on");
+                } else {
+                    btn.style_context().remove_class("on");
+                }
                 dirty_cls.set(true);
             });
         }

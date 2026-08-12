@@ -5,6 +5,10 @@ ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plan
 **Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
 Data blijft offline-tolerant en freshness-first; writes lopen uitsluitend via policy- en audit-gecontroleerde acties.
 
+Elk domein rendert zijn eigen typed rijen uit de gedeelde snapshot (status-dot + titel + mono-meta + stamp). De Acties-zone staat op elk domein bovenaan; de gepinde footer draagt live counts plus toggles voor **dichtheid** (Rustig/Compact) en **thema** (Donker/Licht, live skin-wissel). Alle UI-volgt de Devin v2-taal (`GroepOnline/design-system`): warm basalt, hairlines, één accent, 2px-statusstreak, geen spinners/emoji/gradients.
+
+Detail: [plan-superapp-ui.md](docs/plan-superapp-ui.md) (lane-contract), [plan-chefapp-5.0.md](docs/plan-chefapp-5.0.md) (campagne) en [chefapp-qa.md](docs/chefapp-qa.md) (acceptatie).
+
 ### Lane-G tooling
 
 Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:

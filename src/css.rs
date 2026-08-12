@@ -92,6 +92,12 @@ pub fn styles_css(theme: &str) -> String {
   font-family: "General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif;
   font-size: 13px;
 }}
+/* GTK3-thema's (Adwaita) zetten gradients/shadows op buttons en entries;
+   die overstemmen de v2-surfacekleuren — daarom overal uit. */
+button, entry {{
+  background-image: none;
+  box-shadow: none;
+}}
 
 /* ============ Header — custom titlebar (undecorated window) ============ */
 .chefbar-header {{
@@ -132,8 +138,10 @@ pub fn styles_css(theme: &str) -> String {
 }}
 
 /* Zoek-input — pill affordance, focus-ring in accent */
-.chefbar-search, .chefbar-search entry {{
+.chefbar-search, .chefbar-search entry,
+.chefbar-palette-entry, .chefbar-palette-entry entry {{
   background-color: {surface};
+  background-image: none;
   border: 1px solid {control_border};
   border-radius: 999px;
   color: {text};
@@ -141,7 +149,9 @@ pub fn styles_css(theme: &str) -> String {
   padding: 7px 14px;
 }}
 .chefbar-search:focus,
-.chefbar-search entry:focus {{
+.chefbar-search entry:focus,
+.chefbar-palette-entry:focus,
+.chefbar-palette-entry entry:focus {{
   border-color: {focus};
   box-shadow: 0 0 0 3px {focus_soft};
 }}
@@ -162,9 +172,9 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-signature.running  {{ background-color: {brand}; }}
 .chefbar-statuslijn {{
   background-color: {surface};
-  border: 1px solid {line};
+  border: 1px solid {control_border};
   border-radius: 10px;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 6px;
   margin: 10px 16px 2px 16px;
 }}
 .chefbar-statuslijn-text {{
@@ -181,7 +191,7 @@ pub fn styles_css(theme: &str) -> String {
   font-weight: 600;
   letter-spacing: 0.5px;
   color: {text_muted};
-  padding: 16px 16px 4px 16px;
+  padding: 14px 16px 4px 16px;
 }}
 .chefbar-section-sub {{
   font-family: "General Sans", system-ui, sans-serif;
@@ -268,7 +278,8 @@ pub fn styles_css(theme: &str) -> String {
 
 /* ============ Knoppen — v2 .btn: hairline-strong, r-6 ============ */
 .chefbar-btn {{
-  background-color: {surface};
+  background-color: {surface_muted};
+  background-image: none;
   border: 1px solid {control_border};
   border-radius: 6px;
   color: {text};
@@ -279,7 +290,7 @@ pub fn styles_css(theme: &str) -> String {
   transition: background-color 140ms, border-color 140ms;
 }}
 .chefbar-btn:hover {{
-  background-color: {surface_muted};
+  background-color: {surface_raised};
 }}
 .chefbar-btn:focus {{
   border-color: {focus};
@@ -370,6 +381,7 @@ pub fn styles_css(theme: &str) -> String {
 }}
 .chefbar-nav-item {{
   background-color: transparent;
+  background-image: none;
   border: 1px solid transparent;
   border-left: 2px solid transparent;
   border-radius: 6px;
@@ -388,13 +400,18 @@ pub fn styles_css(theme: &str) -> String {
   border-color: {focus};
 }}
 .chefbar-nav-item.active {{
-  background-color: {surface};
-  border: 1px solid {line};
+  background-color: {brand_soft};
+  border: 1px solid transparent;
   border-left: 2px solid {brand};
   color: {text};
 }}
 .chefbar-nav-item.active:hover {{
-  background-color: {surface};
+  background-color: {brand_soft};
+}}
+.chefbar-nav-sep {{
+  background-color: {line};
+  min-height: 1px;
+  margin: 4px 10px;
 }}
 .chefbar-sidebar-group-title {{
   font-family: "General Sans", system-ui, sans-serif;
@@ -700,7 +717,7 @@ impl Tokens {
             line: "rgba(0,0,0,0.08)",
             control_border: "rgba(0,0,0,0.14)",
             text: "#191919",
-            text_muted: "rgba(0,0,0,0.55)",
+            text_muted: "rgba(0,0,0,0.62)",
             brand: "#317CFF",
             brand_soft: "rgba(49,124,255,0.09)",
             warm: "#BF5B00",
