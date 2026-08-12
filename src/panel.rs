@@ -627,6 +627,8 @@ fn render_signature(shared: &Shared) -> u64 {
         providers: Vec<(&'a str, bool)>, // label, available
         events_len: usize,
         tasks: Vec<(&'a str, &'a str)>,             // id, status
+        desktop_state: Option<&'a str>,             // desktop-actielabel (start/stop)
+        share_sync: (Option<&'a str>, i64),         // status, pendingFiles (sync-harnas)
         ops: (bool, Vec<(&'a str, &'a str, bool)>), // ok, (terminal_id, status, focused)
     }
 
@@ -670,6 +672,14 @@ fn render_signature(shared: &Shared) -> u64 {
                     )
                 })
                 .collect(),
+            desktop_state: snap.desktop.get("state").and_then(|v| v.as_str()),
+            share_sync: (
+                snap.share_sync.get("status").and_then(|v| v.as_str()),
+                snap.share_sync
+                    .get("pendingFiles")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+            ),
             ops: (
                 ops.ok,
                 ops.agents
@@ -1228,22 +1238,15 @@ fn render_into(
     content.pack_start(&group, false, false, 0);
 
     // ---- Sectie: Commander — taak-queue met per-taak acties (E5-staart) ----
-    let tasks: Vec<_> = snap
-        .tasks
-        .iter()
-        .filter(|t| {
-            q.is_empty()
-                || t.get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_lowercase()
-                    .contains(&q)
-        })
-        .collect();
-    if !tasks.is_empty() {
+    if !snap.tasks.is_empty() {
         section_title(content, "Commander", "taak-queue · stop per taak");
         let group = group_box();
-        for (position, task) in tasks.iter().take(8).enumerate() {
+        // Echte queue-positie (niet de gefilterde index) bij een zoekterm.
+        let mut shown = 0usize;
+        for (position, task) in snap.tasks.iter().enumerate() {
+            if shown >= 8 {
+                break;
+            }
             let task_id = task.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let status = task
                 .get("status")
@@ -1256,6 +1259,10 @@ fn render_into(
                 .chars()
                 .take(52)
                 .collect();
+            if !q.is_empty() && !prompt.to_lowercase().contains(&q) {
+                continue;
+            }
+            shown += 1;
             let (cls, stamp) = match status {
                 "running" => ("info", "BEZIG"),
                 "queued" => ("ok", "WACHT"),
