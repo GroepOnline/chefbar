@@ -94,7 +94,7 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
             &domain_row(
                 status_dot_cls(&item.status),
                 &item.title,
-                (!item.meta.is_empty()).then(|| item.meta.as_str()),
+                (!item.meta.is_empty()).then_some(item.meta.as_str()),
                 None,
             ),
             false,
@@ -284,7 +284,7 @@ fn render_vault(content: &gtk::Box, snap: &Snapshot, q: &str) {
             &domain_row(
                 status_dot_cls(&acc.status),
                 &acc.title,
-                (!acc.provider.is_empty()).then(|| acc.provider.as_str()),
+                (!acc.provider.is_empty()).then_some(acc.provider.as_str()),
                 Some((&acc.status, status_dot_cls(&acc.status))),
             ),
             false,
@@ -431,7 +431,7 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
             &domain_row(
                 status_dot_cls(&deal.status),
                 &deal.title,
-                (!meta.is_empty()).then(|| meta.as_str()),
+                (!meta.is_empty()).then_some(meta.as_str()),
                 Some((&deal.status, status_dot_cls(&deal.status))),
             ),
             false,
@@ -605,7 +605,7 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
             &domain_row(
                 status_dot_cls(&task.status),
                 &task.title,
-                (!task.meta.is_empty()).then(|| task.meta.as_str()),
+                (!task.meta.is_empty()).then_some(task.meta.as_str()),
                 Some((&task.status, status_dot_cls(&task.status))),
             ),
             false,
@@ -660,7 +660,7 @@ fn render_linear(
         let inner = domain_row(
             status_dot_cls(&issue.status),
             &issue.title,
-            (!meta.is_empty()).then(|| meta.as_str()),
+            (!meta.is_empty()).then_some(meta.as_str()),
             Some((&issue.status, status_dot_cls(&issue.status))),
         );
         row_btn.add(&inner);
@@ -712,7 +712,7 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
             &domain_row(
                 status_dot_cls(&secret.status),
                 &secret.title,
-                (!secret.meta.is_empty()).then(|| secret.meta.as_str()),
+                (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
                 Some((&secret.status, status_dot_cls(&secret.status))),
             ),
             false,

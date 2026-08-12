@@ -295,6 +295,13 @@ impl Panel {
                 let drawer_clone = drawer.clone();
                 let footer_label_clone = footer_label.clone();
                 let header_title_clone = header_title.clone();
+                let render_ctx = RenderCtx {
+                    executor: &executor_clone,
+                    window: &window_clone,
+                    drawer: &drawer_clone,
+                    footer_label: &footer_label_clone,
+                    header_title: &header_title_clone,
+                };
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
@@ -304,13 +311,9 @@ impl Panel {
                     render_into(
                         &content_clone,
                         &shared_clone,
-                        &executor_clone,
-                        &window_clone,
                         &q,
                         &harness_state_clone,
-                        &drawer_clone,
-                        &footer_label_clone,
-                        &header_title_clone,
+                        &render_ctx,
                     );
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
@@ -489,21 +492,18 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let render_ctx = RenderCtx {
+            executor: &executor,
+            window: &window,
+            drawer: &drawer,
+            footer_label: &footer_label,
+            header_title: &header_title,
+        };
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                    &drawer,
-                    &footer_label,
-                    &header_title,
-                );
+                render_into(&content, &shared, &query, &harness_state, &render_ctx);
             }
         });
     }
@@ -525,16 +525,19 @@ impl Panel {
             }
         }
         self.sync_sidebar_nav();
+        let render_ctx = RenderCtx {
+            executor: &self.executor,
+            window: &self.window,
+            drawer: &self.drawer,
+            footer_label: &self.footer_label,
+            header_title: &self.header_title,
+        };
         render_into(
             &self.content,
             &self.shared,
-            &self.executor,
-            &self.window,
             query,
             &self.harness_state,
-            &self.drawer,
-            &self.footer_label,
-            &self.header_title,
+            &render_ctx,
         );
     }
 
@@ -581,20 +584,17 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let render_ctx = RenderCtx {
+            executor: &executor,
+            window: &window,
+            drawer: &drawer,
+            footer_label: &footer_label,
+            header_title: &header_title,
+        };
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                    &drawer,
-                    &footer_label,
-                    &header_title,
-                );
+                render_into(&content, &shared, &query, &harness_state, &render_ctx);
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
@@ -661,17 +661,27 @@ fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -
 // Render: Signaal v2 grouped sections
 // ---------------------------------------------------------------------------
 
+/// Gebundelde UI-referenties voor render_into (clippy: max 7 args).
+struct RenderCtx<'a> {
+    executor: &'a Executor,
+    window: &'a gtk::Window,
+    drawer: &'a Rc<Drawer>,
+    footer_label: &'a gtk::Label,
+    header_title: &'a gtk::Label,
+}
+
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
-    executor: &Executor,
-    window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
-    drawer: &Rc<Drawer>,
-    footer_label: &gtk::Label,
-    header_title: &gtk::Label,
+    ctx: &RenderCtx,
 ) {
+    let executor = ctx.executor;
+    let window = ctx.window;
+    let drawer = ctx.drawer;
+    let footer_label = ctx.footer_label;
+    let header_title = ctx.header_title;
     for child in content.children() {
         content.remove(&child);
     }

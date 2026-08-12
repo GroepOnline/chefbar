@@ -22,7 +22,7 @@ pub const THEME_LIGHT: &str = "light";
 // live toe zonder herstart. GTK-objecten zijn niet Send/Sync, dus
 // thread-local (alleen de UI-thread raakt hem aan).
 thread_local! {
-    static PROVIDER: RefCell<Option<gtk::CssProvider>> = RefCell::new(None);
+    static PROVIDER: RefCell<Option<gtk::CssProvider>> = const { RefCell::new(None) };
 }
 static ACTIVE: OnceLock<Mutex<String>> = OnceLock::new();
 
