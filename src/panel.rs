@@ -1,13 +1,13 @@
-//! ChefBar-hoofdvenster: één echte app (Devin-stijl), geen floating bar.
+//! ChefBar-hoofdvenster: één echte app (Signaal v2), geen floating bar.
 //!
 //! Undecorated window met custom header (drag + minimize + sluiten), zoek-
 //! input die alle secties live filtert, gegroepeerde cards per sectie
-//! (Devin-sgroup met hairlines), en footer. Inhoud wordt elke poll-cyclus
+//! (zones met hairlines), en footer. Inhoud wordt elke poll-cyclus
 //! opnieuw gevuld uit de gedeelde snapshot: geen eigen poll-loops, geen
 //! netwerk op de UI-thread.
 //!
 //! Room-model: meerdere harnassen tegelijk zichtbaar (fleet / commerce / eval).
-//! Het panel toont harnas-tabs; acties worden gefilterd op het geselecteerde
+//! Navigatie loopt via de sidebar; acties worden gefilterd op het geselecteerde
 //! harnas via prefix-match op keywords.
 
 use crate::actions::{build_actions, Executor};
@@ -264,7 +264,7 @@ impl Panel {
         }
         let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
-        // Wire sidebar nav → harness_state + content re-render + active-class sync
+        // Wire sidebar nav → harness_state + content re-render + sync_nav_buttons
         {
             for (id, btn) in nav_buttons_rc.iter() {
                 let id = id.clone();
@@ -281,15 +281,10 @@ impl Panel {
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
-                    for (other_id, other_btn) in nav_rc.iter() {
-                        if *other_id == id_for_class {
-                            other_btn.style_context().add_class("active");
-                        } else {
-                            other_btn.style_context().remove_class("active");
-                        }
-                    }
                     let q = search_clone.text().to_string();
                     render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone);
+                    // Eén pad met de poll-timer: labels + active-class + tooltips.
+                    sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                 });
             }
         }
@@ -473,7 +468,7 @@ fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -
 }
 
 // ---------------------------------------------------------------------------
-// Render: Devin-grouped sections
+// Render: Signaal v2 grouped sections
 // ---------------------------------------------------------------------------
 
 fn render_into(
@@ -1080,8 +1075,8 @@ fn render_into(
 }
 
 /// Sidebar-nav syncen op live state: queue-depth in het label ("Fleet · 3"),
-/// status als tooltip, actieve room gemarkeerd. Gedeeld door Panel::render
-/// en de periodieke refresh-timer.
+/// status als tooltip, actieve room gemarkeerd. Gedeeld door Panel::render,
+/// de periodieke refresh-timer en nav-click handlers.
 fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: &str) {
     let (snap, ops) = {
         let snap = shared.snapshot.read().unwrap().clone();
