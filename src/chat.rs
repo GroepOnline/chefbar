@@ -98,20 +98,24 @@ fn is_jcode(agent: &HerdrAgent) -> bool {
 
 fn looks_like_control(agent: &HerdrAgent) -> bool {
     let hay = format!(
-        "{} {} {} {}",
-        agent.name, agent.workspace, agent.pane_id, agent.cwd
+        "{} {} {} {} {}",
+        agent.name, agent.workspace, agent.pane_id, agent.cwd, agent.alias
     )
     .to_lowercase();
     CONTROL_NAME_HINTS.iter().any(|hint| hay.contains(hint))
 }
 
+/// Alleen de WORKENDE visual-lane is gereserveerd: een checkout zonder
+/// "worktree" in de cwd én status working. Een idle Pi op die cwd blijft
+/// gewoon kiesbaar als control-chat target.
 fn is_reserved_product_lane(agent: &HerdrAgent) -> bool {
     let cwd = agent.cwd.to_lowercase();
     let title = agent.workspace.to_lowercase();
+    let working = agent.status.eq_ignore_ascii_case("working");
     if cwd.contains("/cheffactory/chefbar") && !cwd.contains("worktree") {
-        return true;
+        return working;
     }
-    if title.contains("chefbar") && agent.status == "working" {
+    if title.contains("chefbar") && working {
         return true;
     }
     false
@@ -144,7 +148,12 @@ fn auto_score(agent: &HerdrAgent) -> (u8, u8, u8) {
         "blocked" => 1,
         _ => 2,
     };
-    let hint = if looks_like_control(agent) { 0 } else { 1 };
+    let hint =
+        if looks_like_control(agent) || agent.alias.trim().eq_ignore_ascii_case("chefapp-herdr") {
+            0
+        } else {
+            1
+        };
     (kind_rank, idle, hint)
 }
 
@@ -170,10 +179,13 @@ pub fn list_targets(ops: &OpsSnapshot) -> Vec<ChatTarget> {
 }
 
 /// Kies een Herdr-doel. Pinned > env > beste live Pi (dan Hermes).
-/// Nooit jcode, nooit stiekem de visual ChefApp-lane, nooit auto-Cursor.
+/// Nooit jcode, nooit stiekem de werkende visual ChefApp-lane, nooit auto-Cursor.
 pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String> {
     if let Some(pin) = pinned.map(str::trim).filter(|s| !s.is_empty()) {
-        if ops.agents.iter().any(|a| agent_id(a) == pin && is_picker_eligible(a))
+        if ops
+            .agents
+            .iter()
+            .any(|a| agent_id(a) == pin && is_picker_eligible(a))
             || env_target().as_deref() == Some(pin)
         {
             return Some(pin.to_string());
@@ -377,6 +389,13 @@ mod tests {
         }
     }
 
+    fn agent_met_alias(alias: &str, pane: &str, cwd: &str) -> HerdrAgent {
+        HerdrAgent {
+            alias: alias.into(),
+            ..agent("pi", pane, "idle", cwd)
+        }
+    }
+
     #[test]
     fn resolve_prefers_control_hint_over_visual_lane() {
         std::env::remove_var("CHEFBAR_CONTROL_AGENT");
@@ -398,9 +417,21 @@ mod tests {
     }
 
     #[test]
-    fn resolve_skips_visual_chefbar_checkout() {
+    fn werkende_visual_lane_gereserveerd_idle_pi_blijft_kiesbaar() {
         std::env::remove_var("CHEFBAR_CONTROL_AGENT");
         std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        // working visual-lane: niet kiesbaar
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![agent(
+                "pi",
+                "w2M:p1",
+                "working",
+                "/home/joep/ChefFactory/chefbar",
+            )],
+        };
+        assert_eq!(resolve_target(&ops, None), None);
+        // zelfde cwd, maar idle: wél kiesbaar als control-target
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![agent(
@@ -410,7 +441,25 @@ mod tests {
                 "/home/joep/ChefFactory/chefbar",
             )],
         };
-        assert_eq!(resolve_target(&ops, None), None);
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2M:p1"));
+    }
+
+    #[test]
+    fn alias_chefapp_herdr_wint_van_andere_idle_pi() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent("pi", "w2S:p2", "idle", "/tmp/ops-lane"),
+                agent_met_alias(
+                    "chefapp-herdr",
+                    "w2R:p2",
+                    "/home/joep/.herdr/worktrees/chefbar/worktree-pi-bind",
+                ),
+            ],
+        };
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2R:p2"));
     }
 
     #[test]

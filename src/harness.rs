@@ -811,6 +811,7 @@ mod tests {
         ops.agents.push(HerdrAgent {
             terminal_id: "t1".into(),
             name: "cursor".into(),
+            alias: "".into(),
             status: "working".into(),
             workspace: "commerce".into(),
             workspace_id: "w1".into(),

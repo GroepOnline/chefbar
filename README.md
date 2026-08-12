@@ -162,6 +162,21 @@ IPC-socket:  $XDG_RUNTIME_DIR/chefbar.sock (0600)
 
 Logs: `journalctl --user -u chefbar.service -f`
 
+## Control-chat
+
+De control-chat (devops/fleet-vragen) stuurt naar een live Herdr-Pi. Default
+is de beste idle Pi; `jcode` is geheugen (context in de prompt, nooit een
+chat-doel). De werkende visual ChefApp-lane is gereserveerd en wordt
+overgeslagen; een idle Pi op die checkout blijft gewoon kiesbaar.
+
+Handmatige target (pane of agent-id):
+
+```bash
+CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
+# of in de service-unit: Environment=CHEFBAR_CONTROL_AGENT=w2R:p2
+# alternatief: CHEFBAR_CONTROL_PANE (zelfde rol)
+```
+
 ## Development
 
 ChefBar bouwt niet lokaal op de laptop. CI is notify-first en draait op de self-hosted runner. Zie `.github/workflows/ci.yml`.
