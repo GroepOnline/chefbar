@@ -505,14 +505,34 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     ));
 
     // ---- CRM harnas (D3) --------------------------------------------------
-    // TODO Lane A will replace with snapshot.crm_deals len
+    let crm_queue = snapshot.crm_deals.len();
+    let crm_status = if snapshot
+        .crm_deals
+        .iter()
+        .any(|deal| deal.status.eq_ignore_ascii_case("blocked"))
+    {
+        HarnessStatus::Blocked
+    } else if snapshot.crm_deals.iter().any(|deal| {
+        matches!(
+            deal.status.to_ascii_lowercase().as_str(),
+            "running" | "working" | "in_progress"
+        )
+    }) {
+        HarnessStatus::Running
+    } else {
+        HarnessStatus::Idle
+    };
     out.push(Harness::new(
         HarnessKind::Crm.id(),
-        "CRM",
+        if crm_queue > 0 {
+            format!("CRM · {crm_queue}")
+        } else {
+            "CRM".to_string()
+        },
         HarnessKind::Crm,
-        HarnessStatus::Idle,
-        0,
-        None,
+        crm_status,
+        crm_queue,
+        snapshot.crm_deals.first().map(|deal| deal.title.clone()),
         None,
     ));
 
@@ -597,52 +617,109 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         None,
     ));
 
-    // ---- Linear harnas (D7) — placeholder tot Lane A ----------------------
-    // TODO Lane A will replace with snapshot.linear_issues len
+    // ---- Linear harnas (D7) -----------------------------------------------
+    let linear_queue = snapshot.linear_issues.len();
+    let linear_status = if snapshot
+        .linear_issues
+        .iter()
+        .any(|issue| issue.status.eq_ignore_ascii_case("blocked"))
+    {
+        HarnessStatus::Blocked
+    } else if snapshot.linear_issues.iter().any(|issue| {
+        matches!(
+            issue.status.to_ascii_lowercase().as_str(),
+            "running" | "working" | "in_progress"
+        )
+    }) {
+        HarnessStatus::Running
+    } else {
+        HarnessStatus::Idle
+    };
     out.push(Harness::new(
         HarnessKind::Linear.id(),
         "Linear",
         HarnessKind::Linear,
-        HarnessStatus::Idle,
-        0,
-        None,
+        linear_status,
+        linear_queue,
+        snapshot
+            .linear_issues
+            .first()
+            .map(|issue| issue.title.clone()),
         None,
     ));
 
-    // ---- Containers harnas (D4) — placeholder -----------------------------
-    // TODO Lane A will replace with snapshot.containers drift len
+    // ---- Containers harnas (D4) -------------------------------------------
+    let container_queue = snapshot.containers.drift.len();
+    let container_status = if container_queue > 0 {
+        HarnessStatus::Blocked
+    } else {
+        HarnessStatus::Idle
+    };
     out.push(Harness::new(
         HarnessKind::Containers.id(),
         "Containers",
         HarnessKind::Containers,
-        HarnessStatus::Idle,
-        0,
-        None,
+        container_status,
+        container_queue,
+        snapshot.containers.drift.first().cloned(),
         None,
     ));
 
-    // ---- Secrets harnas (D5) — placeholder --------------------------------
-    // TODO Lane A will replace with snapshot.secrets_meta len
+    // ---- Secrets harnas (D5) ----------------------------------------------
+    let secrets_queue = snapshot.secrets_meta.len();
+    let secrets_status = if snapshot
+        .secrets_meta
+        .iter()
+        .any(|secret| secret.status.eq_ignore_ascii_case("blocked"))
+    {
+        HarnessStatus::Blocked
+    } else if snapshot.secrets_meta.iter().any(|secret| {
+        matches!(
+            secret.status.to_ascii_lowercase().as_str(),
+            "running" | "working" | "in_progress"
+        )
+    }) {
+        HarnessStatus::Running
+    } else {
+        HarnessStatus::Idle
+    };
     out.push(Harness::new(
         HarnessKind::Secrets.id(),
         "Secrets",
         HarnessKind::Secrets,
-        HarnessStatus::Idle,
-        0,
-        None,
+        secrets_status,
+        secrets_queue,
+        snapshot
+            .secrets_meta
+            .first()
+            .map(|secret| secret.title.clone()),
         None,
     ));
 
-    // ---- Kater harnas (D8) — placeholder ----------------------------------
-    // TODO Lane A will replace with snapshot.kater_status
+    // ---- Kater harnas (D8) ------------------------------------------------
+    let kater_status = if !snapshot.kater_status.online && snapshot.kater_status.status.is_empty() {
+        HarnessStatus::Idle
+    } else if !snapshot.kater_status.online {
+        HarnessStatus::Blocked
+    } else if snapshot.kater_status.status.is_empty()
+        || snapshot.kater_status.status.eq_ignore_ascii_case("ok")
+    {
+        HarnessStatus::Running
+    } else {
+        HarnessStatus::Blocked
+    };
     out.push(Harness::new(
         HarnessKind::Kater.id(),
         "Kater",
         HarnessKind::Kater,
-        HarnessStatus::Idle,
-        0,
-        None,
-        None,
+        kater_status,
+        if snapshot.kater_status.online { 1 } else { 0 },
+        if snapshot.kater_status.meta.is_empty() {
+            None
+        } else {
+            Some(snapshot.kater_status.meta.clone())
+        },
+        snapshot.kater_status.profile.clone(),
     ));
 
     // ---- Health harnas (D8) — mirrors eval but with own id ----------------
@@ -882,5 +959,73 @@ mod tests {
         assert_eq!(h[1].id, "commerce");
         assert_eq!(h[2].id, "eval");
         assert_eq!(h[3].id, "sync");
+    }
+
+    #[test]
+    fn typed_domeinen_vullen_queue_depths() {
+        let mut snap = empty_snapshot();
+        snap.crm_deals.push(crate::models::CrmDeal {
+            id: "deal-1".into(),
+            title: "Demo".into(),
+            meta: "sales".into(),
+            status: "open".into(),
+            amount: None,
+        });
+        snap.linear_issues.push(crate::models::LinearIssue {
+            id: "LIN-1".into(),
+            title: "Fix".into(),
+            meta: "todo".into(),
+            status: "open".into(),
+            url: None,
+            project: None,
+        });
+        snap.containers.drift.push("web image drift".into());
+        snap.secrets_meta.push(crate::models::SecretMeta {
+            id: "secret-1".into(),
+            title: "Deploy token".into(),
+            meta: "meta".into(),
+            status: "ready".into(),
+        });
+        let harnesses = build_harnesses(&snap, &OpsSnapshot::default());
+        assert_eq!(
+            harnesses
+                .iter()
+                .find(|h| h.id == "crm")
+                .unwrap()
+                .queue_depth,
+            1
+        );
+        assert_eq!(
+            harnesses
+                .iter()
+                .find(|h| h.id == "linear")
+                .unwrap()
+                .queue_depth,
+            1
+        );
+        assert_eq!(
+            harnesses
+                .iter()
+                .find(|h| h.id == "containers")
+                .unwrap()
+                .queue_depth,
+            1
+        );
+        assert_eq!(
+            harnesses
+                .iter()
+                .find(|h| h.id == "secrets")
+                .unwrap()
+                .queue_depth,
+            1
+        );
+        assert_eq!(
+            harnesses
+                .iter()
+                .find(|h| h.id == "kater")
+                .unwrap()
+                .queue_depth,
+            0
+        );
     }
 }
