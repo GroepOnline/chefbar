@@ -34,8 +34,10 @@ pub fn quiet_window_from(raw: &str) -> Option<QuietWindow> {
     Some(QuietWindow {
         from_h: from.0,
         from_m: from.1,
-        to_h: to.0,
-        to_m: to.1,
+        // "24:00" = einde van de dag → clamp naar 00:00; de from==to-guard
+        // in in_quiet_hours_at houdt "hele dag" dan veilig uit.
+        to_h: if to.0 == 24 && to.1 == 0 { 0 } else { to.0 },
+        to_m: if to.0 == 24 && to.1 == 0 { 0 } else { to.1 },
     })
 }
 
@@ -46,7 +48,10 @@ fn parse_hhmm(text: &str) -> Option<(u32, u32)> {
     };
     let h: u32 = h.trim().parse().ok()?;
     let m: u32 = m.trim().parse().ok()?;
-    if h > 23 || m > 59 {
+    if h > 24 || m > 59 {
+        return None;
+    }
+    if h == 24 && m != 0 {
         return None;
     }
     Some((h, m))
@@ -70,22 +75,28 @@ pub fn in_quiet_hours_at(window: &QuietWindow, hour: u32, minute: u32) -> bool {
 }
 
 /// Locale tijd als (uur, minuut) via libc — geen chrono-dep.
-pub fn local_hhmm() -> (u32, u32) {
+///
+/// None bij een lokale-tijd-fout (localtime_r NULL of SystemTime-fout): de
+/// beller moet dan nooit dempen — een klokfout mag geen toasts stilzetten.
+pub fn local_hhmm() -> Option<(u32, u32)> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as libc::time_t)
-        .unwrap_or(0);
+        .ok()?;
     // Safe: localtime_r schrijft alleen naar de door ons aangewezen tm.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        libc::localtime_r(&now, &mut tm);
+    let ok = unsafe { !libc::localtime_r(&now, &mut tm).is_null() };
+    if !ok {
+        return None;
     }
-    (tm.tm_hour as u32, tm.tm_min as u32)
+    Some((tm.tm_hour as u32, tm.tm_min as u32))
 }
 
 /// Is het nú rustige uren (als er een venster geconfigureerd is)?
 pub fn in_quiet_hours(window: &QuietWindow) -> bool {
-    let (h, m) = local_hhmm();
+    let Some((h, m)) = local_hhmm() else {
+        return false; // klokfout → nooit dempen
+    };
     in_quiet_hours_at(window, h, m)
 }
 
@@ -119,6 +130,31 @@ mod tests {
     #[test]
     fn parse_zonder_minuten() {
         assert_eq!(quiet_window_from("22-07"), Some(w(22, 0, 7, 0)));
+    }
+
+    #[test]
+    fn parse_tot_middernacht() {
+        // "22:00-24:00" = rustig tot middernacht → clamp naar 22:00-00:00.
+        assert_eq!(quiet_window_from("22:00-24:00"), Some(w(22, 0, 0, 0)));
+        let window = quiet_window_from("22:00-24:00").unwrap();
+        assert!(in_quiet_hours_at(&window, 22, 0));
+        assert!(in_quiet_hours_at(&window, 23, 59));
+        assert!(!in_quiet_hours_at(&window, 0, 30));
+        // 24:30 is geen geldig einde.
+        assert_eq!(quiet_window_from("22:00-24:30"), None);
+    }
+
+    #[test]
+    fn lokale_tijd_is_geldig_uur() {
+        // Smoke: local_hhmm geeft een echt tijdstip (0..=23) — None alleen
+        // bij een klokfout, die in_quiet_hours dan veilig als "niet rustig"
+        // behandelt.
+        if let Some((h, m)) = local_hhmm() {
+            assert!(h <= 23 && m <= 59, "ongeldige lokale tijd: {h}:{m}");
+        }
+        // Zelfs met een kapot venster mag in_quiet_hours niet pannen.
+        let window = w(22, 0, 7, 0);
+        let _ = in_quiet_hours(&window);
     }
 
     #[test]
