@@ -94,8 +94,11 @@ bij open paneel (goed), maar: herbouw kost allocaties en forceert herlayout.
   sneller op). Bouwtijd wordt gelogd in `chefbar.log` ("panel opgebouwd na
   Xms (lazy)"). Doel: start→tray <500ms, start→panel <1s.
 - **Release:** `panic = "abort"` toegevoegd naast `lto = true` + `strip =
-  true` (kleinere binary, minder unwind-code; geen gedragsverschil voor deze
-  app).
+  true` (kleinere binary, minder unwind-code). Bijzonderheid ontdekt in CI:
+  ksni paniekt zonder D-Bus session-bus (headless/Xvfb) — met abort zou die
+  paniek de hele app uitschakelen, dus de tray start alleen als er een bus is
+  (`DBUS_SESSION_BUS_ADDRESS` of `$XDG_RUNTIME_DIR/bus`) en skipt netjes met
+  een logregel anders (alle UI-paden guarden al op TRAY_HANDLE).
 - Snapshot-`raw`-trim en RSS-doelen blijven meetpunten (niet-buildend nu).
 - Doel-RSS < 80MB in rust, < 120MB bij open paneel.
 
