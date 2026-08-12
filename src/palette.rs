@@ -1,5 +1,7 @@
 //! Pure command-palette fuzzy ranking voor ChefBar.
 
+use std::collections::HashMap;
+
 /// Actiebeschrijving: data, geen closures. Executie loopt in één executor.
 #[derive(Debug, Clone)]
 pub struct Action {
@@ -21,10 +23,212 @@ impl Action {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Aliases — inline fallback (Lane B levert src/aliases.rs)
+// ---------------------------------------------------------------------------
+
+/// Inline alias-map fallback — 5 aliases.
+/// TODO(Lane B): vervang door `crate::aliases::expand_query` zodra
+/// `src/aliases.rs` op `feat/chefapp-4.0-lane-b` landt en naar `feat/chefapp-4.0`
+/// gemerged is. Poll: `git fetch origin && git log origin/feat/chefapp-4.0-lane-b --oneline`.
+mod aliases {
+    use std::collections::{HashMap, HashSet};
+
+    fn alias_map() -> HashMap<&'static str, &'static str> {
+        let mut m = HashMap::new();
+        m.insert("cfg", "config");
+        m.insert("dash", "dashboard");
+        m.insert("ops", "operations");
+        m.insert("fleet", "infra");
+        m.insert("k8s", "kubernetes");
+        m
+    }
+
+    /// Expand query tokens via alias-map (bidirectioneel).
+    /// Retourneert gededupte lowercase termen incl. origineel + alias.
+    pub fn expand_query(query: &str) -> Vec<String> {
+        let map = alias_map();
+        // reverse lookup helper
+        let mut out: Vec<String> = Vec::new();
+        for token in query.split_whitespace() {
+            let lower = token.to_lowercase();
+            if lower.is_empty() {
+                continue;
+            }
+            out.push(lower.clone());
+            if let Some(exp) = map.get(lower.as_str()) {
+                out.push(exp.to_string());
+            }
+            for (k, v) in map.iter() {
+                if *v == lower && *k != lower {
+                    out.push(k.to_string());
+                }
+            }
+        }
+        let mut seen = HashSet::new();
+        out.retain(|s| seen.insert(s.clone()));
+        out
+    }
+
+    #[cfg(test)]
+    pub fn alias_map_for_test() -> HashMap<&'static str, &'static str> {
+        alias_map()
+    }
+}
+
+pub use aliases::expand_query;
+
+// ---------------------------------------------------------------------------
+// Frecency
+// ---------------------------------------------------------------------------
+
+/// Frecency entry: (count, last_used_rfc3339).
+/// Wordt gevuld uit `frecency.rs` (Lane A) of inline HashMap — geen harde dep.
+/// `last_used` wordt getest op "binnen 24u" voor +60 boost.
+pub fn apply_frecency_boost(action: &Action, frecency: &HashMap<String, (u32, String)>) -> i32 {
+    if frecency.is_empty() {
+        return 0;
+    }
+    let haystack = format!(
+        "{} {} {} {}",
+        action.title.to_lowercase(),
+        action.meta.to_lowercase(),
+        action.section.to_lowercase(),
+        action.keywords.to_lowercase()
+    );
+    for (key, (_count, ts)) in frecency.iter() {
+        let k = key.to_lowercase();
+        if k.is_empty() {
+            continue;
+        }
+        if !haystack.contains(&k) {
+            continue;
+        }
+        if is_within_24h(ts) {
+            return 60;
+        }
+    }
+    0
+}
+
+fn is_within_24h(ts: &str) -> bool {
+    if let Some(epoch) = parse_rfc3339_to_epoch(ts) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if epoch > now {
+            // future timestamp (clock skew) — treat as recent if within 1h future
+            return epoch.saturating_sub(now) < 3600;
+        }
+        return now.saturating_sub(epoch) < 86400;
+    }
+    false
+}
+
+fn parse_rfc3339_to_epoch(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.len() < 10 {
+        return None;
+    }
+    // Accept "YYYY-MM-DDTHH:MM:SSZ", "YYYY-MM-DD HH:MM:SS", with optional millis/timezone
+    let (date_part, time_part) = if let Some(idx) = s.find('T') {
+        (&s[..idx], &s[idx + 1..])
+    } else if let Some(idx) = s.find(' ') {
+        (&s[..idx], &s[idx + 1..])
+    } else {
+        return None;
+    };
+    let date_parts: Vec<&str> = date_part.split('-').collect();
+    if date_parts.len() != 3 {
+        return None;
+    }
+    let y: i32 = date_parts[0].parse().ok()?;
+    let m: u32 = date_parts[1].parse().ok()?;
+    let d: u32 = date_parts[2].parse().ok()?;
+    // time_part may be "HH:MM:SSZ" or "HH:MM:SS.xxxZ" or "HH:MM:SS+00:00"
+    let time_clean = time_part
+        .trim_end_matches('Z')
+        .split('+')
+        .next()
+        .unwrap_or(time_part)
+        .split('.')
+        .next()
+        .unwrap_or(time_part)
+        .trim();
+    let time_parts: Vec<&str> = time_clean.split(':').collect();
+    if time_parts.len() < 2 {
+        return None;
+    }
+    let hh: u32 = time_parts[0].parse().ok()?;
+    let mm: u32 = time_parts[1].parse().ok()?;
+    let ss: u32 = if time_parts.len() >= 3 {
+        time_parts[2].parse().unwrap_or(0)
+    } else {
+        0
+    };
+    let days = days_from_civil(y, m, d)?;
+    let epoch = (days as u64) * 86400 + (hh as u64) * 3600 + (mm as u64) * 60 + (ss as u64);
+    Some(epoch)
+}
+
+fn days_from_civil(y: i32, m: u32, d: u32) -> Option<i64> {
+    if m < 1 || m > 12 || d < 1 || d > 31 {
+        return None;
+    }
+    let y = y as i64;
+    let m = m as i64;
+    let d = d as i64;
+    // Howard Hinnant civil_from_days inverse
+    let y_adj = y - if m <= 2 { 1 } else { 0 };
+    let era = (if y_adj >= 0 { y_adj } else { y_adj - 399 }) / 400;
+    let yoe = y_adj - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146097 + doe - 719468)
+}
+
+fn format_now_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, m, d, hh, mm, ss) = civil_from_epoch(secs);
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+fn civil_from_epoch(secs: u64) -> (i32, u32, u32, u32, u32, u32) {
+    let days = (secs / 86400) as i64;
+    let secs_of_day = (secs % 86400) as u32;
+    let hh = secs_of_day / 3600;
+    let mm = (secs_of_day % 3600) / 60;
+    let ss = secs_of_day % 60;
+    // days -> civil
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    let y = y + if m <= 2 { 1 } else { 0 };
+    (y as i32, m as u32, d as u32, hh, mm, ss)
+}
+
+// ---------------------------------------------------------------------------
+// Ranking core
+// ---------------------------------------------------------------------------
+
 /// Rank ordered-character matches; exact words en prefixes winnen.
+/// Query wordt eerst geëxpand via aliases zodat "cfg" ook "config" raakt.
 pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
-    let needle: String = query.split_whitespace().collect::<Vec<_>>().join(" ");
-    if needle.is_empty() {
+    let expanded = expand_query(query);
+    // needle voor contains/prefix/gappy: join expanded terms met spatie
+    // maar voor contains checken we elk geëxpande term individueel als tier-1.
+    let needle_raw: String = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    if needle_raw.trim().is_empty() && expanded.is_empty() {
         return Some(0);
     }
     let haystack = format!(
@@ -34,23 +238,57 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
         action.section.to_lowercase(),
         action.keywords.to_lowercase()
     );
-    let needle = needle.to_lowercase();
-    if haystack.contains(&needle) {
-        // Keep contains matches in their own tier: contextual boosts must
-        // never allow a prefix match to outrank them.
-        return Some(1000 + (1000 - haystack.find(&needle).unwrap_or(0) as i32).max(0));
+    // Tier 1 — contains: als haystack één van de expanded termen bevat
+    // (of de volledige needle als substring), scoor als contains.
+    let needle_lower = needle_raw.to_lowercase();
+    if !needle_lower.is_empty() && haystack.contains(&needle_lower) {
+        return Some(1000 + (1000 - haystack.find(&needle_lower).unwrap_or(0) as i32).max(0));
+    }
+    for term in expanded.iter() {
+        if haystack.contains(term) {
+            return Some(1000 + (1000 - haystack.find(term).unwrap_or(0) as i32).max(0));
+        }
+    }
+    // Voor prefix/gappy gebruiken we de geëxpande needle (join met spatie)
+    let needle_joined = if expanded.is_empty() {
+        needle_lower.clone()
+    } else {
+        expanded.join(" ")
+    };
+    if needle_joined.trim().is_empty() {
+        return Some(0);
     }
     let words: Vec<&str> = haystack.split_whitespace().collect();
-    let tokens: Vec<&str> = needle.split_whitespace().collect();
+    let tokens: Vec<&str> = needle_joined.split_whitespace().collect();
+    // Prefix: elk token moet prefix van een woord zijn — maar we staan toe dat
+    // één alias-token al voldoende is per origineel token (expanded bevat alle varianten).
+    // Voor backward compat: check of alle originele needle-tokens prefixen.
+    let orig_tokens: Vec<&str> = needle_lower.split_whitespace().collect();
+    if !orig_tokens.is_empty()
+        && orig_tokens
+            .iter()
+            .all(|token| words.iter().any(|word| word.starts_with(token)))
+    {
+        return Some(700);
+    }
+    // Ook via expanded tokens: als alle expanded tokens als prefix voorkomen, ook tier 700.
+    // We checken of voor elk origineel token ten minste één van zijn expansies prefix-matcht.
+    // Vereenvoudigd: als expanded tokens allemaal prefix-matchen, geef 700.
     if tokens
         .iter()
         .all(|token| words.iter().any(|word| word.starts_with(token)))
     {
-        return Some(700);
+        // Alleen als expanded niet veel groter is dan origineel (voorkom false positive)
+        // Maar voor 1-token queries is dit correct.
+        if expanded.len() <= orig_tokens.len() * 2 {
+            return Some(700);
+        }
     }
+    // Fallback: probeer originele needle voor prefix (hierboven al), anders gappy
+    // Gappy: ordered character match op haystack met de originele needle
     let mut position: i64 = -1;
     let mut gaps: i64 = 0;
-    for ch in needle.chars() {
+    for ch in needle_lower.chars() {
         let next = haystack
             .char_indices()
             .skip_while(|(idx, _)| *idx as i64 <= position)
@@ -66,48 +304,69 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
 }
 
 /// Context die "dichtbij" definieert: recente sessies, lopende agents, het
-/// harnas dat open staat. Ranking gebruikt dit als boost bovenop de
-/// fuzzy-score — zoeken kiest wat je net aanraakte.
+/// harnas dat open staat, frecency en pinned. Ranking gebruikt dit als boost
+/// bovenop de fuzzy-score — zoeken kiest wat je net aanraakte.
 #[derive(Debug, Clone, Default)]
 pub struct RankContext {
     /// Kleine set lowercase termen (sessie-titels, agent-namen, harnas-prefixen).
     pub boost_terms: Vec<String>,
+    /// Actieve groep (sidebar-selectie) — match op section/keywords/title geeft +150.
+    pub active_group: Option<String>,
+    /// Frecency map: sleutel (lowercase titel/keyword) -> (count, last_used_rfc3339).
+    /// Geen harde dep op `frecency.rs`; inline HashMap volstaat.
+    pub frecency: HashMap<String, (u32, String)>,
 }
 
 impl RankContext {
-    /// Boost-score voor een actie: +150 als een boost-term in de haystack
-    /// voorkomt.
+    /// Totale boost voor een actie: lopende agents (+150) + active_group (+150)
+    /// + frecency (+60) + pinned (+80, verrekend in rank_actions_with).
     fn boost(&self, action: &Action) -> i32 {
-        if self.boost_terms.is_empty() {
-            return 0;
+        let mut total = 0;
+        // lopende agents / boost_terms
+        if !self.boost_terms.is_empty() {
+            let haystack = format!(
+                "{} {} {} {}",
+                action.title.to_lowercase(),
+                action.meta.to_lowercase(),
+                action.section.to_lowercase(),
+                action.keywords.to_lowercase()
+            );
+            if self
+                .boost_terms
+                .iter()
+                .any(|term| !term.is_empty() && haystack.contains(term))
+            {
+                total += 150;
+            }
         }
-        let haystack = format!(
-            "{} {} {} {}",
-            action.title.to_lowercase(),
-            action.meta.to_lowercase(),
-            action.section.to_lowercase(),
-            action.keywords.to_lowercase()
-        );
-        if self
-            .boost_terms
-            .iter()
-            .any(|term| !term.is_empty() && haystack.contains(term))
-        {
-            150
-        } else {
-            0
+        // active_group
+        if let Some(ref group) = self.active_group {
+            let g = group.to_lowercase();
+            if !g.is_empty() {
+                let haystack = format!(
+                    "{} {} {}",
+                    action.section.to_lowercase(),
+                    action.keywords.to_lowercase(),
+                    action.title.to_lowercase()
+                );
+                if haystack.contains(&g) {
+                    total += 150;
+                }
+            }
         }
+        // frecency
+        total += apply_frecency_boost(action, &self.frecency);
+        total
     }
 }
 
-/// Tier-bewuste boost: recency mag herordenen *binnen* de contains-tier, maar
-/// prefix- en gappy-matches komen nooit boven een contains-match uit.
+/// Tier-bewuste boost: boost wordt gecapped op 99 zodat een lagere tier
+/// nooit een hogere tier kan overstijgen:
+/// contains >=1000, prefix 700, gappy <=500+99=599.
+/// Dus: gappy+99 < prefix (700) en prefix+99 < contains (1000).
 fn boosted(score: i32, boost: i32) -> i32 {
-    if score >= 700 {
-        score + boost
-    } else {
-        (score + boost).min(699)
-    }
+    let capped = boost.min(99).max(0);
+    score + capped
 }
 
 pub fn rank_actions(actions: &[Action], query: &str, limit: usize) -> Vec<Action> {
@@ -123,9 +382,8 @@ pub fn rank_actions_with(
     let mut ranked: Vec<(i32, usize, &Action)> = Vec::new();
     for (index, action) in actions.iter().enumerate() {
         if let Some(score) = fuzzy_score(query, action) {
-            // Pinned acties zweven altijd iets omhoog; context boostet wat
-            // dichtbij is. Beide tellen mee bovenop de fuzzy-score.
-            let pinned = if action.pinned { 100 } else { 0 };
+            // Pinned +80, context boosts (running + active_group + frecency)
+            let pinned = if action.pinned { 80 } else { 0 };
             let boost = ctx.map(|c| c.boost(action)).unwrap_or(0) + pinned;
             ranked.push((boosted(score, boost), index, action));
         }
@@ -202,14 +460,12 @@ mod tests {
         let ranked = rank_actions(&actions, "alpha", 2);
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].title, "Alpha");
-        // limiet snijdt ook bij breed matchen op een meer generieke query
         let ranked2 = rank_actions(&actions, "a", 2);
         assert!(ranked2.len() <= 2);
     }
 
     #[test]
     fn context_boost_tilt_recente_sessie_omhoog() {
-        // Twee gappy matches op "sync": gelijkwaardig zonder context.
         let ver = action("Ververs status", "haal status op", "ververs refresh status");
         let deel = action(
             "Deel lokale bestanden",
@@ -219,10 +475,10 @@ mod tests {
         let actions = vec![ver.clone(), deel.clone()];
         let ctx = RankContext {
             boost_terms: vec!["share".into()],
+            ..Default::default()
         };
         let ranked = rank_actions_with(&actions, "s", 10, Some(&ctx));
         assert_eq!(ranked[0].title, "Deel lokale bestanden");
-        // Zonder context blijft de oorspronkelijke volgorde winnen (stabiel).
         let plain = rank_actions(&actions, "s", 10);
         assert_eq!(plain[0].title, "Ververs status");
     }
@@ -234,6 +490,7 @@ mod tests {
         let actions = vec![boosted, exact];
         let ctx = RankContext {
             boost_terms: vec!["fleet".into()],
+            ..Default::default()
         };
         let ranked = rank_actions_with(&actions, "focus", 10, Some(&ctx));
         assert_eq!(ranked[0].title, "Focus agent");
@@ -248,6 +505,7 @@ mod tests {
         let actions = vec![prefix, contains];
         let ctx = RankContext {
             boost_terms: vec!["fleet".into()],
+            ..Default::default()
         };
         let ranked = rank_actions_with(&actions, "fl ex", 10, Some(&ctx));
         assert_eq!(ranked[0].title, "fl ex dashboard");
@@ -260,5 +518,200 @@ mod tests {
         let plain_b = action("Zzz eerste", "meta", "zzz");
         let ranked = rank_actions(&[plain_b, pinned_a], "zzz", 10);
         assert_eq!(ranked[0].title, "Zzz laatste");
+    }
+
+    // ---- Nieuwe Lane D tests (tier-invariant, alias, frecency, determinisme) ----
+
+    #[test]
+    fn tier_invariant_contains_nooit_onder_prefix_met_max_boost() {
+        // contains vs prefix: zelfs met alle boosts op prefix mag contains nooit verliezen.
+        let contains = action("Open dashboard overzicht", "status", "dashboard open");
+        let mut prefix = action("dash extra", "status", "dash extra");
+        // prefix match op "dash" -> 700, contains op "dash" via substring -> >=1000
+        // geef prefix alle boosts
+        prefix.pinned = true;
+        let mut frecency = HashMap::new();
+        frecency.insert("dash".into(), (5, format_now_rfc3339()));
+        let ctx = RankContext {
+            boost_terms: vec!["dash".into()],
+            active_group: Some("dash".into()),
+            frecency,
+        };
+        // contains krijgt geen boost
+        let ctx_empty = RankContext::default();
+        // raw scores
+        let score_contains = fuzzy_score("dash", &contains).unwrap();
+        let score_prefix = fuzzy_score("dash", &prefix).unwrap();
+        assert!(
+            score_contains >= 1000,
+            "contains tier >=1000 got {score_contains}"
+        );
+        assert_eq!(score_prefix, 700);
+        // boosted: prefix krijgt max boost 150+150+60+80=440 capped 99 -> 799, contains 1000+ -> >=1000
+        let boosted_contains = boosted(
+            score_contains,
+            ctx_empty.boost(&contains) + if contains.pinned { 80 } else { 0 },
+        );
+        let boosted_prefix = boosted(score_prefix, ctx.boost(&prefix) + 80);
+        assert!(
+            boosted_contains > boosted_prefix,
+            "tier invariant broken: contains {boosted_contains} vs prefix {boosted_prefix}"
+        );
+        // ook via rank
+        let actions = vec![prefix, contains.clone()];
+        let ranked = rank_actions_with(&actions, "dash", 10, Some(&ctx));
+        // contains moet winnen, ook al heeft prefix alle boosts
+        assert_eq!(ranked[0].title, "Open dashboard overzicht");
+    }
+
+    #[test]
+    fn tier_invariant_prefix_nooit_onder_gappy_met_boost() {
+        // prefix 700 vs gappy ~500: gappy met max boost mag nooit boven prefix komen
+        let prefix = action("Stuur prompt", "herdr", "stuur prompt");
+        let gappy = action("Systeem status", "overzicht", "sys");
+        // "stuur" is prefix voor prefix-action, gappy voor gappy-action
+        let score_prefix = fuzzy_score("stuur", &prefix).unwrap();
+        let score_gappy = fuzzy_score("stuur", &gappy).unwrap();
+        assert_eq!(score_prefix, 700);
+        assert!(score_gappy < 700 && score_gappy >= 1);
+        let mut frecency = HashMap::new();
+        frecency.insert("sys".into(), (3, format_now_rfc3339()));
+        let ctx_gappy = RankContext {
+            boost_terms: vec!["sys".into()],
+            active_group: Some("sys".into()),
+            frecency,
+        };
+        let mut gappy_pinned = gappy.clone();
+        gappy_pinned.pinned = true;
+        let boosted_prefix = boosted(score_prefix, 0);
+        let boosted_gappy = boosted(score_gappy, ctx_gappy.boost(&gappy_pinned) + 80);
+        assert!(
+            boosted_prefix > boosted_gappy,
+            "prefix {boosted_prefix} moet boven gappy {boosted_gappy} blijven"
+        );
+    }
+
+    #[test]
+    fn alias_expansion_cfg_raakt_config() {
+        // query "cfg" moet via alias "config" matchen op een config-action
+        let cfg_action = action("Open configuratie", "instellingen", "config configuratie");
+        let other = action("Open dashboard", "overzicht", "dashboard open");
+        // zonder alias zou "cfg" alleen gappy matchen op config (s c h r i...), met alias wordt het contains via "config"
+        let score_cfg = fuzzy_score("cfg", &cfg_action).unwrap();
+        let score_other = fuzzy_score("cfg", &other).unwrap_or(0);
+        assert!(
+            score_cfg > score_other,
+            "alias expansion: cfg score {score_cfg} moet > other {score_other}"
+        );
+        assert!(
+            score_cfg >= 1000,
+            "cfg via alias config moet contains-tier halen, kreeg {score_cfg}"
+        );
+        // ook via rank
+        let actions = vec![other, cfg_action];
+        let ranked = rank_actions(&actions, "cfg", 10);
+        assert_eq!(ranked[0].title, "Open configuratie");
+        // reverse: "config" moet ook "cfg" alias raken als iemand "config" zoekt maar actie "cfg" keyword heeft?
+        let cfg_keyword_action = action("cfg shortcut", "meta", "cfg");
+        let score_rev = fuzzy_score("config", &cfg_keyword_action).unwrap();
+        assert!(
+            score_rev >= 1000,
+            "reverse alias: config -> cfg kreeg {score_rev}"
+        );
+    }
+
+    #[test]
+    fn frecency_boost_recent_geeft_plus60_oud_geeft_nul() {
+        let action_a = action("Fleet infra overzicht", "infra", "fleet infra");
+        // recent frecency
+        let mut recent_map = HashMap::new();
+        recent_map.insert("fleet".into(), (3, format_now_rfc3339()));
+        let boost_recent = apply_frecency_boost(&action_a, &recent_map);
+        assert_eq!(boost_recent, 60);
+        // oud frecency (>24u) — 2020
+        let mut old_map = HashMap::new();
+        old_map.insert("fleet".into(), (3, "2020-01-01T00:00:00Z".into()));
+        let boost_old = apply_frecency_boost(&action_a, &old_map);
+        assert_eq!(boost_old, 0);
+        // geen match
+        let mut nomatch = HashMap::new();
+        nomatch.insert("unknown".into(), (3, format_now_rfc3339()));
+        assert_eq!(apply_frecency_boost(&action_a, &nomatch), 0);
+        // ranking: met recent frecency wint fleet boven andere gappy
+        let other = action("Ververs status", "haal op", "ververs");
+        let actions = vec![other.clone(), action_a.clone()];
+        let ctx = RankContext {
+            frecency: recent_map,
+            ..Default::default()
+        };
+        let ranked = rank_actions_with(&actions, "f", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Fleet infra overzicht");
+    }
+
+    #[test]
+    fn active_group_boost_tilt_binnen_tier() {
+        let a = action("Inbox overzicht", "postvak", "inbox postvak");
+        let mut b = action("Fleet overzicht", "infra", "fleet infra");
+        b.section = "Fleet".into();
+        let actions = vec![a.clone(), b.clone()];
+        // query "overzicht" geeft beide contains-tier (gelijke base)
+        let score_a = fuzzy_score("overzicht", &a).unwrap();
+        let score_b = fuzzy_score("overzicht", &b).unwrap();
+        assert!(score_a >= 1000 && score_b >= 1000);
+        // zonder group: stabiele volgorde wint (a eerst)
+        let plain = rank_actions(&actions, "overzicht", 10);
+        assert_eq!(plain[0].title, "Inbox overzicht");
+        // met active_group Fleet: b krijgt +150 (capped 99) en wint binnen tier
+        let ctx = RankContext {
+            active_group: Some("Fleet".into()),
+            ..Default::default()
+        };
+        let ranked = rank_actions_with(&actions, "overzicht", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Fleet overzicht");
+    }
+
+    #[test]
+    fn determinisme_rank_is_stabiel() {
+        let actions = vec![
+            action("Alpha", "one", "alpha"),
+            action("Alfa copy", "one", "alpha"),
+            action("Beta", "two", "beta"),
+        ];
+        let ranked1 = rank_actions(&actions, "alpha", 10);
+        let ranked2 = rank_actions(&actions, "alpha", 10);
+        assert_eq!(
+            ranked1.iter().map(|a| &a.title).collect::<Vec<_>>(),
+            ranked2.iter().map(|a| &a.title).collect::<Vec<_>>()
+        );
+        // met context ook deterministisch
+        let ctx = RankContext {
+            boost_terms: vec!["alpha".into()],
+            active_group: Some("Acties".into()),
+            frecency: {
+                let mut m = HashMap::new();
+                m.insert("alpha".into(), (1, format_now_rfc3339()));
+                m
+            },
+        };
+        let r1 = rank_actions_with(&actions, "alpha", 10, Some(&ctx));
+        let r2 = rank_actions_with(&actions, "alpha", 10, Some(&ctx));
+        assert_eq!(
+            r1.iter().map(|a| &a.title).collect::<Vec<_>>(),
+            r2.iter().map(|a| &a.title).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn frecency_boost_via_rankcontext_wordt_meegenomen() {
+        let act = action("Dashboard openen", "overzicht", "dashboard");
+        let mut map = HashMap::new();
+        map.insert("dashboard".into(), (2, format_now_rfc3339()));
+        let ctx = RankContext {
+            frecency: map,
+            ..Default::default()
+        };
+        let actions = vec![act.clone(), action("Andere actie", "meta", "andere")];
+        let ranked = rank_actions_with(&actions, "dash", 10, Some(&ctx));
+        assert_eq!(ranked[0].title, "Dashboard openen");
     }
 }
