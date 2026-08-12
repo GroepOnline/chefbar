@@ -485,6 +485,12 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-chat-composer {{
   padding-top: 4px;
 }}
+.chefbar-chat-combo {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  min-height: 28px;
+  border-radius: 6px;
+}}
 .chefbar-chat-entry, .chefbar-chat-entry entry {{
   background-color: {surface};
   border: 1px solid {control_border};

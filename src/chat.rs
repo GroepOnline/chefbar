@@ -1,14 +1,17 @@
 //! Control-chat: directe operator-praat voor devops en overzicht.
 //!
-//! Geen ACP, geen tweede poll-actor. Versturen loopt via `herdr agent prompt`;
-//! het antwoord komt uit `herdr agent read`. De UI houdt een eigen transcript
-//! bij op `Shared.chat`. Leeg target → system-regel, geen error-spam.
+//! Besluit 2026-08-12: **Pi is de default-harnas**. jcode is geheugen
+//! (context in de prompt), nooit een chat-doel. Andere live Herdr-agents
+//! (hermes/grok/claude, en cursor alleen met de hand) zijn kiesbaar; de app
+//! start geen nieuwe kinds. Geen ACP, geen tweede poll-actor.
 
-use crate::models::{OpsSnapshot, Snapshot};
+use crate::models::{HerdrAgent, OpsSnapshot, Snapshot};
 use crate::ops_cli;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CONTROL_NAME_HINTS: &[&str] = &["control", "devops", "sysadmin", "fleet-ops"];
+/// Auto-pick order. Cursor zit er bewust niet in — dat is vaak de dirigent.
+const AUTO_KINDS: &[&str] = &["pi", "hermes", "grok", "claude"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRole {
@@ -28,15 +31,28 @@ pub struct ChatMessage {
 pub struct ChatLog {
     pub messages: Vec<ChatMessage>,
     pub target: Option<String>,
+    pub kind: Option<String>,
     pub busy: bool,
+    /// Handmatig vastgezet via de harnas-kiezer; auto-resolve blijft daarna weg.
+    pub pinned: bool,
 }
 
 impl ChatLog {
     pub fn target_label(&self) -> String {
-        self.target
-            .clone()
-            .unwrap_or_else(|| "geen control-agent".into())
+        match (&self.kind, &self.target) {
+            (Some(kind), Some(id)) => format!("{kind} · {id}"),
+            (None, Some(id)) => id.clone(),
+            _ => "geen Pi".into(),
+        }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatTarget {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub label: String,
 }
 
 fn now_unix() -> i64 {
@@ -58,7 +74,29 @@ fn env_target() -> Option<String> {
     None
 }
 
-fn looks_like_control(agent: &crate::models::HerdrAgent) -> bool {
+fn agent_id(agent: &HerdrAgent) -> String {
+    if !agent.pane_id.is_empty() {
+        agent.pane_id.clone()
+    } else {
+        agent.terminal_id.clone()
+    }
+}
+
+fn kind_of(agent: &HerdrAgent) -> String {
+    let raw = agent.name.trim().to_lowercase();
+    if raw.is_empty() {
+        "agent".into()
+    } else {
+        raw
+    }
+}
+
+fn is_jcode(agent: &HerdrAgent) -> bool {
+    let hay = format!("{} {} {}", agent.name, agent.workspace, agent.cwd).to_lowercase();
+    hay.contains("jcode")
+}
+
+fn looks_like_control(agent: &HerdrAgent) -> bool {
     let hay = format!(
         "{} {} {} {}",
         agent.name, agent.workspace, agent.pane_id, agent.cwd
@@ -67,7 +105,7 @@ fn looks_like_control(agent: &crate::models::HerdrAgent) -> bool {
     CONTROL_NAME_HINTS.iter().any(|hint| hay.contains(hint))
 }
 
-fn is_reserved_product_lane(agent: &crate::models::HerdrAgent) -> bool {
+fn is_reserved_product_lane(agent: &HerdrAgent) -> bool {
     let cwd = agent.cwd.to_lowercase();
     let title = agent.workspace.to_lowercase();
     if cwd.contains("/cheffactory/chefbar") && !cwd.contains("worktree") {
@@ -79,36 +117,114 @@ fn is_reserved_product_lane(agent: &crate::models::HerdrAgent) -> bool {
     false
 }
 
-/// Kies een Herdr-doel. Env wint. Anders een pane/naam met control-hint.
-/// Nooit stiekem de visual ChefApp-lane.
-pub fn resolve_target(ops: &OpsSnapshot) -> Option<String> {
-    if let Some(env) = env_target() {
-        return Some(env);
+fn is_auto_kind(kind: &str) -> bool {
+    AUTO_KINDS.contains(&kind)
+}
+
+/// Picker: Pi/Hermes/Grok/Claude, plus Cursor als die niet de visual-lane is.
+/// jcode nooit.
+pub fn is_picker_eligible(agent: &HerdrAgent) -> bool {
+    if is_jcode(agent) || is_reserved_product_lane(agent) {
+        return false;
     }
-    let mut hinted: Vec<&crate::models::HerdrAgent> = ops
-        .agents
-        .iter()
-        .filter(|a| looks_like_control(a) && !is_reserved_product_lane(a))
-        .collect();
-    hinted.sort_by_key(|a| match a.status.as_str() {
+    let kind = kind_of(agent);
+    is_auto_kind(&kind) || kind == "cursor"
+}
+
+fn auto_score(agent: &HerdrAgent) -> (u8, u8, u8) {
+    let kind = kind_of(agent);
+    let kind_rank = match kind.as_str() {
+        "pi" => 0,
+        "hermes" => 1,
+        "grok" | "claude" => 2,
+        _ => 9,
+    };
+    let idle = match agent.status.as_str() {
         "idle" | "done" | "klaar" => 0,
         "blocked" => 1,
         _ => 2,
-    });
-    hinted
-        .first()
+    };
+    let hint = if looks_like_control(agent) { 0 } else { 1 };
+    (kind_rank, idle, hint)
+}
+
+pub fn list_targets(ops: &OpsSnapshot) -> Vec<ChatTarget> {
+    let mut out: Vec<ChatTarget> = ops
+        .agents
+        .iter()
+        .filter(|a| is_picker_eligible(a))
         .map(|a| {
-            if !a.pane_id.is_empty() {
-                a.pane_id.clone()
-            } else {
-                a.terminal_id.clone()
+            let id = agent_id(a);
+            let kind = kind_of(a);
+            ChatTarget {
+                label: format!("{kind} · {id}"),
+                id,
+                kind,
+                status: a.status.clone(),
             }
         })
+        .filter(|t| !t.id.is_empty())
+        .collect();
+    out.sort_by(|a, b| a.label.cmp(&b.label));
+    out
+}
+
+/// Kies een Herdr-doel. Pinned > env > beste live Pi (dan Hermes).
+/// Nooit jcode, nooit stiekem de visual ChefApp-lane, nooit auto-Cursor.
+pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String> {
+    if let Some(pin) = pinned.map(str::trim).filter(|s| !s.is_empty()) {
+        if ops.agents.iter().any(|a| agent_id(a) == pin && is_picker_eligible(a))
+            || env_target().as_deref() == Some(pin)
+        {
+            return Some(pin.to_string());
+        }
+        if ops.agents.iter().any(|a| agent_id(a) == pin) {
+            return Some(pin.to_string());
+        }
+    }
+    if let Some(env) = env_target() {
+        return Some(env);
+    }
+    let mut auto: Vec<&HerdrAgent> = ops
+        .agents
+        .iter()
+        .filter(|a| is_picker_eligible(a) && is_auto_kind(&kind_of(a)))
+        .collect();
+    auto.sort_by_key(|a| auto_score(a));
+    auto.first()
+        .map(|a| agent_id(a))
         .filter(|id| !id.is_empty())
 }
 
+pub fn kind_for(ops: &OpsSnapshot, target: &str) -> Option<String> {
+    ops.agents
+        .iter()
+        .find(|a| agent_id(a) == target)
+        .map(kind_of)
+}
+
+pub fn pin_target(shared: &crate::state::Shared, id: &str) {
+    let id = id.trim();
+    if id.is_empty() {
+        return;
+    }
+    let ops = shared.ops.read().unwrap().clone();
+    let kind = kind_for(&ops, id);
+    let mut log = shared.chat.write().unwrap();
+    if log.busy {
+        return;
+    }
+    log.target = Some(id.to_string());
+    log.kind = kind;
+    log.pinned = true;
+    drop(log);
+    shared
+        .chat_revision
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Korte control-context, geen secrets, geen dumps.
-pub fn wrap_prompt(snap: &Snapshot, text: &str) -> String {
+pub fn wrap_prompt(snap: &Snapshot, text: &str, kind: &str) -> String {
     let vault = if crate::state::vault_online() {
         "online"
     } else {
@@ -120,7 +236,7 @@ pub fn wrap_prompt(snap: &Snapshot, text: &str) -> String {
         "offline"
     };
     format!(
-        "ChefApp control. Overzicht: vault {vault}, jcode memory {jcode}, fleet {}/{}. Antwoord kort in het Nederlands, geen secrets. Vraag: {}",
+        "ChefApp control ({kind}). Overzicht: vault {vault}, jcode memory {jcode} (geheugen, geen chat), fleet {}/{}. Antwoord kort in het Nederlands, geen secrets. Vraag: {}",
         snap.fleet.online,
         snap.fleet.total,
         text.trim()
@@ -174,7 +290,19 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
     }
     let ops = shared.ops.read().unwrap().clone();
     let snap = shared.snapshot.read().unwrap().clone();
-    let target = resolve_target(&ops);
+    let pinned = {
+        let log = shared.chat.read().unwrap();
+        if log.pinned {
+            log.target.clone()
+        } else {
+            None
+        }
+    };
+    let target = resolve_target(&ops, pinned.as_deref());
+    let kind = target
+        .as_deref()
+        .and_then(|id| kind_for(&ops, id))
+        .unwrap_or_else(|| "pi".into());
     {
         let mut log = shared.chat.write().unwrap();
         if log.busy {
@@ -182,6 +310,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
         }
         log.busy = true;
         log.target = target.clone();
+        log.kind = Some(kind.clone());
         log.messages.push(ChatMessage {
             role: ChatRole::Operator,
             text: text.to_string(),
@@ -191,7 +320,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
             log.busy = false;
             log.messages.push(ChatMessage {
                 role: ChatRole::System,
-                text: "Geen control-agent. Zet CHEFBAR_CONTROL_AGENT of start een Herdr-pane voor control.".into(),
+                text: "Geen Pi. Zet CHEFBAR_CONTROL_AGENT of start een Herdr-pane met Pi voor control.".into(),
                 at_unix: now_unix(),
             });
             shared
@@ -204,7 +333,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let shared = shared.clone();
-    let prompt = wrap_prompt(&snap, text);
+    let prompt = wrap_prompt(&snap, text, &kind);
     std::thread::spawn(move || {
         let result = match shared.chat.read().unwrap().target.clone() {
             Some(target) => send_and_read(&target, &prompt),
@@ -265,11 +394,13 @@ mod tests {
             ],
         };
         // tweede pane-cwd bevat "control"
-        assert_eq!(resolve_target(&ops).as_deref(), Some("w2R:p2"));
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2R:p2"));
     }
 
     #[test]
     fn resolve_skips_visual_chefbar_checkout() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![agent(
@@ -279,15 +410,68 @@ mod tests {
                 "/home/joep/ChefFactory/chefbar",
             )],
         };
-        assert_eq!(resolve_target(&ops), None);
+        assert_eq!(resolve_target(&ops, None), None);
+    }
+
+    #[test]
+    fn resolve_prefers_idle_pi_over_cursor() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent("cursor", "w2R:p1", "idle", "/home/joep/ChefFactory"),
+                agent("pi", "w2S:p2", "idle", "/tmp/control-ops"),
+            ],
+        };
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2S:p2"));
+        let listed: Vec<String> = list_targets(&ops).into_iter().map(|t| t.kind).collect();
+        assert!(listed.contains(&"pi".into()));
+        assert!(listed.contains(&"cursor".into()));
+    }
+
+    #[test]
+    fn jcode_is_never_a_chat_target() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![agent(
+                "pi",
+                "w9:p1",
+                "idle",
+                "/var/lib/chef-jcode-memory/home",
+            )],
+        };
+        assert!(list_targets(&ops).is_empty());
+        assert_eq!(resolve_target(&ops, None), None);
+    }
+
+    #[test]
+    fn pinned_target_wins_over_auto_pi() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent("pi", "w2S:p2", "idle", "/tmp/a"),
+                agent("hermes", "w2S:p3", "idle", "/tmp/b"),
+            ],
+        };
+        assert_eq!(
+            resolve_target(&ops, Some("w2S:p3")).as_deref(),
+            Some("w2S:p3")
+        );
     }
 
     #[test]
     fn wrap_prompt_is_dutch_and_has_no_secret_shape() {
         let snap = Snapshot::default();
-        let wrapped = wrap_prompt(&snap, "status jan");
+        let wrapped = wrap_prompt(&snap, "status jan", "pi");
         assert!(wrapped.contains("Vraag: status jan"));
         assert!(wrapped.contains("geen secrets"));
+        assert!(wrapped.contains("geheugen, geen chat"));
+        assert!(wrapped.contains("(pi)"));
         assert!(!wrapped.contains("ghp_"));
         assert!(!wrapped.contains("Bearer "));
     }

@@ -2,12 +2,13 @@
 //!
 //! Signaal v2: één accent, radius 6/10, General Sans + IBM Plex Mono data,
 //! geen tweede signature, geen emoji, warm Nederlands.
+//! Default-harnas is Pi; jcode is geheugen, geen kiezer-optie.
 
-use crate::chat::{ChatLog, ChatRole};
+use crate::chat::{list_targets, resolve_target, ChatLog, ChatRole};
 use crate::state::Shared;
 use gtk::glib::ControlFlow;
 use gtk::prelude::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -17,8 +18,11 @@ pub struct ChatPane {
     entry: gtk::Entry,
     send: gtk::Button,
     meta: gtk::Label,
+    combo: gtk::ComboBoxText,
     shared: Shared,
     last_rev: Rc<Cell<i64>>,
+    suppress_combo: Rc<Cell<bool>>,
+    combo_fp: Rc<RefCell<String>>,
 }
 
 impl ChatPane {
@@ -28,17 +32,24 @@ impl ChatPane {
         root.set_hexpand(true);
         root.set_vexpand(true);
 
-        let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let header = gtk::Box::new(gtk::Orientation::Vertical, 4);
         header.set_margin_top(12);
         header.set_margin_start(16);
         header.set_margin_end(16);
         header.set_margin_bottom(8);
+        let title_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let title = gtk::Label::new(Some("Control"));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
+        title.set_hexpand(true);
         title.style_context().add_class("chefbar-title");
-        header.pack_start(&title, false, false, 0);
-        let meta = gtk::Label::new(Some("devops en overzicht"));
+        title_row.pack_start(&title, true, true, 0);
+        let combo = gtk::ComboBoxText::new();
+        combo.style_context().add_class("chefbar-chat-combo");
+        combo.set_tooltip_text(Some("Live Herdr-harnas. Standaard Pi."));
+        title_row.pack_end(&combo, false, false, 0);
+        header.pack_start(&title_row, false, false, 0);
+        let meta = gtk::Label::new(Some("Pi · devops en overzicht"));
         meta.set_halign(gtk::Align::Start);
         meta.set_xalign(0.0);
         meta.set_ellipsize(pango::EllipsizeMode::End);
@@ -75,14 +86,14 @@ impl ChatPane {
         root.pack_start(&composer, false, false, 0);
 
         let last_rev = Rc::new(Cell::new(-1));
+        let suppress_combo = Rc::new(Cell::new(false));
+        let combo_fp = Rc::new(RefCell::new(String::new()));
         {
             let shared_send = shared.clone();
-            let entry_send = entry.clone();
             entry.connect_activate(move |widget| {
                 let text = widget.text().to_string();
                 widget.set_text("");
                 crate::chat::submit(&shared_send, &text);
-                let _ = &entry_send;
             });
         }
         {
@@ -95,22 +106,40 @@ impl ChatPane {
             });
         }
         {
+            let shared_pin = shared.clone();
+            let suppress = suppress_combo.clone();
+            combo.connect_changed(move |combo| {
+                if suppress.get() {
+                    return;
+                }
+                if let Some(id) = combo.active_id() {
+                    crate::chat::pin_target(&shared_pin, &id);
+                }
+            });
+        }
+        {
             let shared_t = shared.clone();
             let transcript_t = transcript.clone();
             let meta_t = meta.clone();
             let entry_t = entry.clone();
             let send_t = send.clone();
+            let combo_t = combo.clone();
             let last = last_rev.clone();
+            let suppress = suppress_combo.clone();
+            let fp = combo_fp.clone();
             gtk::glib::timeout_add_local(Duration::from_millis(400), move || {
-                paint(
-                    &shared_t,
-                    &transcript_t,
-                    &meta_t,
-                    &entry_t,
-                    &send_t,
-                    &last,
-                    false,
-                );
+                paint(&PaintCtx {
+                    shared: &shared_t,
+                    transcript: &transcript_t,
+                    meta: &meta_t,
+                    entry: &entry_t,
+                    send: &send_t,
+                    combo: &combo_t,
+                    last_rev: &last,
+                    suppress: &suppress,
+                    combo_fp: &fp,
+                    force: false,
+                });
                 ControlFlow::Continue
             });
         }
@@ -121,21 +150,27 @@ impl ChatPane {
             entry,
             send,
             meta,
+            combo,
             shared,
             last_rev,
+            suppress_combo,
+            combo_fp,
         }
     }
 
     pub fn refresh(&self) {
-        paint(
-            &self.shared,
-            &self.transcript,
-            &self.meta,
-            &self.entry,
-            &self.send,
-            &self.last_rev,
-            true,
-        );
+        paint(&PaintCtx {
+            shared: &self.shared,
+            transcript: &self.transcript,
+            meta: &self.meta,
+            entry: &self.entry,
+            send: &self.send,
+            combo: &self.combo,
+            last_rev: &self.last_rev,
+            suppress: &self.suppress_combo,
+            combo_fp: &self.combo_fp,
+            force: true,
+        });
     }
 
     pub fn focus_composer(&self) {
@@ -143,34 +178,96 @@ impl ChatPane {
     }
 }
 
-fn paint(
-    shared: &Shared,
-    transcript: &gtk::Box,
-    meta: &gtk::Label,
-    entry: &gtk::Entry,
-    send: &gtk::Button,
-    last_rev: &Rc<Cell<i64>>,
+struct PaintCtx<'a> {
+    shared: &'a Shared,
+    transcript: &'a gtk::Box,
+    meta: &'a gtk::Label,
+    entry: &'a gtk::Entry,
+    send: &'a gtk::Button,
+    combo: &'a gtk::ComboBoxText,
+    last_rev: &'a Rc<Cell<i64>>,
+    suppress: &'a Rc<Cell<bool>>,
+    combo_fp: &'a Rc<RefCell<String>>,
     force: bool,
-) {
-    let rev = shared
+}
+
+fn paint(ctx: &PaintCtx<'_>) {
+    let rev = ctx
+        .shared
         .chat_revision
         .load(std::sync::atomic::Ordering::Relaxed);
-    let log = shared.chat.read().unwrap().clone();
-    entry.set_sensitive(!log.busy);
-    send.set_sensitive(!log.busy);
+    let log = ctx.shared.chat.read().unwrap().clone();
+    ctx.entry.set_sensitive(!log.busy);
+    ctx.send.set_sensitive(!log.busy);
+    ctx.combo.set_sensitive(!log.busy);
     let status = if log.busy {
         "bezig"
     } else if log.target.is_some() {
         "klaar"
     } else {
-        "wacht"
+        "wacht op Pi"
     };
-    meta.set_text(&format!("{} · {}", log.target_label(), status));
-    if !force && rev == last_rev.get() {
+    ctx.meta
+        .set_text(&format!("{} · {}", log.target_label(), status));
+    paint_combo(
+        ctx.shared,
+        ctx.combo,
+        &log,
+        ctx.suppress,
+        ctx.combo_fp,
+        ctx.force,
+    );
+    if !ctx.force && rev == ctx.last_rev.get() {
         return;
     }
-    last_rev.set(rev);
-    render_messages(transcript, &log);
+    ctx.last_rev.set(rev);
+    render_messages(ctx.transcript, &log);
+}
+
+fn paint_combo(
+    shared: &Shared,
+    combo: &gtk::ComboBoxText,
+    log: &ChatLog,
+    suppress: &Rc<Cell<bool>>,
+    combo_fp: &Rc<RefCell<String>>,
+    force: bool,
+) {
+    let ops = shared.ops.read().unwrap().clone();
+    let targets = list_targets(&ops);
+    let pinned = if log.pinned {
+        log.target.clone()
+    } else {
+        None
+    };
+    let current = log
+        .target
+        .clone()
+        .or_else(|| resolve_target(&ops, pinned.as_deref()));
+    let fp = format!(
+        "{}#{}",
+        targets
+            .iter()
+            .map(|t| t.id.as_str())
+            .collect::<Vec<_>>()
+            .join("|"),
+        current.as_deref().unwrap_or("")
+    );
+    if !force && fp == *combo_fp.borrow() {
+        return;
+    }
+    suppress.set(true);
+    combo.remove_all();
+    for target in &targets {
+        combo.append(Some(&target.id), &target.label);
+    }
+    if let Some(id) = &current {
+        if !targets.iter().any(|t| t.id == *id) {
+            combo.append(Some(id), &format!("vast · {id}"));
+        }
+        combo.set_active_id(Some(id));
+    }
+    suppress.set(false);
+    *combo_fp.borrow_mut() = fp;
 }
 
 fn render_messages(transcript: &gtk::Box, log: &ChatLog) {
@@ -179,7 +276,7 @@ fn render_messages(transcript: &gtk::Box, log: &ChatLog) {
     }
     if log.messages.is_empty() {
         let empty = gtk::Label::new(Some(
-            "Praat hier met een Herdr-agent over fleet, deploys en status. Geen tweede app, geen ACP.",
+            "Standaard Pi, over fleet en deploys. jcode is geheugen, geen chat. Andere live harnassen kies je hierboven.",
         ));
         empty.set_line_wrap(true);
         empty.set_xalign(0.0);
@@ -199,7 +296,7 @@ fn render_messages(transcript: &gtk::Box, log: &ChatLog) {
             }
             ChatRole::Agent => {
                 row.style_context().add_class("agent");
-                "agent"
+                log.kind.as_deref().unwrap_or("agent")
             }
             ChatRole::System => {
                 row.style_context().add_class("system");

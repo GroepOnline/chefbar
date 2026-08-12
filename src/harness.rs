@@ -495,7 +495,7 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     ));
 
     // ---- Control chat (devops / overzicht) --------------------------------
-    let control_target = crate::chat::resolve_target(ops);
+    let control_target = crate::chat::resolve_target(ops, None);
     out.push(Harness::new(
         HarnessKind::Control.id(),
         "Control",
