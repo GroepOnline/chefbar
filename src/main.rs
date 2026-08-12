@@ -261,14 +261,38 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
         chefbar::ipc::spawn_listener_on(listener, ui_tx.clone());
     }
 
-    // Tray in eigen thread (ksni).
-    let snapshot = shared.snapshot.clone();
-    let tray = chefbar::tray::ChefTray::new(snapshot, ui_tx);
-    let tray_service = ksni::TrayService::new(tray);
-    chefbar::tray::register_handle(tray_service.handle());
-    tray_service.spawn();
+    // Tray in eigen thread (ksni). Alleen als er een session-bus is: ksni
+    // paniekt zonder D-Bus (headless CI/Xvfb, minimal setups) — met
+    // panic=abort zou die paniek de hele app uitschakelen, dus skip de tray
+    // netjes en log het (alle UI-paden guarden al op TRAY_HANDLE).
+    if tray_bus_available() {
+        let snapshot = shared.snapshot.clone();
+        let tray = chefbar::tray::ChefTray::new(snapshot, ui_tx);
+        let tray_service = ksni::TrayService::new(tray);
+        chefbar::tray::register_handle(tray_service.handle());
+        tray_service.spawn();
+    } else {
+        chefbar::log::log("tray overgeslagen: geen D-Bus session-bus (headless)");
+    }
 
     gtk::main();
+}
+
+/// Is er een D-Bus session-bus om de tray op te hangen? Libdbus kan anders
+/// zelf dbus-launch proberen te spawnen — dat faalt in sandboxes (runner-
+/// service met NoNewPrivileges) en laat ksni dan pannen.
+fn tray_bus_available() -> bool {
+    if let Ok(address) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
+        return !address.trim().is_empty();
+    }
+    // Fallback zonder env-var: het bus-socket in de runtime-dir (systemd
+    // user-sessions zetten de var vaak niet, het bestand staat er wel).
+    if let Ok(runtime) = std::env::var("XDG_RUNTIME_DIR") {
+        if !runtime.trim().is_empty() && std::path::Path::new(&runtime).join("bus").exists() {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
