@@ -372,6 +372,77 @@ pub fn styles_css(theme: &str) -> String {
   border-color: {focus};
 }}
 
+/* ============ Density token ============ */
+/* --chefbar-density: comfortable (default) / compact via .density-compact klas.
+   Comfortable: header padding 14/16/12, card gap 12. Compact: padding 8/10/8,
+   gap 8, font -1px. Geen tweede stylesheet — alleen klas-toggle. */
+.chefbar-app {{
+  --chefbar-density: comfortable;
+}}
+.chefbar-app.density-compact {{
+  --chefbar-density: compact;
+}}
+.chefbar-app.density-compact {{
+  font-size: 12px;
+}}
+.chefbar-app.density-compact .chefbar-header {{
+  padding: 8px 10px 8px 10px;
+}}
+.chefbar-app.density-compact .chefbar-card-grid {{
+  gap: 8px;
+}}
+.chefbar-app.density-compact .chefbar-card-title {{
+  font-size: 12px;
+}}
+.chefbar-app.density-compact .chefbar-card-meta {{
+  font-size: 10px;
+}}
+
+/* ============ Drawer (300px, hairline left, canvas bg, slide 160ms) ============ */
+.chefbar-drawer {{
+  min-width: 300px;
+  background-color: {canvas};
+  border-left: 1px solid {line};
+  transition: opacity 160ms ease-out;
+}}
+.chefbar-drawer.open {{
+  opacity: 1;
+}}
+
+/* ============ Overlay (palette, center, 560px, radius 10, shadow) ============ */
+.chefbar-overlay {{
+  min-width: 560px;
+  max-width: 560px;
+  background-color: {surface};
+  border: 1px solid {line};
+  border-radius: 10px;
+  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
+}}
+
+/* ============ Zone header + card grid (2-col waar past) ============ */
+.chefbar-zone-header {{
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: {text_muted};
+  padding: 10px 12px 6px 12px;
+}}
+.chefbar-card-grid {{
+  gap: 12px;
+  padding: 8px 12px;
+}}
+
+/* ============ Sidebar groups ============ */
+.chefbar-sidebar-group {{
+  padding: 6px 0;
+}}
+.chefbar-sidebar-group-title {{
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: {text_muted};
+  padding: 4px 10px;
+}}
 
 /* Scrollbars — dun en stil */
 scrollbar {{

@@ -12,6 +12,8 @@ use std::sync::Mutex;
 pub const PRESS_MS: u32 = 140;
 pub const HOVER_MS: u32 = 140;
 pub const PANEL_MS: u32 = 280;
+pub const DRAWER_MS: u32 = 160;
+pub const OVERLAY_MS: u32 = 100;
 const FADE_STEPS: u32 = 8;
 
 /// Per-window animation generation: elke start-fade bumped de token zodat
@@ -111,6 +113,26 @@ pub fn fade_out(window: &gtk::Window, duration_ms: u32) {
             }
         },
     );
+}
+
+/// Slide drawer in/uit (160ms). Wrapper om fade_in/fade_out met DRAWER_MS.
+/// TODO: echte translate-animatie als GTK reveal-infrastructuur beschikbaar is;
+/// voor nu fade — compileerbaar en visueel consistent met panel.
+pub fn slide_drawer(window: &gtk::Window, open: bool) {
+    if open {
+        fade_in(window, DRAWER_MS);
+    } else {
+        fade_out(window, DRAWER_MS);
+    }
+}
+
+/// Fade palette-overlay in/uit (100ms). Wrapper om fade_in/fade_out met OVERLAY_MS.
+pub fn fade_overlay(window: &gtk::Window, show: bool) {
+    if show {
+        fade_in(window, OVERLAY_MS);
+    } else {
+        fade_out(window, OVERLAY_MS);
+    }
 }
 
 /// Bereken de zichtbare rij-breedte aan de hand van een fractie (0..1) en de
