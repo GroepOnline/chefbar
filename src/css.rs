@@ -15,7 +15,11 @@ pub const THEME_LIGHT: &str = "light";
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
 pub fn styles_css(theme: &str) -> String {
-    let t = if theme == THEME_LIGHT { Tokens::light() } else { Tokens::dark() };
+    let t = if theme == THEME_LIGHT {
+        Tokens::light()
+    } else {
+        Tokens::dark()
+    };
     format!(
         r#"
 /* ============ App-window (v2 canvas) ============ */
@@ -382,8 +386,7 @@ scrollbar slider {{
 scrollbar slider:hover {{
   background-color: {control_border};
 }}
-"#
-        ,
+"#,
         canvas = t.canvas,
         surface = t.surface,
         surface_muted = t.surface_muted,

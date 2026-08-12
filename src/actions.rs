@@ -528,9 +528,14 @@ impl Executor {
                     }
                     let headers = vec![(
                         "Idempotency-Key".to_string(),
-                        format!("chefbar-{}-{}", std::process::id(),
-                            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_nanos()).unwrap_or(0)),
+                        format!(
+                            "chefbar-{}-{}",
+                            std::process::id(),
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_nanos())
+                                .unwrap_or(0)
+                        ),
                     )];
                     match vault.post_json_headers("/coding/accounts/switch", &body, &headers) {
                         Ok(_) => crate::notify::notify("Account gewisseld", "", "ok"),
@@ -682,10 +687,8 @@ mod tests {
     #[test]
     fn sync_acties_geblokkeerd_bij_error_status() {
         let mut snap = Snapshot::default();
-        snap.share_sync.insert(
-            "status".into(),
-            serde_json::Value::String("error".into()),
-        );
+        snap.share_sync
+            .insert("status".into(), serde_json::Value::String("error".into()));
         let actions = catalogus_met(&snap);
         assert!(actions
             .iter()
@@ -701,24 +704,18 @@ mod tests {
     #[test]
     fn sync_blocked_detecteert_error_key_en_blocked_status() {
         let mut snap = Snapshot::default();
-        snap.share_sync.insert(
-            "error".into(),
-            serde_json::Value::String("disk vol".into()),
-        );
+        snap.share_sync
+            .insert("error".into(), serde_json::Value::String("disk vol".into()));
         assert!(sync_blocked(&snap));
 
         let mut snap = Snapshot::default();
-        snap.share_sync.insert(
-            "status".into(),
-            serde_json::Value::String("blocked".into()),
-        );
+        snap.share_sync
+            .insert("status".into(), serde_json::Value::String("blocked".into()));
         assert!(sync_blocked(&snap));
 
         let mut snap = Snapshot::default();
-        snap.share_sync.insert(
-            "status".into(),
-            serde_json::Value::String("ok".into()),
-        );
+        snap.share_sync
+            .insert("status".into(), serde_json::Value::String("ok".into()));
         assert!(!sync_blocked(&snap));
     }
 }

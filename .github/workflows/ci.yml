@@ -20,6 +20,7 @@ jobs:
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: rustfmt, clippy
           cache: false
 
       - name: Cache ~/.cargo
@@ -42,6 +43,12 @@ jobs:
 
       - name: Cargo check (fast gate)
         run: cargo check --all-targets
+
+      - name: Format (harde gate)
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (harde gate, warnings = fail)
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Shellcheck
         run: shellcheck install.sh scripts/visual-shot.sh

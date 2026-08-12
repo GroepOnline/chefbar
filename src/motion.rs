@@ -41,7 +41,8 @@ fn is_current(window: &gtk::Window, generation: u32) -> bool {
 }
 
 pub fn motion_enabled() -> bool {
-    gtk::Settings::default().map(|settings| settings.property::<bool>("gtk-enable-animations"))
+    gtk::Settings::default()
+        .map(|settings| settings.property::<bool>("gtk-enable-animations"))
         .unwrap_or(true)
 }
 

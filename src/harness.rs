@@ -200,8 +200,7 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         .providers
         .iter()
         .find(|p| {
-            p.provider.to_lowercase().contains("vault")
-                || p.label.to_lowercase().contains("vault")
+            p.provider.to_lowercase().contains("vault") || p.label.to_lowercase().contains("vault")
         })
         .map(|p| p.label.clone());
     let commerce_queue = commerce_agents.len();
@@ -322,7 +321,8 @@ mod tests {
     #[test]
     fn sync_harnas_blocked_bij_error() {
         let mut snap = empty_snapshot();
-        snap.share_sync.insert("status".into(), serde_json::Value::String("error".into()));
+        snap.share_sync
+            .insert("status".into(), serde_json::Value::String("error".into()));
         let h = build_harnesses(&snap, &OpsSnapshot::default());
         assert_eq!(h[3].status, HarnessStatus::Blocked);
     }
@@ -330,16 +330,14 @@ mod tests {
     #[test]
     fn sync_active_valt_terug_op_updated_at_als_last_sync_null_is() {
         let mut snap = empty_snapshot();
-        snap.share_sync.insert("last_sync".into(), serde_json::Value::Null);
+        snap.share_sync
+            .insert("last_sync".into(), serde_json::Value::Null);
         snap.share_sync.insert(
             "updated_at".into(),
             serde_json::Value::String("2026-08-11T21:00:00Z".into()),
         );
         let h = build_harnesses(&snap, &OpsSnapshot::default());
-        assert_eq!(
-            h[3].active_task.as_deref(),
-            Some("2026-08-11T21:00:00Z")
-        );
+        assert_eq!(h[3].active_task.as_deref(), Some("2026-08-11T21:00:00Z"));
     }
 
     #[test]
@@ -395,7 +393,12 @@ mod tests {
 
     #[test]
     fn harnas_kleuren_zijn_hex() {
-        for kind in [HarnessKind::Fleet, HarnessKind::Commerce, HarnessKind::Sync, HarnessKind::Eval] {
+        for kind in [
+            HarnessKind::Fleet,
+            HarnessKind::Commerce,
+            HarnessKind::Sync,
+            HarnessKind::Eval,
+        ] {
             assert!(kind.color().starts_with('#'));
         }
     }

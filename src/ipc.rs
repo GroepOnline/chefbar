@@ -6,8 +6,8 @@
 
 use crate::tray::UiCommand;
 use std::io::{BufRead, BufReader};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
@@ -81,7 +81,11 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::Quit => "quit\n".to_string(),
         UiCommand::OpenUrl(url) => format!("open-url {url}\n"),
         UiCommand::FocusAgent(id) => format!("focus {id}\n"),
-        UiCommand::SwitchAccount { account_id, source, driver } => format!(
+        UiCommand::SwitchAccount {
+            account_id,
+            source,
+            driver,
+        } => format!(
             "switch-account {} {} {}\n",
             account_id,
             source,
@@ -185,14 +189,23 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         let eerste = acquire_at(&path);
-        assert!(matches!(eerste, Acquire::Owner(_)), "eerste bind moet lukken");
-        assert!(matches!(acquire_at(&path), Acquire::Occupied), "tweede bind is Occupied");
+        assert!(
+            matches!(eerste, Acquire::Owner(_)),
+            "eerste bind moet lukken"
+        );
+        assert!(
+            matches!(acquire_at(&path), Acquire::Occupied),
+            "tweede bind is Occupied"
+        );
 
         // Stale-cleanup: na drop blijft de socket-file liggen zonder
         // luisteraar; acquire moet die opruimen (ECONNREFUSED-branch).
         drop(eerste);
         assert!(path.exists(), "socket-file blijft liggen na drop");
-        assert!(matches!(acquire_at(&path), Acquire::Owner(_)), "stale socket wordt opgeruimd en gebonden");
+        assert!(
+            matches!(acquire_at(&path), Acquire::Owner(_)),
+            "stale socket wordt opgeruimd en gebonden"
+        );
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
@@ -261,7 +274,10 @@ mod tests {
     fn socket_path_respects_xdg_runtime() {
         // XDG_RUNTIME_DIR set → socket daar.
         std::env::set_var("XDG_RUNTIME_DIR", "/tmp/test-xdg-123");
-        assert_eq!(socket_path(), PathBuf::from("/tmp/test-xdg-123/chefbar.sock"));
+        assert_eq!(
+            socket_path(),
+            PathBuf::from("/tmp/test-xdg-123/chefbar.sock")
+        );
         std::env::remove_var("XDG_RUNTIME_DIR");
         assert_eq!(socket_path(), PathBuf::from("/tmp/chefbar.sock"));
     }

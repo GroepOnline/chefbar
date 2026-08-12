@@ -76,7 +76,10 @@ pub fn run_checks() -> DoctorReport {
                 health.total
             ));
         }
-        _ => lines.push(format!("watchdog ontbreekt: {} (nog geen poll gedraaid?)", watchdog.display())),
+        _ => lines.push(format!(
+            "watchdog ontbreekt: {} (nog geen poll gedraaid?)",
+            watchdog.display()
+        )),
     }
 
     // 5. Versie + IPC-socket.

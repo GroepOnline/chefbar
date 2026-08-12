@@ -67,7 +67,9 @@ impl Panel {
         let sidebar_title = gtk::Label::new(Some("ChefBar"));
         sidebar_title.set_halign(gtk::Align::Start);
         sidebar_title.set_xalign(0.0);
-        sidebar_title.style_context().add_class("chefbar-sidebar-title");
+        sidebar_title
+            .style_context()
+            .add_class("chefbar-sidebar-title");
         sidebar_title_wrap.pack_start(&sidebar_title, false, false, 0);
         let sidebar_sub = gtk::Label::new(Some("agentische assistent"));
         sidebar_sub.set_halign(gtk::Align::Start);
@@ -113,7 +115,9 @@ impl Panel {
 
         // Status-footer
         let status_footer = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        status_footer.style_context().add_class("chefbar-sidebar-footer");
+        status_footer
+            .style_context()
+            .add_class("chefbar-sidebar-footer");
         status_footer.set_margin_start(12);
         status_footer.set_margin_end(12);
         status_footer.set_margin_top(10);
@@ -121,12 +125,16 @@ impl Panel {
         let footer_title = gtk::Label::new(Some("Status"));
         footer_title.set_halign(gtk::Align::Start);
         footer_title.set_xalign(0.0);
-        footer_title.style_context().add_class("chefbar-sidebar-footer-title");
+        footer_title
+            .style_context()
+            .add_class("chefbar-sidebar-footer-title");
         status_footer.pack_start(&footer_title, false, false, 0);
         let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal v2"));
         footer_meta.set_halign(gtk::Align::Start);
         footer_meta.set_xalign(0.0);
-        footer_meta.style_context().add_class("chefbar-sidebar-footer-meta");
+        footer_meta
+            .style_context()
+            .add_class("chefbar-sidebar-footer-meta");
         status_footer.pack_start(&footer_meta, false, false, 0);
         sidebar.pack_end(&status_footer, false, false, 0);
 
@@ -171,29 +179,23 @@ impl Panel {
 
         let header_controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let refresh_btn = gtk::Button::new();
-        let refresh_icon = gtk::Image::from_icon_name(
-            Some("view-refresh-symbolic"),
-            gtk::IconSize::Button,
-        );
+        let refresh_icon =
+            gtk::Image::from_icon_name(Some("view-refresh-symbolic"), gtk::IconSize::Button);
         refresh_btn.set_image(Some(&refresh_icon));
         refresh_btn.set_relief(gtk::ReliefStyle::None);
         refresh_btn.style_context().add_class("chefbar-gbtn");
         refresh_btn.connect_clicked(move |_| crate::state::refresh_global());
         let min_btn = gtk::Button::new();
-        let min_icon = gtk::Image::from_icon_name(
-            Some("window-minimize-symbolic"),
-            gtk::IconSize::Button,
-        );
+        let min_icon =
+            gtk::Image::from_icon_name(Some("window-minimize-symbolic"), gtk::IconSize::Button);
         min_btn.set_image(Some(&min_icon));
         min_btn.set_relief(gtk::ReliefStyle::None);
         min_btn.style_context().add_class("chefbar-gbtn");
         let window_for_min = window.clone();
         min_btn.connect_clicked(move |_| window_for_min.iconify());
         let close_btn = gtk::Button::new();
-        let close_icon = gtk::Image::from_icon_name(
-            Some("window-close-symbolic"),
-            gtk::IconSize::Button,
-        );
+        let close_icon =
+            gtk::Image::from_icon_name(Some("window-close-symbolic"), gtk::IconSize::Button);
         close_btn.set_image(Some(&close_icon));
         close_btn.set_relief(gtk::ReliefStyle::None);
         close_btn.style_context().add_class("chefbar-gbtn");
@@ -290,7 +292,14 @@ impl Panel {
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
                     let q = search_clone.text().to_string();
-                    render_into(&content_clone, &shared_clone, &executor_clone, &window_clone, &q, &harness_state_clone);
+                    render_into(
+                        &content_clone,
+                        &shared_clone,
+                        &executor_clone,
+                        &window_clone,
+                        &q,
+                        &harness_state_clone,
+                    );
                     // Eén pad met de poll-timer: labels + active-class + tooltips.
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                 });
@@ -354,7 +363,14 @@ impl Panel {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(&content, &shared, &executor, &window, &query, &harness_state);
+                render_into(
+                    &content,
+                    &shared,
+                    &executor,
+                    &window,
+                    &query,
+                    &harness_state,
+                );
             }
         });
     }
@@ -419,7 +435,14 @@ impl Panel {
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
                 let query = search.text().to_string();
-                render_into(&content, &shared, &executor, &window, &query, &harness_state);
+                render_into(
+                    &content,
+                    &shared,
+                    &executor,
+                    &window,
+                    &query,
+                    &harness_state,
+                );
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
@@ -577,13 +600,11 @@ fn render_into(
     lijn_text.set_ellipsize(pango::EllipsizeMode::End);
     lijn_text.set_line_wrap(false);
     lijn_text.set_max_width_chars(40);
-    lijn_text.style_context().add_class("chefbar-statuslijn-text");
+    lijn_text
+        .style_context()
+        .add_class("chefbar-statuslijn-text");
     status_row.pack_start(&lijn_text, true, true, 0);
-    let updated = gtk::Label::new(Some(&format!(
-        "{} · {}",
-        vault_label,
-        fetched
-    )));
+    let updated = gtk::Label::new(Some(&format!("{} · {}", vault_label, fetched)));
     updated.set_halign(gtk::Align::End);
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
@@ -668,11 +689,12 @@ fn render_into(
                     suggestion.action_label.to_uppercase()
                 };
                 let cta = stamp_label(&cta_text);
-                cta.style_context().add_class(match suggestion.stamp.as_str() {
-                    "FOUT" => "error",
-                    "HULP" => "warn",
-                    _ => "info",
-                });
+                cta.style_context()
+                    .add_class(match suggestion.stamp.as_str() {
+                        "FOUT" => "error",
+                        "HULP" => "warn",
+                        _ => "info",
+                    });
                 row.pack_end(&cta, false, false, 0);
                 row_btn.add(&row);
                 if let Some(child) = row_btn.child() {
@@ -704,13 +726,23 @@ fn render_into(
             content.pack_start(&group, false, false, 0);
         }
     }
-    section_title(content, "Acties", &format!("zoek of kies — {}", harness_label.to_lowercase()));
+    section_title(
+        content,
+        "Acties",
+        &format!("zoek of kies — {}", harness_label.to_lowercase()),
+    );
     let group = group_box();
     if actions_visible.is_empty() && !q.is_empty() {
-        let sub = format!("Pas je zoekterm “{}” aan of wissel van harnas.", truncate_q(&q, 24));
+        let sub = format!(
+            "Pas je zoekterm “{}” aan of wissel van harnas.",
+            truncate_q(&q, 24)
+        );
         group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
     } else if actions_visible.is_empty() {
-        let sub = format!("Geen acties voor {} — wissel via de zijbalk of zoek breder.", harness_label.to_lowercase());
+        let sub = format!(
+            "Geen acties voor {} — wissel via de zijbalk of zoek breder.",
+            harness_label.to_lowercase()
+        );
         group.pack_start(&empty_state("Niks hier", &sub), false, false, 0);
     }
     for action in &actions_visible {
@@ -836,7 +868,12 @@ fn render_into(
             stale_badge.set_xalign(0.0);
             stale_badge.style_context().add_class("chefbar-stamp");
             stale_badge.style_context().add_class("error");
-            row_top_stale(&top, &stale_badge, row.refresh_at.as_deref(), row.stale_reason.as_deref());
+            row_top_stale(
+                &top,
+                &stale_badge,
+                row.refresh_at.as_deref(),
+                row.stale_reason.as_deref(),
+            );
         } else if let Some(ref at) = row.refresh_at {
             let meta = gtk::Label::new(Some(&format!("update {}", short_ts(at))));
             meta.set_halign(gtk::Align::Start);
@@ -888,7 +925,15 @@ fn render_into(
     }
     if !any_provider {
         if q.is_empty() {
-            group.pack_start(&empty_state("Nog geen providers", "Koppel een account in de vault of vernieuw de status."), false, false, 0);
+            group.pack_start(
+                &empty_state(
+                    "Nog geen providers",
+                    "Koppel een account in de vault of vernieuw de status.",
+                ),
+                false,
+                false,
+                0,
+            );
         } else {
             let sub = format!("Geen providers voor “{}”.", truncate_q(&q, 28));
             group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
@@ -950,7 +995,15 @@ fn render_into(
     }
     if !any_agent {
         if q.is_empty() {
-            group.pack_start(&empty_state("Geen agents actief", "Start een herdr-agent of open een workspace — ze verschijnen hier."), false, false, 0);
+            group.pack_start(
+                &empty_state(
+                    "Geen agents actief",
+                    "Start een herdr-agent of open een workspace — ze verschijnen hier.",
+                ),
+                false,
+                false,
+                0,
+            );
         } else {
             let sub = format!("Geen agents voor “{}”.", truncate_q(&q, 28));
             group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
@@ -962,7 +1015,11 @@ fn render_into(
     let attention: Vec<_> = sessions.iter().filter(|s| s.needs_attention()).collect();
     if !attention.is_empty() {
         let count = attention.len();
-        let sub = if count == 1 { "1 sessie vraagt om jou".to_string() } else { format!("{count} sessies vragen om jou") };
+        let sub = if count == 1 {
+            "1 sessie vraagt om jou".to_string()
+        } else {
+            format!("{count} sessies vragen om jou")
+        };
         section_title(content, "Heeft jou nodig", &sub);
         let group = group_box_attention();
         // Toon max 4, maar footer hint als er meer zijn
@@ -977,7 +1034,10 @@ fn render_into(
             let tooltip = if session.summary.is_empty() {
                 format!("{} · {} · {}", session.source, session.title, session.state)
             } else {
-                format!("{} · {} — {}", session.source, session.title, session.summary)
+                format!(
+                    "{} · {} — {}",
+                    session.source, session.title, session.summary
+                )
             };
             row_btn.set_tooltip_text(Some(&tooltip));
             let inner = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1014,10 +1074,18 @@ fn render_into(
                 text.pack_start(&meta, false, false, 0);
             }
             inner.pack_start(&text, true, true, 0);
-            let cta_label = spec_and_label.as_ref().map(|(l, _)| l.as_str()).unwrap_or("Open");
-            let pill = stamp_label(match session.state.as_str() { "failed" => "FOUT", _ => "HULP" });
+            let cta_label = spec_and_label
+                .as_ref()
+                .map(|(l, _)| l.as_str())
+                .unwrap_or("Open");
+            let pill = stamp_label(match session.state.as_str() {
+                "failed" => "FOUT",
+                _ => "HULP",
+            });
             // vervang stamp-text door CTA hint als beschikbaar
-            if cta_label != "Open" { pill.set_text(&format!("{} · {}", pill.text(), cta_label)); }
+            if cta_label != "Open" {
+                pill.set_text(&format!("{} · {}", pill.text(), cta_label));
+            }
             inner.pack_end(&pill, false, false, 0);
             row_btn.add(&inner);
             let inner_child = row_btn.child().unwrap();
@@ -1043,7 +1111,10 @@ fn render_into(
             group.pack_start(&row_btn, false, false, 0);
         }
         if attention.len() > 4 {
-            let more = gtk::Label::new(Some(&format!("+{} meer — zoek om te filteren", attention.len() - 4)));
+            let more = gtk::Label::new(Some(&format!(
+                "+{} meer — zoek om te filteren",
+                attention.len() - 4
+            )));
             more.set_halign(gtk::Align::Start);
             more.set_xalign(0.0);
             more.set_ellipsize(pango::EllipsizeMode::End);
@@ -1066,9 +1137,22 @@ fn render_into(
     let attention_n = sessions.iter().filter(|s| s.needs_attention()).count();
     let running_n = snap.agents.iter().filter(|a| a.running).count();
     let footer_text = if attention_n > 0 {
-        format!("v{} · {} · {} wacht · {} bezig · {}", crate::VERSION, profile.name, attention_n, running_n, fetched)
+        format!(
+            "v{} · {} · {} wacht · {} bezig · {}",
+            crate::VERSION,
+            profile.name,
+            attention_n,
+            running_n,
+            fetched
+        )
     } else {
-        format!("v{} · {} · {} bezig · {}", crate::VERSION, profile.name, running_n, fetched)
+        format!(
+            "v{} · {} · {} bezig · {}",
+            crate::VERSION,
+            profile.name,
+            running_n,
+            fetched
+        )
     };
     let footer_label = gtk::Label::new(Some(&footer_text));
     footer_label.set_halign(gtk::Align::Start);
@@ -1077,7 +1161,9 @@ fn render_into(
     footer_label.set_line_wrap(false);
     footer_label.set_max_width_chars(64);
     footer_label.set_tooltip_text(Some(&footer_text));
-    footer_label.style_context().add_class("chefbar-footer-label");
+    footer_label
+        .style_context()
+        .add_class("chefbar-footer-label");
     footer.pack_start(&footer_label, true, true, 0);
     let quit_btn = gtk::Button::with_label("Verbergen");
     quit_btn.style_context().add_class("chefbar-gbtn");
@@ -1177,21 +1263,21 @@ fn session_cta(
             let kid = session.attach.kater_session_id.as_deref()?;
             Some((
                 "Open sessie".into(),
-                crate::actions::RunSpec::OpenUrl(format!(
-                    "{}/{}",
-                    base.trim_end_matches('/'),
-                    kid
-                )),
+                crate::actions::RunSpec::OpenUrl(format!("{}/{}", base.trim_end_matches('/'), kid)),
             ))
         }
         SessionActionKind::Focus => session.attach.focus.clone().map(|focus| {
-            ("Neem over".into(), crate::actions::RunSpec::FocusAgent(focus))
+            (
+                "Neem over".into(),
+                crate::actions::RunSpec::FocusAgent(focus),
+            )
         }),
-        SessionActionKind::Workspace => session
-            .attach
-            .workspace_url
-            .clone()
-            .map(|url| ("Open workspace".into(), crate::actions::RunSpec::OpenUrl(url))),
+        SessionActionKind::Workspace => session.attach.workspace_url.clone().map(|url| {
+            (
+                "Open workspace".into(),
+                crate::actions::RunSpec::OpenUrl(url),
+            )
+        }),
         SessionActionKind::Browser => session
             .attach
             .browser
@@ -1277,13 +1363,23 @@ fn suggestion_spec(
 fn short_ts(ts: &str) -> String {
     // Aanname: ISO-8601 zonder tijdzone, gereedschapsdatum—toon alleen de delen
     // die we betrouwbaar uit de string kunnen knippen.
-    let body = ts.chars().take_while(|c| *c != 'T' && *c != ' ' && *c != '.').collect::<String>();
-    if body.is_empty() { return ts.to_string(); }
+    let body = ts
+        .chars()
+        .take_while(|c| *c != 'T' && *c != ' ' && *c != '.')
+        .collect::<String>();
+    if body.is_empty() {
+        return ts.to_string();
+    }
     body
 }
 
 /// Plaatst een STALE-badge + eventuele oude refresh-tijd achteraan de top-row.
-fn row_top_stale(top: &gtk::Box, badge: &gtk::Label, refresh_at: Option<&str>, reason: Option<&str>) {
+fn row_top_stale(
+    top: &gtk::Box,
+    badge: &gtk::Label,
+    refresh_at: Option<&str>,
+    reason: Option<&str>,
+) {
     if let Some(reason) = reason {
         badge.set_tooltip_text(Some(reason));
     }

@@ -155,7 +155,13 @@ steps:
   - upload artifact: target/release/chefbar
 ```
 
-Lokaal telt alleen `cargo test` als je de toolchain al hebt. Release-artifacts komen uit CI.
+Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rustup` zijn fail-fast stubs die naar de runner verwijzen (zie `~/AGENTS.md`). Build/test altijd op de runner:
+
+```bash
+ssh chef@chef-runner-01-1 'cd ~/chefbar-check && export PATH=$HOME/.cargo/bin:$PATH && cargo test --all-targets && cargo build --release'
+```
+
+Release-artifacts komen uit CI (artifact `chefbar-release`).
 
 | Onderdeel | Waar |
 | --- | --- |

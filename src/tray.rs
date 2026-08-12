@@ -144,7 +144,11 @@ pub fn autostart_enabled() -> bool {
 
 /// Toggle "meelopen vanaf login" (chefbar.service enable/disable).
 pub fn toggle_autostart() {
-    let verb = if autostart_enabled() { "disable" } else { "enable" };
+    let verb = if autostart_enabled() {
+        "disable"
+    } else {
+        "enable"
+    };
     let _ = std::process::Command::new("systemctl")
         .args(["--user", verb, "chefbar.service"])
         .status();
@@ -224,8 +228,7 @@ impl ksni::Tray for ChefTray {
         let snap = self.shared.read().ok();
         let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
         let sessions = crate::sessions::load_tray_events(&events);
-        let mut shown = 0;
-        for session in sessions.iter().take(6) {
+        for (shown, session) in sessions.iter().take(6).enumerate() {
             if shown >= 3 {
                 break;
             }
@@ -253,7 +256,6 @@ impl ksni::Tray for ChefTray {
                 }),
                 ..Default::default()
             }));
-            shown += 1;
         }
         if !items.is_empty() {
             items.push(ksni::MenuItem::Separator);
@@ -331,9 +333,15 @@ impl ksni::Tray for ChefTray {
             .map(|s| s.desktop.get("state").and_then(|v| v.as_str()) == Some("running"))
             .unwrap_or(false);
         let (dlabel, dicon) = if desktop_running {
-            ("Desktop stoppen".to_string(), "system-shutdown-symbolic".to_string())
+            (
+                "Desktop stoppen".to_string(),
+                "system-shutdown-symbolic".to_string(),
+            )
         } else {
-            ("Desktop starten".to_string(), "computer-symbolic".to_string())
+            (
+                "Desktop starten".to_string(),
+                "computer-symbolic".to_string(),
+            )
         };
         items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
             label: dlabel,
@@ -355,12 +363,14 @@ impl ksni::Tray for ChefTray {
             ..Default::default()
         }));
         let autostart = crate::tray::autostart_enabled();
-        items.push(ksni::MenuItem::Checkmark(ksni::menu::CheckmarkItem::<Self> {
-            label: "Meelopen vanaf login".into(),
-            checked: autostart,
-            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ToggleAutostart)),
-            ..Default::default()
-        }));
+        items.push(ksni::MenuItem::Checkmark(
+            ksni::menu::CheckmarkItem::<Self> {
+                label: "Meelopen vanaf login".into(),
+                checked: autostart,
+                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ToggleAutostart)),
+                ..Default::default()
+            },
+        ));
         items.push(ksni::MenuItem::Separator);
 
         items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
@@ -392,7 +402,11 @@ impl ksni::Tray for ChefTray {
 static THEME: std::sync::RwLock<&'static str> = std::sync::RwLock::new("dark");
 
 pub fn set_theme(theme: &str) {
-    let t: &'static str = if theme == crate::css::THEME_LIGHT { "light" } else { "dark" };
+    let t: &'static str = if theme == crate::css::THEME_LIGHT {
+        "light"
+    } else {
+        "dark"
+    };
     *THEME.write().unwrap() = t;
 }
 
@@ -424,19 +438,20 @@ fn tray_icon_for(state: &str) -> ksni::Icon {
     };
 
     let mut px = vec![0u8; SIZE * SIZE * 4];
-    let rect = |px: &mut Vec<u8>, x0: usize, y0: usize, w: usize, h: usize, c: (u8, u8, u8), a: u8| {
-        for y in y0..(y0 + h) {
-            for x in x0..(x0 + w) {
-                if x < SIZE && y < SIZE {
-                    let i = (y * SIZE + x) * 4;
-                    px[i] = a;
-                    px[i + 1] = c.0;
-                    px[i + 2] = c.1;
-                    px[i + 3] = c.2;
+    let rect =
+        |px: &mut Vec<u8>, x0: usize, y0: usize, w: usize, h: usize, c: (u8, u8, u8), a: u8| {
+            for y in y0..(y0 + h) {
+                for x in x0..(x0 + w) {
+                    if x < SIZE && y < SIZE {
+                        let i = (y * SIZE + x) * 4;
+                        px[i] = a;
+                        px[i + 1] = c.0;
+                        px[i + 2] = c.1;
+                        px[i + 3] = c.2;
+                    }
                 }
             }
-        }
-    };
+        };
     let disc = |px: &mut Vec<u8>, cx: f64, cy: f64, r: f64, c: (u8, u8, u8), a: u8| {
         for y in 0..SIZE {
             for x in 0..SIZE {

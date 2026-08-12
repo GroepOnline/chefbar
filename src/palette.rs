@@ -211,7 +211,11 @@ mod tests {
     fn context_boost_tilt_recente_sessie_omhoog() {
         // Twee gappy matches op "sync": gelijkwaardig zonder context.
         let ver = action("Ververs status", "haal status op", "ververs refresh status");
-        let deel = action("Deel lokale bestanden", "push naar gedeelde map", "share sync push");
+        let deel = action(
+            "Deel lokale bestanden",
+            "push naar gedeelde map",
+            "share sync push",
+        );
         let actions = vec![ver.clone(), deel.clone()];
         let ctx = RankContext {
             boost_terms: vec!["share".into()],

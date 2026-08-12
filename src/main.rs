@@ -50,7 +50,11 @@ fn main() {
     // Externe IPC-commando's hebben geen GTK nodig en geen tweede instantie.
     // Proberen we een commando te sturen maar is er geen listener, geven we
     // een bruikbare hint (was een stille "kan commando niet versturen").
-    let ipc_cmd = if cli.bar { Some("bar".to_string()) } else { cli.ipc.clone() };
+    let ipc_cmd = if cli.bar {
+        Some("bar".to_string())
+    } else {
+        cli.ipc.clone()
+    };
     if let Some(command) = &ipc_cmd {
         match chefbar::ipc::parse_command(command) {
             Some(cmd) => match chefbar::ipc::send_command(cmd) {
@@ -303,12 +307,18 @@ mod cli_tests {
     #[test]
     fn profile_path_parses() {
         let cli = parse(&["--profile", "/tmp/x.json"]);
-        assert_eq!(cli.profile.as_deref(), Some(std::path::Path::new("/tmp/x.json")));
+        assert_eq!(
+            cli.profile.as_deref(),
+            Some(std::path::Path::new("/tmp/x.json"))
+        );
     }
 
     #[test]
     fn unknown_flag_is_rejected() {
         let err = Cli::try_parse_from(["chefbar", "--bogus"]);
-        assert!(err.is_err(), "onbekende vlag moet clap-error geven (exit 2)");
+        assert!(
+            err.is_err(),
+            "onbekende vlag moet clap-error geven (exit 2)"
+        );
     }
 }

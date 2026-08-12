@@ -173,9 +173,9 @@ pub fn eval_dir() -> PathBuf {
 /// load_day_score: geen reports-bestand, dan de chef-eval summary-score).
 pub fn day_score_from_agent_summary(agents_payload: Option<&Value>) -> Option<DayScore> {
     let items = agents_payload?.get("agents")?.as_array()?;
-    let item = items.iter().find(|a| {
-        a.get("agent").and_then(|v| v.as_str()) == Some("chef-eval")
-    })?;
+    let item = items
+        .iter()
+        .find(|a| a.get("agent").and_then(|v| v.as_str()) == Some("chef-eval"))?;
     let summary = item.get("summary").and_then(|v| v.as_str())?;
     let (letter, score) = score_regex_letter(summary)?;
     Some(DayScore {
@@ -327,10 +327,7 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
             || refresh.and_then(|r| r.get("error")).is_some();
         // Freshness-contract: toon een concrete reden, nooit alleen "STALE".
         let stale_reason: Option<String> = if unavailable {
-            let err = provider
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let err = provider.get("error").and_then(|v| v.as_str()).unwrap_or("");
             if err.contains("401") || err.contains("unauthor") || err.contains("token") {
                 Some("401 · auth verlopen".into())
             } else if !err.is_empty() {
@@ -339,7 +336,9 @@ pub fn build_providers(overview: Option<&Value>) -> Vec<ProviderRow> {
                 Some("endpoint onbereikbaar".into())
             }
         } else if stale {
-            let err = refresh.and_then(|r| r.get("error")).and_then(|v| v.as_str());
+            let err = refresh
+                .and_then(|r| r.get("error"))
+                .and_then(|v| v.as_str());
             match err {
                 Some(e) if !e.is_empty() => Some(format!("connector oud · {e}")),
                 _ => Some("connector-data oud".into()),
@@ -794,7 +793,10 @@ pub fn coalesce_toasts(fresh: &[Suggestion]) -> Option<(String, String, &'static
     }
     let worst = if fresh.iter().any(|s| s.stamp == "FOUT") {
         "error"
-    } else if fresh.iter().any(|s| matches!(s.stamp.as_str(), "HULP" | "LIMIET")) {
+    } else if fresh
+        .iter()
+        .any(|s| matches!(s.stamp.as_str(), "HULP" | "LIMIET"))
+    {
         "warn"
     } else {
         "ok"
@@ -805,7 +807,11 @@ pub fn coalesce_toasts(fresh: &[Suggestion]) -> Option<(String, String, &'static
     if fresh.len() > 3 {
         body.push_str(&format!(" +{} meer", fresh.len() - 3));
     }
-    Some((format!("ChefGroep · {} meldingen", fresh.len()), body, worst))
+    Some((
+        format!("ChefGroep · {} meldingen", fresh.len()),
+        body,
+        worst,
+    ))
 }
 
 pub const SUGGESTION_TTL_SECONDS: i64 = 45;
@@ -825,11 +831,8 @@ fn now_unix() -> i64 {
 /// stuurt ze daarna als toast + slaat ze in de snapshot.
 pub fn watcher_events(prev: &Snapshot, next: &Snapshot) -> Vec<Suggestion> {
     let mut out: Vec<Suggestion> = Vec::new();
-    let prev_agents: HashMap<String, &AgentRow> = prev
-        .agents
-        .iter()
-        .map(|a| (a.key.clone(), a))
-        .collect();
+    let prev_agents: HashMap<String, &AgentRow> =
+        prev.agents.iter().map(|a| (a.key.clone(), a)).collect();
     for agent in &next.agents {
         // Alleen transities van agents die al bekend waren (geen startup-spam).
         let Some(was_agent) = prev_agents.get(&agent.key) else {
@@ -921,8 +924,14 @@ mod watcher_tests {
         })));
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[0].stale_reason.as_deref(), Some("401 · auth verlopen"));
-        assert_eq!(rows[1].stale_reason.as_deref(), Some("endpoint onbereikbaar"));
-        assert_eq!(rows[2].stale_reason.as_deref(), Some("connector oud · timeout"));
+        assert_eq!(
+            rows[1].stale_reason.as_deref(),
+            Some("endpoint onbereikbaar")
+        );
+        assert_eq!(
+            rows[2].stale_reason.as_deref(),
+            Some("connector oud · timeout")
+        );
         assert_eq!(rows[3].stale_reason, None);
         assert!(rows[0].stale_reason.is_some());
     }
