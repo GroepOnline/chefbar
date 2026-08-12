@@ -941,6 +941,7 @@ fn render_into(
 
     // ---- Domein-view: typed data per harnas (domains.rs) ----
     let view_kind = active_kind.clone().unwrap_or(HarnessKind::Health);
+    eprintln!("[dbg] render active_id={active_id} kind={:?}", view_kind);
     domains::render_domain(content, &view_kind, &snap, query, executor, window);
 
     // ---- Inbox: watcher-suggesties die jou opvallen (alleen op inbox) ----
