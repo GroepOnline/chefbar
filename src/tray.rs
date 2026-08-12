@@ -36,6 +36,12 @@ pub enum UiCommand {
     /// Forceer de tray-glyph-state (testhook: stil/bezig/hulp/fout/offline)
     /// voor live verificatie op een echt GNOME-panel (brief W3).
     ForceState(String),
+    /// Focus een specifiek domein in het panel (sidebar-nav via IPC/palette).
+    FocusDomain(String),
+    /// Toggle de command-palette-overlay binnen het panel (Super+Shift+Space).
+    TogglePalette,
+    /// Open de inbox-zone in het panel.
+    OpenInbox,
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.
@@ -109,6 +115,7 @@ pub fn register_handle(handle: ksni::Handle<ChefTray>) {
 }
 
 /// Tel verse meldingen voor de badge in de tray-statuslijn.
+#[allow(dead_code)]
 fn inbox_count(shared: &Arc<RwLock<Snapshot>>) -> usize {
     shared
         .read()
@@ -119,6 +126,83 @@ fn inbox_count(shared: &Arc<RwLock<Snapshot>>) -> usize {
                 .count()
         })
         .unwrap_or(0)
+}
+
+/// Domein-definitie voor FocusDomain-tray-menu en group-dots.
+fn tray_domains() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("inbox", "Inbox"),
+        ("fleet", "Fleet"),
+        ("herdr", "Herdr"),
+        ("vault", "Vault"),
+        ("share", "Share"),
+        ("taken", "Taken"),
+        ("containers", "Containers"),
+        ("secrets", "Secrets"),
+        ("kater", "Kater"),
+        ("health", "Health"),
+    ]
+}
+
+#[allow(dead_code)]
+fn domain_label(id: &str) -> &'static str {
+    match id {
+        "inbox" => "Inbox",
+        "fleet" => "Fleet",
+        "herdr" => "Herdr",
+        "vault" => "Vault",
+        "share" => "Share",
+        "taken" => "Taken",
+        "containers" => "Containers",
+        "secrets" => "Secrets",
+        "kater" => "Kater",
+        "health" => "Health",
+        _ => "Onbekend",
+    }
+}
+
+/// Bouw één regel met group-dots voorgelegd: e.g. "Fleet · ● Herdr ● Vault"
+/// De caller bepaalt n; deze helper voegt per-domain een kleine dot toe
+/// op basis van harness-kleur (harness.rs) waar beschikbaar.
+fn tray_status_suffix(inbox_n: usize, health_level: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if inbox_n > 0 {
+        if inbox_n == 1 {
+            parts.push("1 om aandacht".to_string());
+        } else {
+            parts.push(format!("{inbox_n} om aandacht"));
+        }
+    }
+    // Group-dots: kleine coloured dots per harness-group met een live-like hint.
+    // In pure tray-code hebben we geen HarnessKind import nodig; we gebruiken
+    // vaste kleuren (zie harness.rs colors voor fleet/commerce/sync/eval).
+    // Voor nu: één dot per health/level als subtiele indicator.
+    if health_level == "warn" {
+        parts.push("●".to_string());
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", parts.join(" · "))
+    }
+}
+
+/// Publieke helper voor tests: map tray-status naar (state, line) met inbox-count.
+pub fn tray_status_for(snapshot: &Snapshot) -> (String, String) {
+    let (mut state, mut line) = snapshot.tray_state();
+    let n = snapshot
+        .suggestions
+        .iter()
+        .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
+        .count();
+    let suffix = tray_status_suffix(n, &snapshot.health.level);
+    if !suffix.is_empty() {
+        if state == "stil" && n > 0 {
+            state = "hulp".into();
+        }
+        line.push_str(&suffix);
+    }
+    (state, line)
 }
 
 /// Pauseer niet-critische notificaties 1 uur via joep-notify (brief: pauzeren
@@ -167,16 +251,22 @@ pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
         .read()
         .map(|s| s.tray_state())
         .unwrap_or_else(|_| ("offline".into(), "ChefGroep".into()));
-    let n = inbox_count(shared);
-    if n > 0 {
-        if state == "stil" {
+    let (n, level) = shared
+        .read()
+        .map(|s| {
+            let n = s
+                .suggestions
+                .iter()
+                .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
+                .count();
+            (n, s.health.level.clone())
+        })
+        .unwrap_or((0, String::new()));
+    let suffix = tray_status_suffix(n, &level);
+    if !suffix.is_empty() {
+        if state == "stil" && n > 0 {
             state = "hulp".into();
         }
-        let suffix = if n == 1 {
-            " · 1 melding".to_string()
-        } else {
-            format!(" · {n} meldingen")
-        };
         line.push_str(&suffix);
     }
     let icon = tray_icon_for(&state);
@@ -224,12 +314,36 @@ impl ksni::Tray for ChefTray {
         let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
         let profile = crate::config::global_profile();
 
-        // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
+        // Live eventregels — uitgebreid van 3 naar 5 (spec Lane E).
         let snap = self.shared.read().ok();
         let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
         let sessions = crate::sessions::load_tray_events(&events);
+        let inbox_n = snap
+            .as_ref()
+            .map(|s| {
+                s.suggestions
+                    .iter()
+                    .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
+                    .count()
+            })
+            .unwrap_or(0);
+        // Inbox-count regel bovenaan indien non-empty: "3 om aandacht".
+        if inbox_n > 0 {
+            let label = if inbox_n == 1 {
+                "1 om aandacht".to_string()
+            } else {
+                format!("{inbox_n} om aandacht")
+            };
+            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                label,
+                icon_name: "mail-unread-symbolic".into(),
+                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::OpenInbox)),
+                ..Default::default()
+            }));
+            items.push(ksni::MenuItem::Separator);
+        }
         for (shown, session) in sessions.iter().take(6).enumerate() {
-            if shown >= 3 {
+            if shown >= 5 {
                 break;
             }
             let stamp = match session.state.as_str() {
@@ -354,6 +468,29 @@ impl ksni::Tray for ChefTray {
             ..Default::default()
         }));
         items.push(ksni::MenuItem::Separator);
+
+        // Domein-nav: FocusDomain per domein (group-dots impliciet via labels).
+        {
+            let mut domain_items: Vec<ksni::MenuItem<Self>> = Vec::new();
+            for (id, label) in tray_domains() {
+                let domain = id.to_string();
+                domain_items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                    label: label.to_string(),
+                    icon_name: "go-next-symbolic".into(),
+                    activate: Box::new(move |tray: &mut Self| {
+                        tray.send(UiCommand::FocusDomain(domain.clone()));
+                    }),
+                    ..Default::default()
+                }));
+            }
+            items.push(ksni::MenuItem::SubMenu(ksni::menu::SubMenu::<Self> {
+                label: "Ga naar domein".into(),
+                icon_name: "view-grid-symbolic".into(),
+                submenu: domain_items,
+                ..Default::default()
+            }));
+            items.push(ksni::MenuItem::Separator);
+        }
 
         // Notificaties pauzeren + meelopen vanaf login.
         items.push(ksni::MenuItem::Standard(StandardItem::<Self> {

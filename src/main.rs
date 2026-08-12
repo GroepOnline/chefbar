@@ -239,6 +239,18 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             chefbar::tray::UiCommand::ForceState(state) => {
                 chefbar::tray::force_state(&state);
             }
+            chefbar::tray::UiCommand::FocusDomain(_domain) => {
+                // Lane E: focus domein in panel (sidebar-nav). Panel API
+                // voor FocusDomain komt in Lane C; tot die tijd: toon panel.
+                panel.show();
+            }
+            chefbar::tray::UiCommand::TogglePalette => {
+                // Lane E/C: palette-overlay toggle. Voor nu: panel.show().
+                panel.show();
+            }
+            chefbar::tray::UiCommand::OpenInbox => {
+                panel.show();
+            }
         });
 
     chefbar::tray::start_command_bridge(ui_rx, dispatcher);
