@@ -1,120 +1,74 @@
-//! Devin-skin CSS voor ChefBar — tokens uit `~/design-system/tokens.css`
-//! (v2 "Devin-richting"), gemapt op GTK3-CSS (beperkte subset).
+//! Signaal v2 (Devin-richting) CSS voor ChefBar — tokens uit
+//! `GroepOnline/design-system` (`DESIGN.md` v2 + `tokens.css`, skin `devin`),
+//! gemapt op de GTK3-CSS subset. Migratiebeslissing: Joep, 2026-08-12
+//! (ChefBar volgt OpenCodex, dat per PR #26 op v2 zit).
 //!
-//! Devin-meetwaarden: warme bg, zachte lijnen, serif display, medium koppen,
-//! pill-badges, accent #317CFF/#5C97FF. Alleen GTK3-compatibele properties.
+//! v2-meetwaarden: warm off-white canvas #F7F6F5 / basalt-warm donker
+//! #121111, één accent #317CFF (licht) / #5C97FF (donker), General Sans
+//! interface + IBM Plex Mono data (geen serif in product-UI), radius
+//! 6/10/200, hairlines, geen glow/gradients. Signature blijft de verticale
+//! CG-statuslijn (v2 worked-row-streep: line-strong in rust, accent live).
+//! Groen blijft gereserveerd voor git/PR/toestemming; amber = wacht-op-jou.
 
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
 pub fn styles_css(theme: &str) -> String {
-    let (
-        bg,
-        surface,
-        sunk,
-        hover,
-        line,
-        line_strong,
-        text,
-        text_muted,
-        text_faint,
-        accent,
-        _accent_ink,
-        accent_soft,
-        green,
-        green_bg,
-        red,
-        amber,
-        hold_bg,
-        hold_line,
-    ) = if theme == THEME_LIGHT {
-        (
-            "#F7F6F5",
-            "#FFFFFF",
-            "#EFEFEF",
-            "rgba(0,0,0,0.045)",
-            "rgba(0,0,0,0.08)",
-            "rgba(0,0,0,0.14)",
-            "#191919",
-            "rgba(0,0,0,0.55)",
-            "rgba(0,0,0,0.38)",
-            "#317CFF",
-            "#1D5FD6",
-            "rgba(49,124,255,0.09)",
-            "#1F883D",
-            "rgba(31,136,61,0.10)",
-            "#CF222E",
-            "#BF5B00",
-            "rgba(191,91,0,0.06)",
-            "rgba(191,91,0,0.35)",
-        )
-    } else {
-        (
-            "#121111",
-            "#1B1A19",
-            "#242322",
-            "rgba(255,255,255,0.05)",
-            "rgba(255,255,255,0.09)",
-            "rgba(255,255,255,0.16)",
-            "#F0EEEB",
-            "rgba(240,238,235,0.55)",
-            "rgba(240,238,235,0.35)",
-            "#5C97FF",
-            "#8AB4FF",
-            "rgba(92,151,255,0.12)",
-            "#3FB950",
-            "rgba(63,185,80,0.12)",
-            "#F85149",
-            "#D9A038",
-            "rgba(217,160,56,0.08)",
-            "rgba(217,160,56,0.40)",
-        )
-    };
-
+    let t = if theme == THEME_LIGHT { Tokens::light() } else { Tokens::dark() };
     format!(
         r#"
-/* ============ App-window (Devin-dark) ============ */
+/* ============ App-window (v2 canvas) ============ */
 .chefbar-app {{
-  background-color: {bg};
+  background-color: {canvas};
   color: {text};
-  font-family: "General Sans", "Inter", "Cantarell", sans-serif;
-  font-size: 13.5px;
+  font-family: "General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif;
+  font-size: 13px;
 }}
 
-/* Header — custom titlebar (undecorated window) — strak en compact */
+/* Header — custom titlebar (undecorated window) */
 .chefbar-header {{
-  background-color: {bg};
-  padding: 12px 16px 10px 16px;
+  background-color: {canvas};
+  padding: 14px 16px 12px 16px;
   border-bottom: 1px solid {line};
 }}
 .chefbar-title {{
-  font-family: "Instrument Serif", "General Sans", Georgia, serif;
-  font-size: 22px;
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 18px;
   font-weight: 500;
   color: {text};
 }}
 .chefbar-title-sub {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  color: {text_faint};
-  letter-spacing: 0.02em;
-}}
-
-/* Status-badge (pill) — compact premium */
-.chefbar-badge {{
-  border-radius: 200px;
-  padding: 2px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  background-color: {sunk};
   color: {text_muted};
 }}
-.chefbar-badge.ok    {{ background-color: {green_bg}; color: {green}; }}
-.chefbar-badge.warn  {{ background-color: {hold_bg};  color: {amber}; }}
-.chefbar-badge.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
-.chefbar-badge.info  {{ background-color: {accent_soft}; color: {accent}; }}
+
+/* ============ Signature: de CG-statuslijn ============ */
+/* 2px verticale lijn (v2 worked-row-streep) + één compacte statusregel.
+   Rust = line-strong; ok/warn/error/info volgen het statusspectrum. */
+.chefbar-signature {{
+  background-color: {control_border};
+  min-width: 2px;
+  border-radius: 1px;
+}}
+.chefbar-signature.ok    {{ background-color: {success}; }}
+.chefbar-signature.warn  {{ background-color: {warn}; }}
+.chefbar-signature.error {{ background-color: {error}; }}
+.chefbar-signature.info  {{ background-color: {info}; }}
+.chefbar-statuslijn {{
+  background-color: {surface};
+  border: 1px solid {line};
+  border-radius: 10px;
+  padding: 8px 12px;
+}}
+.chefbar-statuslijn-text {{
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: {text};
+}}
+
 
 /* Ghost icon-knoppen (header controls) */
 .chefbar-gbtn {{
@@ -126,36 +80,38 @@ pub fn styles_css(theme: &str) -> String {
   min-height: 28px;
   padding: 2px 6px;
   font-size: 13px;
+  transition: background-color 140ms, color 140ms;
 }}
 .chefbar-gbtn:hover {{
   background-color: {hover};
   color: {text};
 }}
 .chefbar-gbtn:active {{
-  color: {accent};
+  color: {brand};
 }}
 
-/* Zoek-input met focus-ring — strak */
+/* Zoek-input — pill affordance, focus-ring in accent */
 .chefbar-search, .chefbar-search entry {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+  border: 1px solid {control_border};
+  border-radius: 999px;
   color: {text};
   font-size: 13px;
-  padding: 7px 10px;
+  padding: 7px 14px;
 }}
 .chefbar-search:focus,
 .chefbar-search entry:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
+  border-color: {focus};
+  box-shadow: 0 0 0 3px {focus_soft};
 }}
 
-/* Section headers — strak, consistente 16px zijkanten */
+/* Section eyebrows — caps (v2 .caps: 10.5/600), kort en rustig */
 .chefbar-section-title {{
-  font-size: 13.5px;
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 10.5px;
   font-weight: 600;
-  color: {text};
-  padding: 16px 16px 2px 16px;
+  color: {text_muted};
+  padding: 18px 16px 4px 16px;
 }}
 .chefbar-section-sub {{
   font-size: 11.5px;
@@ -163,7 +119,7 @@ pub fn styles_css(theme: &str) -> String {
   padding: 0 16px 6px 16px;
 }}
 
-/* Grouped cards: één card per sectie, hairlines tussen rows — strak 16px */
+/* Zones: één surface per sectie, hairlines tussen rows, radius 10 */
 .chefbar-group {{
   background-color: {surface};
   border: 1px solid {line};
@@ -179,16 +135,15 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-row:hover {{ background-color: {hover}; }}
 .chefbar-group-attention {{
   background-color: {surface};
-  border: 1px solid {hold_line};
-  border-left: 2px solid {amber};
+  border: 1px solid {line};
+  border-left: 3px solid {warm};
   border-radius: 10px;
   margin: 2px 16px 6px 16px;
 }}
 
-/* Card-titels en meta */
-/* Card-titels en meta — strak, geen overflow-bleed */
+/* Rij-titels en meta (data in Plex Mono) */
 .chefbar-card-title {{
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: {text};
 }}
@@ -198,7 +153,7 @@ pub fn styles_css(theme: &str) -> String {
   color: {text_muted};
 }}
 .chefbar-empty {{
-  padding: 14px 16px;
+  padding: 16px 16px;
   margin: 0 12px;
 }}
 .chefbar-empty-title {{
@@ -215,52 +170,52 @@ pub fn styles_css(theme: &str) -> String {
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   font-weight: 600;
-  color: {text_faint};
-  letter-spacing: 0.06em;
+  color: {text_muted};
 }}
 
-/* Status-dots (pill) */
+/* Status-dots — status = kleur + vorm + tekst (dot naast label) */
 .chefbar-dot {{
   min-width: 8px;
   min-height: 8px;
-  border-radius: 200px;
-  background-color: {text_faint};
+  border-radius: 999px;
+  background-color: {text_muted};
 }}
-.chefbar-dot.ok    {{ background-color: {green}; }}
-.chefbar-dot.warn  {{ background-color: {amber}; }}
-.chefbar-dot.down  {{ background-color: {red}; }}
-.chefbar-dot.info  {{ background-color: {accent}; }}
+.chefbar-dot.ok    {{ background-color: {success}; }}
+.chefbar-dot.warn  {{ background-color: {warn}; }}
+.chefbar-dot.down  {{ background-color: {error}; }}
+.chefbar-dot.info  {{ background-color: {info}; }}
 
 /* Usage bars */
 .chefbar-bar-track {{
   min-height: 4px;
-  border-radius: 200px;
-  background-color: {sunk};
+  border-radius: 3px;
+  background-color: {surface_muted};
 }}
 .chefbar-bar-fill {{
-  border-radius: 200px;
-  background-color: {accent};
+  border-radius: 3px;
+  background-color: {brand};
 }}
-.chefbar-bar-fill.ok    {{ background-color: {green}; }}
-.chefbar-bar-fill.warn  {{ background-color: {amber}; }}
-.chefbar-bar-fill.down  {{ background-color: {red}; }}
+.chefbar-bar-fill.ok    {{ background-color: {success}; }}
+.chefbar-bar-fill.warn  {{ background-color: {warn}; }}
+.chefbar-bar-fill.down  {{ background-color: {error}; }}
 
-/* Knoppen — shadcn/devin-geest */
+/* Knoppen — v2 .btn: hairline-strong, r-6; primary = text↔bg omgekeerd */
 .chefbar-btn {{
   background-color: {surface};
-  border: 1px solid {line_strong};
+  border: 1px solid {control_border};
   border-radius: 6px;
   color: {text};
   padding: 6px 13px;
   font-size: 13px;
   font-weight: 500;
-  min-height: 30px;
+  min-height: 32px;
+  transition: background-color 140ms, border-color 140ms;
 }}
 .chefbar-btn:hover {{
-  background-color: {sunk};
+  background-color: {surface_muted};
 }}
 .chefbar-btn:focus {{
-  border-color: {accent};
+  border-color: {focus};
 }}
 .chefbar-btn:active {{
   background-color: {surface};
@@ -268,41 +223,42 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-btn.chefbar-primary {{
   background-color: {text};
   border-color: {text};
-  color: {bg};
+  color: {canvas};
 }}
 .chefbar-btn.chefbar-primary:hover {{
   background-color: {text};
+  border-color: {text};
   opacity: 0.87;
 }}
 .chefbar-btn.chefbar-danger {{
-  border-color: {hold_line};
-  color: {amber};
-  background-color: {hold_bg};
+  border-color: {error};
+  color: {error};
+  background-color: {error_soft};
 }}
 
-/* Stamp-badges (KLAAR/HULP/FOUT/BEZIG) */
+/* Stamps (KLAAR/HULP/FOUT/BEZIG) — v2 badge-pill, caps */
 .chefbar-stamp {{
   border-radius: 200px;
   padding: 2px 8px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  background-color: {sunk};
+  background-color: {surface_muted};
   color: {text_muted};
 }}
-.chefbar-stamp.ok    {{ background-color: {green_bg}; color: {green}; }}
-.chefbar-stamp.warn  {{ background-color: {hold_bg};  color: {amber}; }}
-.chefbar-stamp.error {{ background-color: rgba(248,81,73,0.12); color: {red}; }}
-.chefbar-stamp.info  {{ background-color: {accent_soft}; color: {accent}; }}
+.chefbar-stamp.ok    {{ background-color: {success_soft}; color: {success}; }}
+.chefbar-stamp.warn  {{ background-color: {warn_soft};    color: {warn}; }}
+.chefbar-stamp.error {{ background-color: {error_soft};   color: {error}; }}
+.chefbar-stamp.info  {{ background-color: {info_soft};   color: {info}; }}
 
-/* Actierows (klikbare rijen in een group) */
+/* Actierows (klikbare rijen in een zone) */
 .chefbar-row-btn {{
   background-color: transparent;
   border: none;
   border-bottom: 1px solid {line};
   border-radius: 0;
   min-height: 0;
+  transition: background-color 140ms;
 }}
 .chefbar-group .chefbar-row-btn:last-child {{
   border-bottom: none;
@@ -313,22 +269,25 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-row-btn:hover {{
   background-color: {hover};
 }}
+.chefbar-row-btn:focus {{
+  box-shadow: inset 2px 0 0 {focus};
+}}
 
-/* Room — sidebar + main canvas (tokens dark: bg #121111, surface #1B1A19, sunk #242322, line 09%, line-strong 16%, accent #5C97FF) */
+/* Room — sidebar + main canvas */
 .chefbar-sidebar {{
-  background-color: {sunk};
+  background-color: {surface_muted};
   border-right: 1px solid {line};
 }}
 .chefbar-sidebar-title {{
-  font-family: "Instrument Serif", "General Sans", Georgia, serif;
-  font-size: 15px;
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 14px;
   font-weight: 500;
   color: {text};
 }}
 .chefbar-sidebar-sub {{
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
-  color: {text_faint};
+  font-size: 10px;
+  color: {text_muted};
 }}
 .chefbar-nav-item {{
   background-color: transparent;
@@ -339,23 +298,24 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 13px;
   font-weight: 500;
   padding: 7px 10px;
-  min-height: 30px;
+  min-height: 28px;
+  transition: background-color 140ms, color 140ms;
 }}
 .chefbar-nav-item:hover {{
-  background-color: {sunk};
+  background-color: {hover};
   color: {text};
 }}
 .chefbar-nav-item.active {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-left: 2px solid {accent};
+  border: 1px solid {line};
+  border-left: 2px solid {brand};
   color: {text};
 }}
 .chefbar-nav-item.active:hover {{
   background-color: {surface};
 }}
 .chefbar-nav-item:active {{
-  background-color: {accent_soft};
+  background-color: {brand_soft};
 }}
 .chefbar-sidebar-footer {{
   border-top: 1px solid {line};
@@ -365,85 +325,187 @@ pub fn styles_css(theme: &str) -> String {
   font-size: 11px;
   font-weight: 600;
   color: {text_muted};
-  letter-spacing: 0.04em;
 }}
 .chefbar-sidebar-footer-meta {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
-  color: {text_faint};
+  color: {text_muted};
 }}
 .chefbar-main {{
-  background-color: {bg};
+  background-color: {canvas};
 }}
 
-/* Footer — strak, mono, niet overheersend */
+/* Footer — mono microcopy, niet overheersend */
 .chefbar-footer {{
-  background-color: {bg};
+  background-color: {canvas};
   border-top: 1px solid {line};
   padding: 7px 16px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
-  color: {text_faint};
+  font-size: 10px;
+  color: {text_muted};
 }}
 .chefbar-footer-label {{
   font-family: "IBM Plex Mono", monospace;
-  font-size: 10.5px;
-  color: {text_faint};
+  font-size: 10px;
+  color: {text_muted};
 }}
 
-/* Textdialog (acties met needs_text) */
+/* Textdialog (acties met needs_text) — radius 12, zwevende schaduw */
 .chefbar-dialog {{
-  background-color: {bg};
+  background-color: {canvas};
   border: 1px solid {line};
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
 }}
 .chefbar-dialog entry {{
   background-color: {surface};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
+  border: 1px solid {control_border};
+  border-radius: 8px;
   color: {text};
   padding: 8px 10px;
 }}
 .chefbar-dialog entry:focus {{
-  border-color: {accent};
+  border-color: {focus};
 }}
 
-/* Harnas-tabs (room) — compact pills */
-.chefbar-harness-row {{
-  padding: 0;
+
+/* Scrollbars — dun en stil */
+scrollbar {{
+  background-color: transparent;
 }}
-.chefbar-harness {{
-  background-color: {surface};
-  border: 1px solid {line};
-  border-radius: 200px;
-  padding: 3px 11px;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: {text_muted};
+scrollbar slider {{
+  background-color: {surface_raised};
+  border-radius: 999px;
+  min-width: 6px;
+  min-height: 6px;
 }}
-.chefbar-harness:hover {{
-  background-color: {sunk};
-  color: {text};
-}}
-.chefbar-harness-active {{
-  background-color: {text};
-  border-color: {text};
-  border-radius: 200px;
-  padding: 3px 11px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: {bg};
+scrollbar slider:hover {{
+  background-color: {control_border};
 }}
 "#
+        ,
+        canvas = t.canvas,
+        surface = t.surface,
+        surface_muted = t.surface_muted,
+        surface_raised = t.surface_raised,
+        line = t.line,
+        control_border = t.control_border,
+        text = t.text,
+        text_muted = t.text_muted,
+        brand = t.brand,
+        brand_soft = t.brand_soft,
+        warm = t.warm,
+        warn = t.warn,
+        warn_soft = t.warn_soft,
+        info = t.info,
+        info_soft = t.info_soft,
+        focus = t.focus,
+        focus_soft = t.focus_soft,
+        success = t.success,
+        success_soft = t.success_soft,
+        error = t.error,
+        error_soft = t.error_soft,
+        hover = t.hover,
     )
 }
 
-/// Welk thema actief is: donker tenzij de desktop expliciet om light vraagt.
-pub fn detect_theme(settings: &gtk::Settings) -> String {
-    use gtk::prelude::*;
-    if settings.property::<bool>("gtk-application-prefer-dark-theme") {
-        THEME_DARK.into()
-    } else {
-        THEME_LIGHT.into()
+/// v2-tokenwaarden per thema (tokens.css, skin devin).
+struct Tokens {
+    canvas: &'static str,
+    surface: &'static str,
+    surface_muted: &'static str,
+    surface_raised: &'static str,
+    line: &'static str,
+    control_border: &'static str,
+    text: &'static str,
+    text_muted: &'static str,
+    brand: &'static str,
+    brand_soft: &'static str,
+    warm: &'static str,
+    warn: &'static str,
+    warn_soft: &'static str,
+    info: &'static str,
+    info_soft: &'static str,
+    focus: &'static str,
+    focus_soft: &'static str,
+    success: &'static str,
+    success_soft: &'static str,
+    error: &'static str,
+    error_soft: &'static str,
+    hover: &'static str,
+}
+
+impl Tokens {
+    /// Donker (v2 devin-skin dark — standaard).
+    fn dark() -> Self {
+        Self {
+            canvas: "#121111",
+            surface: "#1B1A19",
+            surface_muted: "#242322",
+            surface_raised: "#242322",
+            line: "rgba(255,255,255,0.09)",
+            control_border: "rgba(255,255,255,0.16)",
+            text: "#F0EEEB",
+            text_muted: "rgba(240,238,235,0.55)",
+            brand: "#5C97FF",
+            brand_soft: "rgba(92,151,255,0.12)",
+            warm: "#D9A038",
+            warn: "#D9A038",
+            warn_soft: "rgba(217,160,56,0.08)",
+            info: "#8AB4FF",
+            info_soft: "rgba(92,151,255,0.12)",
+            focus: "#5C97FF",
+            focus_soft: "rgba(92,151,255,0.12)",
+            success: "#3FB950",
+            success_soft: "rgba(63,185,80,0.12)",
+            error: "#F85149",
+            error_soft: "rgba(248,81,73,0.12)",
+            hover: "rgba(255,255,255,0.05)",
+        }
     }
+
+    /// Licht (v2 devin-skin light — volledige pariteit).
+    fn light() -> Self {
+        Self {
+            canvas: "#F7F6F5",
+            surface: "#FFFFFF",
+            surface_muted: "#EFEFEF",
+            surface_raised: "#FFFFFF",
+            line: "rgba(0,0,0,0.08)",
+            control_border: "rgba(0,0,0,0.14)",
+            text: "#191919",
+            text_muted: "rgba(0,0,0,0.55)",
+            brand: "#317CFF",
+            brand_soft: "rgba(49,124,255,0.09)",
+            warm: "#BF5B00",
+            warn: "#BF5B00",
+            warn_soft: "rgba(191,91,0,0.06)",
+            info: "#1D5FD6",
+            info_soft: "rgba(49,124,255,0.09)",
+            focus: "#317CFF",
+            focus_soft: "rgba(49,124,255,0.09)",
+            success: "#1F883D",
+            success_soft: "rgba(31,136,61,0.10)",
+            error: "#CF222E",
+            error_soft: "rgba(207,34,46,0.10)",
+            hover: "rgba(0,0,0,0.045)",
+        }
+    }
+}
+
+/// Welk thema actief is. Signaal v2: donker (basalt-warm) is de standaard
+/// voor ChefBar, zoals bij de Huly-lock was afgesproken. `gtk-application-prefer-dark-theme` is op GNOME vrijwel
+/// altijd false (GTK3 krijgt dark-pref niet door), dus daarop defaulten zou
+/// de app onbedoeld licht maken. Licht heeft pariteit en is bereikbaar via
+/// CHEFBAR_THEME=light (dev/parity-checks); donker kan expliciet met
+/// CHEFBAR_THEME=dark.
+pub fn detect_theme(_settings: &gtk::Settings) -> String {
+    if let Ok(force) = std::env::var("CHEFBAR_THEME") {
+        match force.trim().to_ascii_lowercase().as_str() {
+            THEME_LIGHT => return THEME_LIGHT.into(),
+            THEME_DARK => return THEME_DARK.into(),
+            _ => {}
+        }
+    }
+    THEME_DARK.into()
 }

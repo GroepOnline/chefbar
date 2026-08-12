@@ -56,9 +56,7 @@ pub fn fuzzy_score(query: &str, action: &Action) -> Option<i32> {
             .skip_while(|(idx, _)| *idx as i64 <= position)
             .find(|(_, c)| *c == ch)
             .map(|(idx, _)| idx as i64);
-        let Some(next) = next else {
-            return None;
-        };
+        let next = next?;
         if position >= 0 {
             gaps += next - position - 1;
         }

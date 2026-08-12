@@ -1,0 +1,13 @@
+# Qodo (pr-agent) repo-config.
+# Reviews en findings zijn welkom; de Remediation/Fixer-agent niet: die
+# pushte twee keer half-bakken auto-fix commits direct op PR-branches
+# (o.a. cdaa608 -> rode CI op PR #9, bd0ac62/d291ce8/feed70f op PR #8).
+# Handgeschreven config vereist expliciete flags (zie qodo-docs:
+# "enable must be set explicitly in a hand-written .pr_agent.toml").
+
+[chat_agent]
+enable_fixer_agent = false
+
+[fixer_agent]
+enable = false
+enable_auto_fix = false
