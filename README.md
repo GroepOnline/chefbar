@@ -60,6 +60,13 @@ chefbar --version
 
 IPC-aliasen: `panel`, `bar`, `toggle-panel`, `dashboard`, `open`, `show` → TogglePanel. `refresh` / `reload` → Refresh. `doctor` / `check` → Doctor. `quit` / `exit` / `stop` → Quit.
 
+## Eén quick-command-overlay
+
+**Super+Space** opent ChefBar. **Alt+Space** (`chef-hud`) is een oudere
+rofi-lookalike met vrijwel dezelfde header — hij leest als een "tweede
+ChefBar". Keuze: chef-hud **retireren** (binding verwijderen) of herbinden.
+`chefbar --doctor` wijst je erop zolang hij nog aanwezig is.
+
 ## Configuratie
 
 ### Endpoint-profiel is SSOT

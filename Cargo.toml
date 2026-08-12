@@ -18,6 +18,15 @@ clap = { version = "4", features = ["derive"] }
 sha2 = "0.10"
 pango = "0.18"
 gdk = "0.18"
+# E2: Wayland layer-shell (optioneel — systeembibliotheek libgtk-layer-shell
+# nodig op build- én runtime-machine, vandaar default uit).
+gtk-layer-shell = { version = "0.8", optional = true }
+
+[features]
+default = []
+# v0_6 = nieuwste C-API (libgtk-layer-shell >= 0.3); valt terug op v0_5/v0_4
+# voor oudere systeembibliotheken.
+layer-shell = ["gtk-layer-shell/v0_6"]
 
 [profile.release]
 lto = true

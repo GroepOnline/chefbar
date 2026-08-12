@@ -50,6 +50,15 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+      - name: Layer-shell feature-build (optioneel, pkg-config)
+        run: |
+          # .pc-naam varieert per distro (gtk-layer-shell-0 op nieuwere, -0.1 op oudere)
+          if pkg-config --exists gtk-layer-shell-0 2>/dev/null || pkg-config --exists gtk-layer-shell-0.1 2>/dev/null; then
+            cargo build --release --features layer-shell
+          else
+            echo "layer-shell dev-lib ontbreekt — feature-build overgeslagen (X11-fallback is de default)"
+          fi
+
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:

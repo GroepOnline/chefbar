@@ -12,6 +12,7 @@ pub mod doctor;
 pub mod harness;
 pub mod http;
 pub mod ipc;
+pub mod layer_shell;
 pub mod models;
 pub mod motion;
 pub mod notify;

@@ -74,7 +74,8 @@ bij open paneel (goed), maar: herbouw kost allocaties en forceert herlayout.
 - Meetstap: render-tijd per cyclus loggen (glib-timer).
 - Voorstel, in oplopende zwaarte:
   1. **Revisie-check:** sla over als `snap.revision` + error + fetched_at
-     onveranderd zijn (de goedkoopste winst);
+     onveranderd zijn (de goedkoopste winst); ✅ P3.1 gedaan (2026-08-12):
+     handtekening over de zichtbare velden, statusregel blijft los tikken;
   2. per-sectie rebuild (alleen de secties die veranderden);
   3. row-widgets hergebruiken en tekstupdates i.p.v. vervangen.
 - Randvoorwaarde: W1 blijft staan — vaste geometrie, geen resize-jumps,
@@ -105,18 +106,26 @@ gezondheid van de poll zelf.
 - Klein, zelfstandig, hoge zichtbaarheidswaarde.
 
 ### E2 — Wayland layer-shell (roadmap: bewust uitgesteld)
-- Beslis-tree blijft: `gtk-layer-shell` beschikbaar op GNOME/Ubuntu → echte
-  Wayland-laag (tray-anker, top-right, margin); anders fallback = huidige X11
-  met W1-fixes.
-- Eigen PR met CI-bewijs op `chef-runner-01-1`: layer-shell dev-libs
-  installeren op de runner + X11-fallback-test in het visual-harnas
-  (`scripts/visual-shot.sh`).
-- Niet als bijvangst meenemen in andere werkstromen.
+✅ Implementatie + fallback-bewijs (2026-08-12):
+- `gtk-layer-shell` 0.8 (gtk 0.18) als **optionele dependency** achter feature
+  `layer-shell` (default **uit** — de systeem-lib `libgtk-layer-shell` is een
+  build- én runtime-eis; de laptop heeft alleen de GTK4-variant).
+- `src/layer_shell.rs`: top-laag, top-right-anchor, marge, exclusive zone,
+  exclusive keyboard; alleen actief op echte Wayland-sessies
+  (`WAYLAND_DISPLAY` + `is_supported()` + `init_for_window`), anders nette
+  fallback naar het bestaande X11-gedrag.
+- Dev-libs geïnstalleerd op `chef-runner-01-1`; CI heeft een pkg-config-
+  guarded `--features layer-shell` build-stap; de X11-fallback blijft bewezen
+  door het visual-harnas.
+- **Inschakelen op de desktop:** `apt install libgtk-layer-shell0` + build met
+  `--features layer-shell` (of CI-artifact met de feature).
+- Beslis-tree (Wayland met lib → laag; anders X11-fallback) blijft.
 
 ### E3 — chef-hud vs chefbar expliciteren (W1-staart)
-Alt+Space (chef-hud) en Super+Space (chefbar) mogen nooit als "tweede ChefBar"
-lezen. Voorstel: chef-hud retireren of herstylen; documenteer de
-quick-command-overlay-keuze in de README.
+✅ Gedaan (2026-08-12): Alt+Space (chef-hud) en Super+Space (chefbar) mogen
+nooit als "tweede ChefBar" lezen. `--doctor` waarschuwt zolang
+`~/.local/bin/chef-hud` aanwezig is (alleen info, geen failure); README heeft
+de sectie "Eén quick-command-overlay" met de retireren/herbinden-keuze.
 
 ### E4 — OIDC via de `get_headers`-seam
 De seam staat (`src/auth.rs::get_headers()`); OIDC-access-tokens landen daar

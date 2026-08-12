@@ -32,6 +32,12 @@ pub struct Panel {
     nav_buttons: Rc<Vec<(String, gtk::Button)>>,
     /// UI-state (harnas + zoekterm) is gewijzigd maar nog niet naar disk.
     persist_dirty: Rc<Cell<bool>>,
+    /// P3.1: laatste render-handtekening — bij onveranderde snapshot wordt de
+    /// dure full-rebuild overgeslagen in de refresh-loop.
+    render_sig: Rc<RefCell<Option<u64>>>,
+    /// Opgeslagen statusregel-label zodat poll-leeftijd + versheid ook zonder
+    /// rebuild blijven tikken (P3.1-skip-pad).
+    updated_label: Rc<RefCell<Option<gtk::Label>>>,
 }
 
 impl Panel {
@@ -45,8 +51,13 @@ impl Panel {
         window.set_default_size(760, 840);
         window.set_size_request(760, 840);
         window.set_resizable(false);
-        window.set_keep_above(true);
-        window.set_position(gtk::WindowPosition::Center);
+        // E2: op echte Wayland-sessies het paneel als laag (top-right, marge);
+        // anders de bestaande X11-positionering (fallback, XWayland-proof).
+        let layered = crate::layer_shell::apply(&window);
+        if !layered {
+            window.set_keep_above(true);
+            window.set_position(gtk::WindowPosition::Center);
+        }
 
         // ---- Room layout: sidebar (220px fixed) + main canvas ----
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -274,6 +285,9 @@ impl Panel {
         }
         let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
+        // P3.1: render-handtekening + opgeslagen statusregel (refresh-loop).
+        let render_sig = Rc::new(RefCell::new(None));
+        let updated_label = Rc::new(RefCell::new(None));
         // Wire sidebar nav → harness_state + content re-render + sync_nav_buttons
         {
             for (id, btn) in nav_buttons_rc.iter() {
@@ -288,6 +302,8 @@ impl Panel {
                 let id_for_class = id.clone();
                 let btn_clone = btn.clone();
                 let dirty_clone = persist_dirty.clone();
+                let sig_clone = render_sig.clone();
+                let label_clone = updated_label.clone();
                 btn_clone.connect_clicked(move |_| {
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
@@ -299,6 +315,8 @@ impl Panel {
                         &window_clone,
                         &q,
                         &harness_state_clone,
+                        &sig_clone,
+                        &label_clone,
                     );
                     // Eén pad met de poll-timer: labels + active-class + tooltips.
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
@@ -315,6 +333,8 @@ impl Panel {
             harness_state: harness_state.clone(),
             nav_buttons: nav_buttons_rc.clone(),
             persist_dirty: persist_dirty.clone(),
+            render_sig,
+            updated_label,
         };
         panel.wire_search();
         // Initieel renderen met de (mogelijk herstelde) zoekterm — nooit een
@@ -359,6 +379,8 @@ impl Panel {
         let window = self.window.clone();
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
+        let sig = self.render_sig.clone();
+        let label = self.updated_label.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
@@ -370,6 +392,8 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
+                    &sig,
+                    &label,
                 );
             }
         });
@@ -399,6 +423,8 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
+            &self.render_sig,
+            &self.updated_label,
         );
     }
 
@@ -432,20 +458,33 @@ impl Panel {
         let harness_state = self.harness_state.clone();
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
+        let render_sig = self.render_sig.clone();
+        let updated_label = self.updated_label.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
-            if window.is_visible() {
-                let query = search.text().to_string();
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                );
-                let active = harness_state.borrow().clone();
-                sync_nav_buttons(&nav_buttons, &shared_nav, &active);
+            if !window.is_visible() {
+                return ControlFlow::Continue;
             }
+            // P3.1: bij onveranderde snapshot geen dure full-rebuild — alleen
+            // de statusregel (poll-leeftijd + versheid) blijft live tikken.
+            if *render_sig.borrow() == Some(render_signature(&shared)) {
+                if let Some(label) = updated_label.borrow().as_ref() {
+                    label.set_text(&status_right_text(&shared));
+                }
+                return ControlFlow::Continue;
+            }
+            let query = search.text().to_string();
+            render_into(
+                &content,
+                &shared,
+                &executor,
+                &window,
+                &query,
+                &harness_state,
+                &render_sig,
+                &updated_label,
+            );
+            let active = harness_state.borrow().clone();
+            sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             ControlFlow::Continue
         });
         let dirty_persist = self.persist_dirty.clone();
@@ -505,6 +544,88 @@ fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -
 // Render: Signaal v2 grouped sections
 // ---------------------------------------------------------------------------
 
+/// P3.1: compacte vingerafdruk van alles wat de render zichtbaar beïnvloedt.
+/// Velden die elke poll veranderen zonder zichtbaar effect (poll-leeftijd,
+/// fetched_at_unix) zitten er bewust niet in — de statusregel ververst los van
+/// de full-rebuild via `status_right_text`.
+fn render_signature(shared: &Shared) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    #[derive(Hash)]
+    struct Sig<'a> {
+        revision: i64,
+        error: Option<&'a str>,
+        agents: Vec<(&'a str, &'a str)>,           // key, status
+        suggestions: Vec<(&'a str, &'a str, i64)>, // key, stamp, created_unix
+        fleet: (usize, usize, bool),               // online, total, stale
+        health: (usize, usize, &'a str),           // ok, total, level
+        day_score: Option<i64>,
+        providers: Vec<(&'a str, bool)>, // label, available
+        events_len: usize,
+        ops: (bool, Vec<(&'a str, &'a str)>), // ok, (terminal_id, status)
+    }
+
+    let mut hasher = DefaultHasher::new();
+    {
+        let snap = shared.snapshot.read().unwrap();
+        let ops = shared.ops.read().unwrap();
+        let sig = Sig {
+            revision: snap.revision,
+            error: snap.error.as_deref(),
+            agents: snap
+                .agents
+                .iter()
+                .map(|a| (a.key.as_str(), a.status.as_str()))
+                .collect(),
+            suggestions: snap
+                .suggestions
+                .iter()
+                .map(|s| (s.key.as_str(), s.stamp.as_str(), s.created_unix))
+                .collect(),
+            fleet: (snap.fleet.online, snap.fleet.total, snap.fleet.stale),
+            health: (
+                snap.health.ok,
+                snap.health.total,
+                snap.health.level.as_str(),
+            ),
+            day_score: snap.day_score.score,
+            providers: snap
+                .providers
+                .iter()
+                .map(|p| (p.label.as_str(), p.available))
+                .collect(),
+            events_len: snap.events.len(),
+            ops: (
+                ops.ok,
+                ops.agents
+                    .iter()
+                    .map(|a| (a.terminal_id.as_str(), a.status.as_str()))
+                    .collect(),
+            ),
+        };
+        sig.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Tekst van de statusregel-rechts (vault-label · versheid · poll-gezondheid).
+/// Gedeeld door de full-render en het P3.1-skip-pad (statusregel blijft live).
+fn status_right_text(shared: &Shared) -> String {
+    let (snap, _ops) = {
+        let snap = shared.snapshot.read().unwrap().clone();
+        let ops = shared.ops.read().unwrap().clone();
+        (snap, ops)
+    };
+    let profile = crate::config::global_profile();
+    format!(
+        "{} · {} · {}",
+        profile.label("vaultApi"),
+        snap.fetched_label(),
+        snap.poll.label()
+    )
+}
+
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
@@ -512,7 +633,11 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
+    render_sig: &Rc<RefCell<Option<u64>>>,
+    updated_label: &Rc<RefCell<Option<gtk::Label>>>,
 ) {
+    // P3.1: na elke render is de handtekening de actuele waarheid.
+    *render_sig.borrow_mut() = Some(render_signature(shared));
     for child in content.children() {
         content.remove(&child);
     }
@@ -617,6 +742,9 @@ fn render_into(
     updated.set_max_width_chars(60);
     updated.set_tooltip_text(Some(&poll_label));
     updated.style_context().add_class("chefbar-card-meta");
+    // P3.1: sla het label op zodat de refresh-loop het zonder rebuild kan
+    // bijwerken (poll-leeftijd blijft live).
+    *updated_label.borrow_mut() = Some(updated.clone());
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
 

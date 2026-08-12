@@ -94,6 +94,17 @@ pub fn run_checks() -> DoctorReport {
         "ipc      socket nog niet gestart (ook ok voor --doctor)".into()
     });
 
+    // 5b. chef-hud (E3): een tweede quick-command-overlay naast ChefBar leest
+    //     als "tweede ChefBar" (Alt+Space). Alleen informeren, nooit een
+    //     failure — de keuze (retireren/herbinden) is van de gebruiker.
+    let hud = crate::home_dir().join(".local/bin/chef-hud");
+    if hud.exists() {
+        lines.push(
+            "chef-hud aanwezig — kan als tweede ChefBar lezen (Alt+Space); retireer of herbind, zie README"
+                .into(),
+        );
+    }
+
     // 6. Poll-gezondheid (E1): de actor meldt de laatste poll (vault + ops) —
     //    via dezelfde statics die hij elke cyclus bijwerkt. Zonder draaiende
     //    actor toont dit eerlijk "poll nooit".
