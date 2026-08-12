@@ -540,7 +540,10 @@ fn render_into(
     let mut seen = std::collections::HashSet::new();
     boost_terms.retain(|term| seen.insert(term.clone()));
     boost_terms.truncate(16);
-    let rank_ctx = RankContext { boost_terms };
+    let rank_ctx = RankContext {
+        boost_terms,
+        ..Default::default()
+    };
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
     // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
