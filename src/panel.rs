@@ -783,7 +783,11 @@ fn render_into(
     // ---- Sectie: Gezondheid ----
     section_title(content, "Gezondheid", "watchdog + dagscore + fleet");
     let group = group_box();
-    let health_row = info_row(&snap.health.line(), Some(&state_label(&snap.health)));
+    let health_meta = match snap.health.updated_at.as_deref() {
+        Some(at) => format!("{} · update {}", state_label(&snap.health), short_ts(at)),
+        None => state_label(&snap.health),
+    };
+    let health_row = info_row(&snap.health.line(), Some(&health_meta));
     group.pack_start(&health_row, false, false, 0);
     let day_line = match (&snap.day_score.letter, snap.day_score.score) {
         (Some(letter), Some(score)) => format!("Dagscore {letter} ({score}/100)"),
@@ -832,7 +836,7 @@ fn render_into(
             stale_badge.set_xalign(0.0);
             stale_badge.style_context().add_class("chefbar-stamp");
             stale_badge.style_context().add_class("error");
-            row_top_stale(&top, &stale_badge, row.refresh_at.as_deref());
+            row_top_stale(&top, &stale_badge, row.refresh_at.as_deref(), row.stale_reason.as_deref());
         } else if let Some(ref at) = row.refresh_at {
             let meta = gtk::Label::new(Some(&format!("update {}", short_ts(at))));
             meta.set_halign(gtk::Align::Start);
@@ -1279,7 +1283,10 @@ fn short_ts(ts: &str) -> String {
 }
 
 /// Plaatst een STALE-badge + eventuele oude refresh-tijd achteraan de top-row.
-fn row_top_stale(top: &gtk::Box, badge: &gtk::Label, refresh_at: Option<&str>) {
+fn row_top_stale(top: &gtk::Box, badge: &gtk::Label, refresh_at: Option<&str>, reason: Option<&str>) {
+    if let Some(reason) = reason {
+        badge.set_tooltip_text(Some(reason));
+    }
     let inner = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     inner.pack_start(badge, false, false, 0);
     if let Some(at) = refresh_at {
@@ -1288,6 +1295,7 @@ fn row_top_stale(top: &gtk::Box, badge: &gtk::Label, refresh_at: Option<&str>) {
         meta.set_xalign(1.0);
         meta.set_ellipsize(pango::EllipsizeMode::End);
         meta.set_line_wrap(false);
+        meta.set_tooltip_text(reason);
         meta.style_context().add_class("chefbar-card-meta");
         inner.pack_start(&meta, false, false, 0);
     }

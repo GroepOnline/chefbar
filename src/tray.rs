@@ -10,13 +10,32 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, RwLock};
 
 /// UI-commando's van tray/ipc naar de GTK-thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
     TogglePanel,
     ShowPanel,
     Refresh,
     Doctor,
     Quit,
+    /// Open een URL (Thuis/Ploeg/desktop/ops) via de executor.
+    OpenUrl(String),
+    /// Focus een agent-werkstroom (terminal-id uit de event-line).
+    FocusAgent(String),
+    /// Account wisselen (zelfde payload als de panel-actie).
+    SwitchAccount {
+        account_id: String,
+        source: String,
+        driver: Option<String>,
+    },
+    /// Notificaties pauzeren via joep-notify (1u default).
+    PauseNotifications,
+    /// Meelopen vanaf login aan/uit (autostart-desktop-bestand).
+    ToggleAutostart,
+    /// Desktop webtop starten/stoppen via de executor.
+    DesktopAction(String),
+    /// Forceer de tray-glyph-state (testhook: stil/bezig/hulp/fout/offline)
+    /// voor live verificatie op een echt GNOME-panel (brief W3).
+    ForceState(String),
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.
@@ -38,6 +57,8 @@ pub struct ChefTray {
     icon: ksni::Icon,
     /// Laatst gezonden statuslijn, geüpdatet via Handle::update.
     status_line: Mutex<String>,
+    /// Door `--ipc state <x>` geforceerde glyph (testhook, W3). None = live.
+    forced_state: Mutex<Option<(String, std::time::Instant)>>,
 }
 
 impl ChefTray {
@@ -51,12 +72,31 @@ impl ChefTray {
             tx,
             icon: tray_icon_for(&state),
             status_line: Mutex::new(line),
+            forced_state: Mutex::new(None),
         }
     }
 
     fn send(&self, cmd: UiCommand) {
         let _ = self.tx.send(cmd);
     }
+}
+
+/// Forceer de tray-glyph voor live verificatie (10s, daarna live-status weer).
+pub fn force_state(state: &str) {
+    let Some(slot) = TRAY_HANDLE.get() else {
+        return;
+    };
+    let guard = slot.lock().unwrap();
+    let Some(handle) = guard.as_ref() else {
+        return;
+    };
+    let state = state.to_string();
+    handle.update(move |tray| {
+        *tray.forced_state.lock().unwrap() = Some((state.clone(), std::time::Instant::now()));
+        let line = format!("ChefGroep · test-glyph [{state}]");
+        tray.icon = tray_icon_for(&state);
+        *tray.status_line.lock().unwrap() = line;
+    });
 }
 
 /// Update-handle die de poll-actor elke cyclus laat bijwerken (tooltip + icon).
@@ -81,6 +121,34 @@ fn inbox_count(shared: &Arc<RwLock<Snapshot>>) -> usize {
         .unwrap_or(0)
 }
 
+/// Pauseer niet-critische notificaties 1 uur via joep-notify (brief: pauzeren
+/// verloopt vanzelf; helper dropt non-critical, geen crash zonder daemon).
+pub fn pause_notifications() {
+    let home = dirs::home_dir().map(|p| p.to_string_lossy().to_string());
+    if let Some(home) = home {
+        let _ = std::process::Command::new(format!("{home}/.local/bin/joep-notify"))
+            .args(["pause", "1h"])
+            .spawn()
+            .map(|mut c| c.wait());
+    }
+}
+
+/// ChefBar als systemd user-service bij login? (`chefbar.service` enabled).
+pub fn autostart_enabled() -> bool {
+    std::process::Command::new("systemctl")
+        .args(["--user", "is-enabled", "chefbar.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Toggle "meelopen vanaf login" (chefbar.service enable/disable).
+pub fn toggle_autostart() {
+    let verb = if autostart_enabled() { "disable" } else { "enable" };
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", verb, "chefbar.service"])
+        .status();
+}
 /// Fetch de laatste snapshot en werk de tray bij (parity: tooltip + icon per
 /// status, zoals indicator.py dat per poll deed).
 pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
@@ -109,6 +177,16 @@ pub fn update_from(shared: &Arc<RwLock<Snapshot>>) {
     }
     let icon = tray_icon_for(&state);
     handle.update(|tray| {
+        // Testhook-glyph: maximaal 10s vasthouden, daarna terug naar live.
+        let forced = tray.forced_state.lock().unwrap();
+        if let Some((forced_state, at)) = forced.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(10) {
+                tray.icon = tray_icon_for(forced_state);
+                *tray.status_line.lock().unwrap() =
+                    format!("ChefGroep · test-glyph [{forced_state}]");
+                return;
+            }
+        }
         tray.icon = icon;
         *tray.status_line.lock().unwrap() = line;
     });
@@ -139,33 +217,171 @@ impl ksni::Tray for ChefTray {
         }
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        vec![
-            ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Openen".into(),
-                icon_name: "utilities-system-monitor-symbolic".into(),
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ShowPanel)),
+        let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        let profile = crate::config::global_profile();
+
+        // Live eventregels (max 3, nieuwste eerst) — klik → focus agent.
+        let snap = self.shared.read().ok();
+        let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
+        let sessions = crate::sessions::load_ranked_sessions(&events);
+        let mut shown = 0;
+        for session in sessions.iter().take(6) {
+            if shown >= 3 {
+                break;
+            }
+            let stamp = match session.state.as_str() {
+                "working" | "starting" => "BEZIG",
+                "done" | "ok" => "KLAAR",
+                "waiting" | "blocked" | "failed" => "JOUW",
+                _ => "…",
+            };
+            let label = if session.title.len() > 38 {
+                format!("{}…", &session.title[..38])
+            } else {
+                session.title.clone()
+            };
+            let focus = session
+                .attach
+                .focus
+                .clone()
+                .unwrap_or_else(|| session.id.clone());
+            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                label: format!("{label}  [{stamp}]"),
+                icon_name: "system-run-symbolic".into(),
+                activate: Box::new(move |tray: &mut Self| {
+                    tray.send(UiCommand::FocusAgent(focus.clone()));
+                }),
                 ..Default::default()
+            }));
+            shown += 1;
+        }
+        if !items.is_empty() {
+            items.push(ksni::MenuItem::Separator);
+        }
+
+        // Acties: Open Thuis / Open Ploeg.
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Open Thuis".into(),
+            icon_name: "go-home-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| {
+                tray.send(UiCommand::OpenUrl(profile.dashboard.clone()));
             }),
-            ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Ververs".into(),
-                icon_name: "view-refresh-symbolic".into(),
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Refresh)),
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Open Ploeg".into(),
+            icon_name: "x-office-document-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| {
+                tray.send(UiCommand::OpenUrl(profile.ops_api.clone()));
+            }),
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Separator);
+
+        // Account-submenu (zelfde data als Vault Accounts).
+        let mut account_items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        if let Ok(snap) = self.shared.read() {
+            for row in &snap.providers {
+                for acc in &row.accounts {
+                    let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    if Some(acc_id) == row.active_id.as_deref() {
+                        continue;
+                    }
+                    let label = acc
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(acc_id)
+                        .to_string();
+                    let source = row.source.clone();
+                    let driver = row.driver.clone();
+                    let account_id = acc_id.to_string();
+                    account_items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                        label: format!("Werk als {label}"),
+                        icon_name: "avatar-default-symbolic".into(),
+                        activate: Box::new(move |tray: &mut Self| {
+                            tray.send(UiCommand::SwitchAccount {
+                                account_id: account_id.clone(),
+                                source: source.clone(),
+                                driver: driver.clone(),
+                            });
+                        }),
+                        ..Default::default()
+                    }));
+                }
+            }
+        }
+        if account_items.is_empty() {
+            items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+                label: "Account: niks om te wisselen".into(),
+                enabled: false,
                 ..Default::default()
-            }),
-            ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Doctor".into(),
-                icon_name: "diagnostics-symbolic".into(),
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Doctor)),
+            }));
+        } else {
+            items.push(ksni::MenuItem::SubMenu(ksni::menu::SubMenu::<Self> {
+                label: "Account wisselen".into(),
+                icon_name: "avatar-default-symbolic".into(),
+                submenu: account_items,
                 ..Default::default()
+            }));
+        }
+
+        // Desktop starten/stoppen.
+        let desktop_running = snap
+            .as_ref()
+            .map(|s| s.desktop.get("state").and_then(|v| v.as_str()) == Some("running"))
+            .unwrap_or(false);
+        let (dlabel, dicon) = if desktop_running {
+            ("Desktop stoppen".to_string(), "system-shutdown-symbolic".to_string())
+        } else {
+            ("Desktop starten".to_string(), "computer-symbolic".to_string())
+        };
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: dlabel,
+            icon_name: dicon,
+            activate: Box::new(move |tray: &mut Self| {
+                tray.send(UiCommand::DesktopAction(
+                    if desktop_running { "stop" } else { "start" }.into(),
+                ));
             }),
-            ksni::MenuItem::Separator,
-            ksni::MenuItem::Standard(StandardItem::<Self> {
-                label: "Afsluiten".into(),
-                icon_name: "application-exit-symbolic".into(),
-                activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Quit)),
-                ..Default::default()
-            }),
-        ]
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Separator);
+
+        // Notificaties pauzeren + meelopen vanaf login.
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Notificaties pauzeren (1u)".into(),
+            icon_name: "notification-disabled-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::PauseNotifications)),
+            ..Default::default()
+        }));
+        let autostart = crate::tray::autostart_enabled();
+        items.push(ksni::MenuItem::Checkmark(ksni::menu::CheckmarkItem::<Self> {
+            label: "Meelopen vanaf login".into(),
+            checked: autostart,
+            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::ToggleAutostart)),
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Separator);
+
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Ververs".into(),
+            icon_name: "view-refresh-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Refresh)),
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Doctor".into(),
+            icon_name: "diagnostics-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Doctor)),
+            ..Default::default()
+        }));
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Afsluiten".into(),
+            icon_name: "application-exit-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| tray.send(UiCommand::Quit)),
+            ..Default::default()
+        }));
+        items
     }
 }
 

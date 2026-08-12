@@ -35,26 +35,37 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
       grootte bij eerste show (nu mapt hij 10×10 op X11).
 
 ### W2 — Data-vlak robuust
-- [ ] vault-api-route vervangen: ssh-forward (pid!) → duurzame route.
-      Opties: (a) vault-api als user-service op laptop (draait nu niet),
-      (b) publieke edge `vault-api.chefgroep.online` via CF (DNS-record +
-      tunnel-ingress + Access service-token voor de app) — dit is de
-      "CF first"-richting uit de Vault-docs, (c) Tailscale-adres als interim.
-- [ ] `ops.chefgroep.online` achter Access: of service-token header
-      (CF-Access-Client-Id/Secret via drop-in env), of ops-endpoints via
-      vault-api proxyen. Beslissing hoort bij Vault-edge werk.
-- [ ] Freshness-contract: elke sectie toont "stale sinds <t>" + reden
-      (endpoint onbereikbaar / 401 / connector oud) i.p.v. alleen STALE.
-- [ ] Kosten-wiring: `$0.0000` → echte bron (vault-api usage of
-      provider-export); expliciet "n.v.t." als er geen bron is.
+- [x] vault-api-route vervangen: ssh-forward (pid!) → duurzame route.
+      Gekozen: `vault-forward.service` als user-service op laptop
+      (localhost:18222/18321 → chef-control-01, enabled+active), met de
+      Tailnet-route `http://100.115.43.1:18321/api` als drop-in fallback.
+      Geen CF-edge nodig zolang ChefBar op de laptop draait. (PR #20)
+- [x] `ops.chefgroep.online` achter Access: beslissing = ChefBar praat met
+      de lokale duurzame joep-ops user-service (`joep-ops-serve.service`,
+      :10101, enabled+active) i.p.v. de publieke Access-edge. De publieke
+      edge blijft voor remote browsers, niet voor de laptop-app. (PR #20)
+- [x] Freshness-contract: elke sectie toont "stale sinds <t>" + reden
+      (endpoint onbereikbaar / 401 · auth verlopen / connector oud)
+      i.p.v. alleen STALE — badge-tooltip + health-update-tijd. (PR #20)
+- [x] Kosten-wiring: `$0.0000` → n.v.t. — de app toont budget als
+      req/tok-verbruik + fractie-balk (vault-api usage), geen dollar-bedrag;
+      dollars blijven uit beeld tot er een betrouwbare kostenbron is. (PR #20)
 
 ### W3 — Tray & notificaties volgens de brief
-- [ ] Tray-menu = compacte statuslijn uit `chefbar-tray.md` (max 10 items,
-      Plex Mono data, acties Open Thuis/Ploeg, account-submenu).
-- [ ] v2-look voor mako/dunst (staat al in de herbonden tray-brief):
-      hairline, radius 10, General Sans, amber rand bij hulp/critical.
-- [ ] Glyph live-verificatie op echt GNOME-panel (AppIndicator draait niet
-      onder Xvfb): stil/bezig/hulp/fout/offline doorprikken via ipc-testhook.
+- [x] Tray-menu = compacte statuslijn uit `chefbar-tray.md` (max 10 items,
+      Plex Mono data, acties Open Thuis/Ploeg, account-submenu): max 3
+      live eventregels (BEZIG/KLAAR/JOUW, klik → focus agent), Open Thuis /
+      Open Ploeg, account-submenu ("Werk als …"), desktop starten/stoppen,
+      pauzeren (1u via joep-notify), meelopen vanaf login (checkmark op
+      `chefbar.service`). (PR #20)
+- [x] v2-look voor mako/dunst (staat al in de herbonden tray-brief):
+      hairline, radius 10, General Sans, amber rand bij hulp/critical —
+      templates in `config/mako` + `config/dunst`, install.sh plaatst ze
+      alleen als de daemon bestaat (start nooit zelf een daemon). (PR #20)
+- [x] Glyph live-verificatie op echt GNOME-panel (AppIndicator draait niet
+      onder Xvfb): `chefbar --ipc state stil|bezig|hulp|fout|offline` zet de
+      tray-glyph 10s op de gevraagde test-state, daarna terug naar live
+      (testhook in ipc.rs + tray.rs). (PR #20)
 
 ### W4 — Doctor, IPC & observability
 - [x] `chefbar --doctor` bevraagt eerst de draaiende instantie via IPC
