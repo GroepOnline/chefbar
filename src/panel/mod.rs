@@ -73,7 +73,11 @@ impl Panel {
 
         // Persisted state — tolerant, backwards compat (harness → active_group)
         let persisted = crate::panel_state::load();
-        let persisted_density = crate::panel_state::normalize_density(&persisted.density);
+        // CHEFBAR_DENSITY (visual-shot/CI) wint over de persisted keuze.
+        let persisted_density = std::env::var("CHEFBAR_DENSITY")
+            .ok()
+            .map(|d| crate::panel_state::normalize_density(&d))
+            .unwrap_or_else(|| crate::panel_state::normalize_density(&persisted.density));
         let persisted_query = persisted.query.clone().unwrap_or_default();
         let persisted_drawer_open = persisted.drawer_open;
         let initial = persisted
