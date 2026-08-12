@@ -76,7 +76,7 @@ impl Panel {
         let initial = persisted
             .effective_group()
             .map(|s| s.to_string())
-            .filter(|id| sidebar::NAV_IDS.contains(&id.as_str()))
+            .filter(|id| sidebar::contains_nav_id(id))
             .unwrap_or_else(|| "fleet".to_string());
 
         // Density-token klas op window
@@ -232,6 +232,7 @@ impl Panel {
                         &window_clone,
                         &q,
                         &harness_state_clone,
+                        &drawer_clone,
                     );
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     // density klas wisselt alleen via setting, niet per nav — dus geen update hier
@@ -257,6 +258,7 @@ impl Panel {
             window_overlay,
         };
         panel.wire_search();
+        panel.wire_overlay();
         let initial_query = panel.search.text().to_string();
         panel.render(&initial_query);
         panel
@@ -318,12 +320,69 @@ impl Panel {
         &self.overlay
     }
 
+    /// Selecteer een domein vanuit tray, IPC of palette zonder een tweede
+    /// venster te openen.
+    pub fn focus_domain(&self, domain: &str) {
+        let domain = domain.trim().to_lowercase();
+        if !sidebar::contains_nav_id(&domain) {
+            return;
+        }
+        *self.harness_state.borrow_mut() = domain;
+        self.persist_dirty.set(true);
+        self.show();
+        let query = self.search.text().to_string();
+        self.render(&query);
+    }
+
+    pub fn open_inbox(&self) {
+        self.focus_domain("inbox");
+    }
+
+    /// Toggle palette-mode binnen hetzelfde panel/window.
+    pub fn toggle_palette(&self) {
+        if self.overlay.is_visible() {
+            self.overlay.hide();
+        } else {
+            self.show();
+            self.overlay.show();
+        }
+    }
+
+    fn wire_overlay(&self) {
+        let overlay = self.overlay.clone();
+        let shared = self.shared.clone();
+        let executor = self.executor.clone();
+        self.overlay.entry.connect_changed(move |entry| {
+            let query = entry.text().to_string();
+            let snap = shared.snapshot.read().unwrap().clone();
+            let ops = shared.ops.read().unwrap().clone();
+            let profile = crate::config::global_profile().clone();
+            let sessions = crate::sessions::load_ranked_sessions(&snap.events);
+            let actions = build_actions(&ops, &snap, &profile, sessions);
+            let ranked = rank_actions_with(&actions, &query, 8, None);
+            let overlay_for_action = overlay.clone();
+            let executor_for_action = executor.clone();
+            overlay.render_actions(&ranked, move |action| {
+                let spec = action.run.clone();
+                if let crate::actions::RunSpec::CopyText(text) = &spec {
+                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                    clipboard.set_text(text);
+                    notify_copied();
+                } else {
+                    executor_for_action.run_for_ui(&spec);
+                }
+                overlay_for_action.hide();
+            });
+        });
+    }
+
     fn wire_search(&self) {
         let content = self.content.clone();
         let shared = self.shared.clone();
         let executor = self.executor.clone();
         let window = self.window.clone();
         let harness_state = self.harness_state.clone();
+        let drawer = self.drawer.clone();
         let dirty = self.persist_dirty.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
@@ -336,6 +395,7 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
+                    &drawer,
                 );
             }
         });
@@ -363,6 +423,7 @@ impl Panel {
             &self.window,
             query,
             &self.harness_state,
+            &self.drawer,
         );
     }
 
@@ -403,6 +464,7 @@ impl Panel {
         let window = self.window.clone();
         let search = self.search.clone();
         let harness_state = self.harness_state.clone();
+        let drawer = self.drawer.clone();
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
@@ -415,6 +477,7 @@ impl Panel {
                     &window,
                     &query,
                     &harness_state,
+                    &drawer,
                 );
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
@@ -487,6 +550,7 @@ fn render_into(
     window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
+    drawer: &Rc<Drawer>,
 ) {
     for child in content.children() {
         content.remove(&child);
@@ -717,6 +781,7 @@ fn render_into(
         let spec = action.run.clone();
         let executor = executor.clone();
         let window = window.clone();
+        let drawer = drawer.clone();
         let needs_text = action.needs_text;
         let action = (*action).clone();
         let row = gtk::Button::new();
@@ -745,13 +810,20 @@ fn render_into(
             if needs_text {
                 prompt_for(&executor, &window, &action);
             } else {
-                if let crate::actions::RunSpec::CopyText(text) = &spec {
-                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
-                    clipboard.set_text(text);
-                    notify_copied();
-                } else {
-                    executor.run_for_ui(&spec);
-                }
+                let drawer = drawer.clone();
+                let drawer_for_action = drawer.clone();
+                let executor = executor.clone();
+                let spec = spec.clone();
+                drawer.show_for_with(&action, move || {
+                    if let crate::actions::RunSpec::CopyText(text) = &spec {
+                        let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                        clipboard.set_text(text);
+                        notify_copied();
+                    } else {
+                        executor.run_for_ui(&spec);
+                    }
+                    drawer_for_action.hide();
+                });
             }
         });
         group.pack_start(&row, false, false, 0);

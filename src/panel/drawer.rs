@@ -97,12 +97,27 @@ impl Drawer {
     }
 
     /// Toon de drawer voor een action (titel + meta), met slide-animatie.
+    /// De legacy API blijft beschikbaar voor callers die alleen detail willen.
     pub fn show_for(&self, action: &crate::palette::Action) {
+        self.show_for_with(action, || {});
+    }
+
+    /// Toon detail en voeg één expliciete primaire actie toe.
+    pub fn show_for_with<F>(&self, action: &crate::palette::Action, on_activate: F)
+    where
+        F: Fn() + 'static,
+    {
         self.title.set_text(&action.title);
         self.meta.set_text(&action.meta);
         for child in self.actions.children() {
             self.actions.remove(&child);
         }
+        let execute = gtk::Button::with_label("Uitvoeren");
+        execute.style_context().add_class("chefbar-btn");
+        execute.style_context().add_class("chefbar-primary");
+        execute.connect_clicked(move |_| on_activate());
+        self.actions.pack_start(&execute, false, false, 0);
+        self.actions.show_all();
         self.title.set_can_focus(true);
         self.title.grab_focus();
         slide_drawer(&self.container, true);
