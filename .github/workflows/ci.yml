@@ -23,9 +23,10 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo / target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2.9.2)
         with:
           shared-key: chefbar-build
+          cache-bin: "false"
 
       - name: Cargo check (fast gate)
         run: cargo check --all-targets
