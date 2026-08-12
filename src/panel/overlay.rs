@@ -84,13 +84,18 @@ impl Overlay {
         cap.set_xalign(0.0);
         cap.style_context().add_class("chefbar-palette-section");
         self.results.pack_start(&cap, false, false, 0);
-        for action in actions.iter().take(8) {
+        for (idx, action) in actions.iter().take(8).enumerate() {
             let button = gtk::Button::new();
             button.set_relief(gtk::ReliefStyle::None);
             button.set_halign(gtk::Align::Fill);
             button.set_hexpand(true);
             button.set_tooltip_text(Some(&action.meta));
             button.style_context().add_class("chefbar-palette-row");
+            if idx == 0 {
+                // Eerste rij is de default-selectie (Enter voert hem uit) —
+                // v2-selectie-streak in accent.
+                button.style_context().add_class("selected");
+            }
             let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
             let title = gtk::Label::new(Some(&action.title));

@@ -509,6 +509,7 @@ pub fn styles_css(theme: &str) -> String {
 .chefbar-palette-row {{
   background-color: transparent;
   border: none;
+  border-left: 2px solid transparent;
   border-radius: 6px;
   padding: 6px 8px;
   transition: background-color 140ms;
@@ -518,6 +519,10 @@ pub fn styles_css(theme: &str) -> String {
 }}
 .chefbar-palette-row:focus {{
   box-shadow: inset 0 0 0 1px {focus};
+}}
+.chefbar-palette-row.selected {{
+  border-left: 2px solid {brand};
+  background-color: {hover};
 }}
 
 /* ============ Zone header + card grid ============ */

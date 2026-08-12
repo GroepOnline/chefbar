@@ -14,6 +14,7 @@ pub struct Drawer {
     title: gtk::Label,
     meta: gtk::Label,
     actions: gtk::Box,
+    streak: gtk::Box,
     open: Rc<Cell<bool>>,
 }
 
@@ -36,6 +37,13 @@ impl Drawer {
         header.set_margin_top(12);
         header.set_margin_start(12);
         header.set_margin_end(12);
+        // CG-statusstreak: de kleur volgt de stamp van de actie (v2-signature
+        // doorgetrokken in de detailpane).
+        let streak = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        streak.set_size_request(2, -1);
+        streak.set_valign(gtk::Align::Fill);
+        streak.style_context().add_class("chefbar-signature");
+        header.pack_start(&streak, false, false, 0);
         let title = gtk::Label::new(Some("\u{2014}"));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
@@ -93,6 +101,7 @@ impl Drawer {
             title,
             meta,
             actions,
+            streak,
             open,
         }
     }
@@ -107,6 +116,21 @@ impl Drawer {
     {
         self.title.set_text(&action.title);
         self.meta.set_text(&action.meta);
+        // Streak-kleur volgt de stamp (KLAAR=groen, HULP=amber, FOUT=rood,
+        // BEZIG=accent, rest neutraal).
+        for cls in ["ok", "warn", "error", "info", "running"] {
+            self.streak.style_context().remove_class(cls);
+        }
+        let streak_cls = match action.stamp.as_str() {
+            "KLAAR" => "ok",
+            "HULP" => "warn",
+            "FOUT" | "LIMIET" => "error",
+            "BEZIG" | "TAAK" => "info",
+            _ => "",
+        };
+        if !streak_cls.is_empty() {
+            self.streak.style_context().add_class(streak_cls);
+        }
         for child in self.actions.children() {
             self.actions.remove(&child);
         }
