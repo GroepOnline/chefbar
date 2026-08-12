@@ -219,3 +219,64 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
 
     gtk::main();
 }
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("chefbar").chain(args.iter().copied()))
+            .expect("cli moet parsen")
+    }
+
+    #[test]
+    fn default_is_pure_app_start() {
+        let cli = parse(&[]);
+        assert!(!cli.doctor && !cli.serve && !cli.bar && !cli.show_config);
+        assert!(cli.ipc.is_none() && cli.profile.is_none());
+    }
+
+    #[test]
+    fn bar_alias_parses_as_ipc() {
+        // Oude hotkey-bindings (install.sh < 3.1) roepen --bar aan; de clap-
+        // alias is de D1-fix (exit 2 zonder).
+        let cli = parse(&["--bar"]);
+        assert!(cli.bar);
+    }
+
+    #[test]
+    fn ipc_subcommand_parses() {
+        let cli = parse(&["--ipc", "bar"]);
+        assert_eq!(cli.ipc.as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn doctor_flag_parses() {
+        let cli = parse(&["--doctor"]);
+        assert!(cli.doctor);
+    }
+
+    #[test]
+    fn serve_flag_parses() {
+        let cli = parse(&["--serve"]);
+        assert!(cli.serve);
+    }
+
+    #[test]
+    fn show_config_flag_parses() {
+        let cli = parse(&["--show-config"]);
+        assert!(cli.show_config);
+    }
+
+    #[test]
+    fn profile_path_parses() {
+        let cli = parse(&["--profile", "/tmp/x.json"]);
+        assert_eq!(cli.profile.as_deref(), Some(std::path::Path::new("/tmp/x.json")));
+    }
+
+    #[test]
+    fn unknown_flag_is_rejected() {
+        let err = Cli::try_parse_from(["chefbar", "--bogus"]);
+        assert!(err.is_err(), "onbekende vlag moet clap-error geven (exit 2)");
+    }
+}
