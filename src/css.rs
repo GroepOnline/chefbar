@@ -274,7 +274,7 @@ pub fn styles_css(theme: &str) -> String {
   background-color: {hover};
 }}
 .chefbar-row-btn:focus {{
-  box-shadow: inset 2px 0 0 {focus};
+  border-left: 2px solid {focus};
 }}
 
 /* Room — sidebar + main canvas */
@@ -373,15 +373,9 @@ pub fn styles_css(theme: &str) -> String {
 }}
 
 /* ============ Density token ============ */
-/* --chefbar-density: comfortable (default) / compact via .density-compact klas.
+/* comfortable (default) / compact via .density-compact klas.
    Comfortable: header padding 14/16/12, card gap 12. Compact: padding 8/10/8,
    gap 8, font -1px. Geen tweede stylesheet — alleen klas-toggle. */
-.chefbar-app {{
-  --chefbar-density: comfortable;
-}}
-.chefbar-app.density-compact {{
-  --chefbar-density: compact;
-}}
 .chefbar-app.density-compact {{
   font-size: 12px;
 }}
@@ -389,7 +383,7 @@ pub fn styles_css(theme: &str) -> String {
   padding: 8px 10px 8px 10px;
 }}
 .chefbar-app.density-compact .chefbar-card-grid {{
-  gap: 8px;
+  padding: 4px 12px;
 }}
 .chefbar-app.density-compact .chefbar-card-title {{
   font-size: 12px;
@@ -412,7 +406,6 @@ pub fn styles_css(theme: &str) -> String {
 /* ============ Overlay (palette, center, 560px, radius 10, shadow) ============ */
 .chefbar-overlay {{
   min-width: 560px;
-  max-width: 560px;
   background-color: {surface};
   border: 1px solid {line};
   border-radius: 10px;
@@ -428,7 +421,6 @@ pub fn styles_css(theme: &str) -> String {
   padding: 10px 12px 6px 12px;
 }}
 .chefbar-card-grid {{
-  gap: 12px;
   padding: 8px 12px;
 }}
 
