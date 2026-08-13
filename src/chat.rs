@@ -294,11 +294,19 @@ fn send_and_read(target: &str, prompt: &str) -> Result<String, String> {
     Ok(delta)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubmitStatus {
+    Empty,
+    Busy,
+    NoTarget,
+    Sent,
+}
+
 /// Zet de vraag op het transcript en stuur op een achtergrond-thread.
-pub fn submit(shared: &crate::state::Shared, text: &str) {
+pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     let text = text.trim();
     if text.is_empty() {
-        return;
+        return SubmitStatus::Empty;
     }
     let ops = shared.ops.read().unwrap().clone();
     let snap = shared.snapshot.read().unwrap().clone();
@@ -318,7 +326,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
     {
         let mut log = shared.chat.write().unwrap();
         if log.busy {
-            return;
+            return SubmitStatus::Busy;
         }
         log.busy = true;
         log.target = target.clone();
@@ -338,7 +346,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
             shared
                 .chat_revision
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return;
+            return SubmitStatus::NoTarget;
         }
     }
     shared
@@ -370,6 +378,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
             .chat_revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     });
+    SubmitStatus::Sent
 }
 
 #[cfg(test)]
@@ -536,5 +545,14 @@ mod tests {
     fn terminal_delta_takes_suffix() {
         assert_eq!(terminal_delta("abc", "abcdef"), "def");
         assert_eq!(terminal_delta("nope", "hello"), "hello");
+    }
+
+    #[test]
+    fn submit_reports_empty_busy_and_no_target() {
+        let shared = crate::state::Shared::new();
+        assert_eq!(submit(&shared, "  "), SubmitStatus::Empty);
+        assert_eq!(submit(&shared, "status jan"), SubmitStatus::NoTarget);
+        shared.chat.write().unwrap().busy = true;
+        assert_eq!(submit(&shared, "nog een"), SubmitStatus::Busy);
     }
 }

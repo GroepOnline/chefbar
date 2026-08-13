@@ -195,6 +195,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
         ops: ops.clone(),
         profile: profile.clone(),
         revision,
+        shared: shared.clone(),
     };
 
     let panel = chefbar::panel::Panel::new(shared.clone(), executor.clone());
@@ -203,6 +204,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     // Eén UI-commando-kanaal voor tray + ipc + refresh-loop. De dispatcher
     // draait op de UI-thread (glib-timeout), dus widgets zijn hier veilig.
     let (ui_tx, ui_rx) = std::sync::mpsc::channel::<chefbar::tray::UiCommand>();
+    chefbar::tray::register_command_tx(ui_tx.clone());
     let executor = executor.clone();
     // De closure vangt GTK-widgets (Rc, niet Send/Sync) maar verlaat de
     // UI-thread nooit: de glib-bridge dispatcht alleen op de main-loop.
