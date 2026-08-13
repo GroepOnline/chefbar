@@ -194,3 +194,44 @@ chefbar_cloud_update_rust() {
   chefbar_cloud_ensure_rust
   rustup update stable
 }
+
+chefbar_cloud_daytona_venv() {
+  printf '%s\n' "${HOME}/.local/share/chefbar/daytona-venv"
+}
+
+chefbar_cloud_ensure_daytona_sdk() {
+  local venv
+  venv="$(chefbar_cloud_daytona_venv)"
+  if [[ -x "$venv/bin/python" ]] && "$venv/bin/python" -c "import daytona" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "warn: python3 missing; skip daytona SDK" >&2
+    return 0
+  fi
+  python3 -m venv "$venv"
+  "$venv/bin/pip" install -U pip daytona
+}
+
+chefbar_cloud_ensure_daytona_sandbox() {
+  local repo python helper
+  if [[ -z "${DAYTONA_API_KEY:-}" ]]; then
+    echo "skip daytona sandbox: DAYTONA_API_KEY not set"
+    return 0
+  fi
+  repo="$(cd "$(chefbar_cloud_cursor_dir)/.." && pwd)"
+  helper="$repo/scripts/daytona-emergency.py"
+  if [[ ! -f "$helper" ]]; then
+    echo "warn: missing $helper" >&2
+    return 0
+  fi
+  chefbar_cloud_ensure_daytona_sdk || true
+  python="$(chefbar_cloud_daytona_venv)/bin/python"
+  if [[ ! -x "$python" ]]; then
+    python="python3"
+  fi
+  # Lifecycle is best-effort: a Daytona outage must not block the Cloud Agent.
+  if ! "$python" "$helper" --ensure --refresh; then
+    echo "warn: daytona ensure/refresh failed (Cloud Agent continues)" >&2
+  fi
+}

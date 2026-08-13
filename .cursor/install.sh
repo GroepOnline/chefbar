@@ -12,6 +12,7 @@ chefbar_cloud_ensure_apt_packages
 chefbar_cloud_install_chrome_wrapper
 chefbar_cloud_ensure_rust
 chefbar_cloud_ensure_bun
+chefbar_cloud_ensure_daytona_sdk
 
 # Warm the build cache against the committed lockfile.
 cargo build --locked --release
