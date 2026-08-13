@@ -42,6 +42,7 @@ fonts-liberation
 ca-certificates
 curl
 unzip
+python3-venv
 EOF
 }
 
