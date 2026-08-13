@@ -1,0 +1,21 @@
+---
+description: ChefBar non-negotiable architecture — one actor, one snapshot, one socket. Wins over generic Rust/async skills.
+alwaysApply: true
+---
+
+# ChefBar invariants
+
+These rules beat generic Rust skills (`rust-patterns`, `rust-testing`, `rust-best-practices`, `continuous-agent-loop`).
+
+1. **One poll-actor.** `src/state.rs` owns the rhythm (vault 5s, ops 15s, vault-extra 30s, linear 60s, kater 30s, fetch budget 8s). UI surfaces read `Shared` under a short `RwLock`. Do not add a second loop, ticker, or per-widget HTTP poll.
+2. **One snapshot.** New domains are new sections on `Snapshot` / `OpsSnapshot` plus builders in `src/models.rs`. Failed polls keep last-good data and mark stale — never blank the UI, never panic on JSON.
+3. **One socket.** IPC is `$XDG_RUNTIME_DIR/chefbar.sock` (`src/ipc.rs`). Tray and IPC share `UiCommand` over the same `mpsc` into the GTK thread (`src/tray.rs`).
+4. **Sync only.** `std::thread` + `mpsc` + `ureq`. No `tokio`, `async`/`await`, `reqwest`, or extra poll threads. `ureq` must keep `redirects(0)` so bearers never follow redirects.
+5. **Actions are data.** Extend `RunSpec` + `build_actions` + `Executor`. No network on the GTK thread, no closures capturing UI state.
+6. **Policy is the only egress.** `EndpointPolicy` + `auth::get_headers` + `http::Client`. HTTPS to profile hosts / `*.chefgroep.online` / allowlist. Loopback always ok. Tailnet HTTP only with `CHEFBAR_ALLOW_TAILNET_HTTP`.
+7. **GTK3 CSS subset.** In `src/css.rs` do not emit `--custom-properties`, `gap`, `inset`, gradients, or glow. Map Signaal v2 tokens in Rust, then print GTK3-legal properties.
+8. **Silence.** Toasts only on transitions; `coalesce_toasts` caps one toast per poll cycle. No badge-spam.
+9. **No secrets in output.** Doctor and logs may print `sha256[:12]` fingerprints only.
+10. **Laptop has no toolchain.** Do not tell the user to install rustup on `joep`. Cloud agents and `chef-runner-01-1` / CI may run `cargo`.
+
+For multi-module work, load skill `chefbar-graph-loop` and dispatch file-disjoint workers from `.cursor/agents/`.

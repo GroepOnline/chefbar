@@ -232,6 +232,16 @@ QA: `scripts/visual-shot.sh` (panel/palette/drawer/density, Xvfb + accent-assert
 
 Scope blijft strak. Geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
 
+## Agent skills en workers
+
+Cursor-agents in deze repo krijgen ChefBar-eigen skills, file-disjoint subagents en een graph-loop (plus geselecteerde ecosysteem-skills via `npx skills` / [find-skills](https://www.skills.sh/vercel-labs/skills/find-skills)).
+
+- Ingang: [`AGENTS.md`](AGENTS.md)
+- Catalogus (chains, Kater-koppeling, workers): [`docs/agent-harness.md`](docs/agent-harness.md)
+- Slash: `/chefbar-graph`, `/chefbar-review`, `/find-skills`, `/chefbar-new-skill`
+
+Rust-skills uit het ecosysteem (`rust-best-practices`, `rust-patterns`, `rust-testing`) staan onder `.agents/skills/`. ChefBar blijft **sync** (geen tokio): de lokale skill `chefbar-rust` wint.
+
 ## Licentie
 
 MIT. Zie `Cargo.toml`.

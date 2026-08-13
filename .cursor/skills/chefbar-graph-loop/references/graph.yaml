@@ -1,0 +1,89 @@
+version: 1
+name: chefbar-agent-graph
+description: File-disjoint workers, Kater MCP edges, QA-converge loop.
+
+nodes:
+  - id: orchestrator
+    agent: chefbar-orchestrator
+    writes: []
+  - id: architect
+    agent: chefbar-architect
+    skill: chefbar-architecture
+    writes: []
+  - id: rust-core
+    agent: chefbar-rust-core
+    skill: chefbar-rust
+    writes: [diff-nits]
+  - id: actor
+    agent: chefbar-actor
+    skill: chefbar-architecture
+    writes: [src/state.rs, src/models.rs]
+  - id: gtk-panel
+    agent: chefbar-gtk-panel
+    skill: chefbar-gtk-panel
+    writes: [src/panel/, src/css.rs, src/motion.rs, src/panel_state.rs]
+  - id: tray-ipc
+    agent: chefbar-tray-ipc
+    writes: [src/tray.rs, src/ipc.rs, src/notify.rs, src/quiet.rs, src/mutes.rs, src/doctor.rs, src/log.rs]
+  - id: policy-http
+    agent: chefbar-policy-http
+    skill: chefbar-policy-http
+    writes: [src/policy.rs, src/http.rs, src/auth.rs, src/config.rs]
+  - id: actions-palette
+    agent: chefbar-actions-palette
+    writes: [src/actions.rs, src/palette.rs, src/aliases.rs, src/frecency.rs, src/harness.rs]
+  - id: qa
+    agent: chefbar-qa
+    writes: [scripts/, .github/workflows/, inline-tests-in-touched-modules]
+  - id: kater
+    agent: chefbar-kater
+    skill: chefbar-kater
+    writes: [src/sessions.rs, src/ops_cli.rs]
+    mcp: [Kater]
+
+edges:
+  - id: plan
+    from: architect
+    to: [actor, gtk-panel, tray-ipc, policy-http, actions-palette, kater]
+    mode: parallel
+    disjoint: files
+    when: feature | bugfix
+  - id: review
+    from: [actor, gtk-panel, tray-ipc, policy-http, actions-palette, kater]
+    to: rust-core
+    mode: fan-in
+  - id: gate
+    from: rust-core
+    to: qa
+    mode: serial
+  - id: pr-health
+    from: orchestrator
+    to: kater
+    mode: serial
+    mcp_chain: pr_health
+    mcp_profile: [code, ops]
+    when: review | ci-red | pr
+    readonly: true
+
+loops:
+  - id: qa-converge
+    start: qa
+    on: fail
+    next: rust-core
+    then: qa
+    max_iterations: 3
+    abort: orchestrator
+  - id: ci-red
+    start: qa
+    on: ci_fail
+    next: owning-worker
+    then: qa
+    max_iterations: 3
+    abort: orchestrator
+
+chains:
+  feature: [architect, plan, review, gate, qa-converge]
+  bugfix: [qa, owning-worker, rust-core, gate, qa-converge]
+  review: [rust-core, architect, policy-http, gtk-panel]
+  kater-ops: [kater, architect]
+  docs-only: [architect]

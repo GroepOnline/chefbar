@@ -49,3 +49,7 @@ release-artifact heet `chefbar-release`.
 
 `feat:`, `fix:`, `docs:`, `test:`, `chore:` met scope, bijv.
 `fix(tray): statuslijn sorteert nieuwste eerst binnen priority-groep`.
+
+## Agent skills
+
+Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a cursor --copy -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync.

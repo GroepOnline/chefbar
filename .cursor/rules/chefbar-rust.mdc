@@ -1,0 +1,18 @@
+---
+description: ChefBar Rust style — sync actor, inline tests, clippy -D warnings. Use when editing *.rs.
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# ChefBar Rust
+
+- Edition 2021. Dependencies stay the current `Cargo.toml` set (`gtk 0.18`, `ksni 0.2`, `ureq 2`, `clap 4`, `serde`/`serde_json`, `url`, `dirs`, `sha2`, `libc`, `pango`, `gdk`). Do not add tokio/async/reqwest/thiserror/anyhow/mockall/proptest unless the task explicitly changes `Cargo.toml` and CI.
+- Prefer `&str` / `&[T]` in parameters. Clone only when the snapshot or GTK boundary needs owned data.
+- Fallible work returns `Result`; parsing of vault/ops JSON is tolerant (empty/default, never panic). `unwrap`/`expect` only in tests.
+- Exhaustive `match` on `RunSpec`, `UiCommand`, `HarnessKind`, `HarnessGroup`, `ActorCommand`. Add a `never` default only for true closed enums if a `_` would hide new variants — prefer listing every variant.
+- Tests live in `#[cfg(test)]` in the same module (existing pattern). Name them after behavior, not methods.
+- Gates: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --all-targets`.
+- Module comments stay Dutch, matching the crate. Identifiers stay English.
+- `unsafe` is not used today. Do not introduce it.
+
+Generic skills `rust-best-practices`, `rust-patterns`, and `rust-testing` are allowed **after** these rules. Ignore their async/tokio/mockall chapters.
