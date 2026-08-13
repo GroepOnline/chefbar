@@ -523,7 +523,20 @@ pub fn parse_brain(value: &Value) -> Option<BrainResponse> {
     if value.is_null() {
         return None;
     }
-    Some(tolerant(value))
+    if value.as_object().is_none() {
+        return None;
+    }
+    let parsed: BrainResponse = tolerant(value);
+    if parsed.ok
+        || parsed.counts.is_some()
+        || !parsed.skills.is_empty()
+        || parsed.error.is_some()
+        || parsed.source.is_some()
+    {
+        Some(parsed)
+    } else {
+        None
+    }
 }
 
 // ===========================================================================

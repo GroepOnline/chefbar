@@ -191,7 +191,7 @@ impl Panel {
                     fade_out(&window_esc, PANEL_MS);
                     return gtk::glib::Propagation::Stop;
                 }
-                let ctrl_or_cmd = event.state().contains(
+                let ctrl_or_cmd = event.state().intersects(
                     gdk::ModifierType::CONTROL_MASK
                         | gdk::ModifierType::META_MASK
                         | gdk::ModifierType::SUPER_MASK,
@@ -290,7 +290,9 @@ impl Panel {
     }
 
     pub fn focus_domain(&self, domain: &str) {
-        let id = domain.trim().to_lowercase();
+        let id = crate::harness::HarnessKind::from_alias(domain)
+            .map(|kind| kind.id().to_string())
+            .unwrap_or_else(|| domain.trim().to_lowercase());
         if id.is_empty() {
             return;
         }
