@@ -58,7 +58,7 @@ impl RunSpec {
     pub fn frecency_key(&self) -> String {
         match self {
             RunSpec::Noop => "Noop".into(),
-            RunSpec::OpenUrl(url) => format!("OpenUrl:{url}"),
+            RunSpec::OpenUrl(_) => "OpenUrl".into(),
             RunSpec::OpenOcx => "OpenOcx".into(),
             RunSpec::FocusAgent(id) => format!("FocusAgent:{id}"),
             RunSpec::SendPrompt {
@@ -68,7 +68,7 @@ impl RunSpec {
                 "SendPrompt:{terminal_id}:{}",
                 pane_id.as_deref().unwrap_or("")
             ),
-            RunSpec::CreateTask { cwd } => format!("CreateTask:{cwd}"),
+            RunSpec::CreateTask { .. } => "CreateTask".into(),
             RunSpec::SwitchAccount {
                 account_id,
                 source,

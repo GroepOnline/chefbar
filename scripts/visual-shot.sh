@@ -28,8 +28,8 @@ ACCENT_HEX="${CHEFBAR_ACCENT:-${ACCENT_HEX:-#5C97FF}}"
 DOMAIN=""
 
 DOMAINS=(
-  inbox tasks linear fleet herdr containers vault commerce crm share
-  clipboard desktop sync secrets kater health eval
+  inbox fleet herdr vault commerce crm share clipboard desktop
+  tasks linear containers secrets kater health
 )
 
 usage() {
@@ -56,7 +56,7 @@ is_domain() {
   local candidate
   candidate="$(canonical_domain "$1")"
   local domain
-  for domain in "${DOMAINS[@]}"; do
+  for domain in "${DOMAINS[@]}" eval sync; do
     if [ "$domain" = "$candidate" ]; then
       return 0
     fi
@@ -350,7 +350,7 @@ run_domains() {
 if [ "$MODE" = "all-domains" ]; then
   PREFIX="${OUT:-/tmp/chefbar-${THEME}-domain}"
   if run_domains "$THEME" "$PREFIX"; then
-    echo "visual-shot [all-domains]: alle canonieke domeinen OK"
+    echo "visual-shot [all-domains]: alle 15 domeinen OK"
     exit 0
   fi
   echo "visual-shot [all-domains]: één of meer domeinen faalden" >&2
@@ -370,7 +370,7 @@ if [ "$MODE" = "all" ]; then
     echo "visual-shot [all]: één of meer shots faalden" >&2
     exit 1
   fi
-  echo "visual-shot [all]: panel, overlay, drawer, density en canonieke domeinen OK"
+  echo "visual-shot [all]: panel, overlay, drawer, density en 15 domeinen OK"
   exit 0
 fi
 
