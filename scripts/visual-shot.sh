@@ -49,7 +49,9 @@ set -u
 MODE=""
 THEME=""
 OUT=""
-DISPLAY_NUM="${CHEFBAR_XVFB_DISPLAY:-:97}"
+# :97 collides when pr-isolated and heavy share one host (same /tmp/.X11-unix).
+# Prefer CHEFBAR_XVFB_DISPLAY; otherwise pick a free display per shot.
+DISPLAY_NUM="${CHEFBAR_XVFB_DISPLAY:-}"
 ACCENT_HEX="${ACCENT_HEX:-#5C97FF}"   # dark accent, zie src/css.rs
 
 while [ $# -gt 0 ]; do
@@ -98,6 +100,51 @@ fi
 
 # ---- helpers ----
 
+# Vrije X-display: CI draait pr-isolated en heavy op dezelfde host, dus :97
+# is vaak al bezet (lock van een andere job of een achtergebleven Xvfb).
+display_busy() {
+  local num="${1#:}"
+  [ -e "/tmp/.X${num}-lock" ] || [ -S "/tmp/.X11-unix/X${num}" ]
+}
+
+# Start Xvfb op een vrije display. Print "PID :N" op stdout.
+# Logt stderr naar $1. Exit 1 als geen display start.
+start_xvfb() {
+  local log="$1"
+  local seed start n pid i
+  local -a try_nums=()
+
+  if [ -n "${DISPLAY_NUM:-}" ]; then
+    try_nums+=("${DISPLAY_NUM#:}")
+  fi
+
+  seed=$$
+  if [ -n "${GITHUB_RUN_ID:-}" ]; then
+    seed=$((GITHUB_RUN_ID + $$))
+  fi
+  start=$((90 + seed % 80))
+  for i in $(seq 0 79); do
+    n=$((90 + (start - 90 + i) % 80))
+    try_nums+=("$n")
+  done
+
+  for n in "${try_nums[@]}"; do
+    if display_busy "$n"; then
+      continue
+    fi
+    : >"$log"
+    Xvfb ":$n" -screen 0 900x1000x24 -nolisten tcp >"$log" 2>&1 &
+    pid=$!
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "$pid :$n"
+      return 0
+    fi
+    wait "$pid" 2>/dev/null || true
+  done
+  return 1
+}
+
 # Probeer een IPC-commando; faal zacht (geen exit) — val terug op --bar.
 ipc_try() {
   local cmd="$1"
@@ -123,14 +170,20 @@ run_shot() {
   xvfb_pid=""
   app_pid=""
 
-  Xvfb "$DISPLAY_NUM" -screen 0 900x1000x24 >/dev/null 2>&1 &
-  xvfb_pid=$!
-  sleep 2
-  if ! kill -0 "$xvfb_pid" 2>/dev/null; then
-    echo "visual-shot [$mode]: Xvfb startte niet" >&2
+  local started
+  started="$(start_xvfb "$rt_dir/xvfb.log")" || {
+    echo "visual-shot [$mode]: Xvfb startte niet (geen vrije display :90-:169)" >&2
+    if [ -s "$rt_dir/xvfb.log" ]; then
+      echo "visual-shot [$mode]: Xvfb log:" >&2
+      cat "$rt_dir/xvfb.log" >&2
+    fi
     rm -rf "$rt_dir"
     return 1
-  fi
+  }
+  xvfb_pid="${started%% *}"
+  DISPLAY_NUM="${started##* }"
+  echo "visual-shot [$mode]: Xvfb $DISPLAY_NUM pid=$xvfb_pid"
+  echo "visual-shot [$mode]: Xvfb $DISPLAY_NUM pid=$xvfb_pid"
 
   export DISPLAY="$DISPLAY_NUM" XDG_RUNTIME_DIR="$rt_dir"
   if [ "$theme" != "auto" ]; then export CHEFBAR_THEME="$theme"; fi
