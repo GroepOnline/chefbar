@@ -520,12 +520,7 @@ pub struct BrainResponse {
 }
 
 pub fn parse_brain(value: &Value) -> Option<BrainResponse> {
-    if value.is_null() {
-        return None;
-    }
-    if value.as_object().is_none() {
-        return None;
-    }
+    value.as_object()?;
     let parsed: BrainResponse = tolerant(value);
     if parsed.ok
         || parsed.counts.is_some()

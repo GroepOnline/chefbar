@@ -728,7 +728,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn alias_canonicaliseert_taken_en_accounts() {
         assert_eq!(
             HarnessKind::from_alias("taken").map(|k| k.id()),
