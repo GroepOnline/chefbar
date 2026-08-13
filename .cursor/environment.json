@@ -1,0 +1,4 @@
+{
+  "name": "ChefBar (Rust)",
+  "install": "bash .cursor/install.sh"
+}
