@@ -248,6 +248,14 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
+fn persist_unpin_bg() {
+    std::thread::spawn(|| {
+        if !crate::panel_state::persist_control_pin(None, false, None) {
+            crate::log::log("control-pin droppen lukte niet");
+        }
+    });
+}
+
 /// Na elke ops-poll: remap een gepinde pane-id via de alias (of het oude
 /// pane-id) naar de live agent. Weg/jcode/gereserveerde working visual-lane
 /// → unpin (persist) en daarna auto-pick. Geen pin → niets te doen.
@@ -258,16 +266,16 @@ pub fn refresh_persisted_pin(shared: &crate::state::Shared) {
 /// Pad-expliciete kern van `refresh_persisted_pin` — testbaar zonder env.
 pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std::path::Path) {
     let ops = shared.ops.read().unwrap().clone();
-    let (target, alias) = {
+    let (target, busy, pinned) = {
         let log = shared.chat.read().unwrap();
-        if !log.pinned {
-            return;
-        }
-        let alias = crate::panel_state::load_from(state_path)
-            .control_alias
-            .unwrap_or_default();
-        (log.target.clone().unwrap_or_default(), alias)
+        (log.target.clone().unwrap_or_default(), log.busy, log.pinned)
     };
+    if !pinned || busy {
+        return;
+    }
+    let alias = crate::panel_state::load_from(state_path)
+        .control_alias
+        .unwrap_or_default();
     let matched = ops.agents.iter().find(|a| {
         (!alias.is_empty() && a.alias.eq_ignore_ascii_case(&alias)) || agent_id(a) == target
     });
@@ -282,14 +290,18 @@ pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std:
             };
             let changed = {
                 let mut log = shared.chat.write().unwrap();
-                let stored_alias = (!alias.is_empty()).then_some(alias.as_str());
-                let changed = log.target.as_deref() != Some(id.as_str())
-                    || log.kind.as_deref() != Some(kind.as_str())
-                    || alias_keep.as_deref() != stored_alias;
-                log.target = Some(id.clone());
-                log.kind = Some(kind.clone());
-                log.pinned = true;
-                changed
+                if log.busy {
+                    false
+                } else {
+                    let stored_alias = (!alias.is_empty()).then_some(alias.as_str());
+                    let changed = log.target.as_deref() != Some(id.as_str())
+                        || log.kind.as_deref() != Some(kind.as_str())
+                        || alias_keep.as_deref() != stored_alias;
+                    log.target = Some(id.clone());
+                    log.kind = Some(kind.clone());
+                    log.pinned = true;
+                    changed
+                }
             };
             if changed {
                 let _ = crate::panel_state::persist_control_pin_to(
@@ -304,9 +316,11 @@ pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std:
             }
         }
         _ => {
-            // Pin is weg of niet (meer) kiesbaar: unpin + auto-pick.
             {
                 let mut log = shared.chat.write().unwrap();
+                if log.busy {
+                    return;
+                }
                 log.target = None;
                 log.kind = None;
                 log.pinned = false;
@@ -315,8 +329,10 @@ pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std:
             if let Some(auto) = resolve_target(&ops, None) {
                 let kind = kind_for(&ops, &auto);
                 let mut log = shared.chat.write().unwrap();
-                log.target = Some(auto);
-                log.kind = kind;
+                if !log.busy {
+                    log.target = Some(auto);
+                    log.kind = kind;
+                }
             }
             shared
                 .chat_revision
@@ -426,6 +442,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         }
     };
     let target = resolve_target(&ops, pinned.as_deref());
+    let pin_kept = pinned.is_some() && target.as_deref() == pinned.as_deref();
     let kind = target
         .as_deref()
         .and_then(|id| kind_for(&ops, id))
@@ -438,6 +455,9 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         log.busy = true;
         log.target = target.clone();
         log.kind = Some(kind.clone());
+        if pinned.is_some() && !pin_kept {
+            log.pinned = false;
+        }
         log.messages.push(ChatMessage {
             role: ChatRole::Operator,
             text: text.to_string(),
@@ -453,8 +473,14 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
             shared
                 .chat_revision
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if pinned.is_some() && !pin_kept {
+                persist_unpin_bg();
+            }
             return SubmitStatus::NoTarget;
         }
+    }
+    if pinned.is_some() && !pin_kept {
+        persist_unpin_bg();
     }
     shared
         .chat_revision
@@ -853,6 +879,65 @@ mod tests {
             resolve_target(&ops, Some("w9:p9")).as_deref(),
             Some("w2S:p2")
         );
+    }
+
+    #[test]
+    fn refresh_laat_busy_target_met_rust() {
+        let path = temp_state_path("busy-refresh");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
+        let shared = shared_met_pin(&path);
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![agent_met_alias(
+                    "chefapp-herdr",
+                    "w2R:p3",
+                    "/home/joep/.herdr/worktrees/chefbar/worktree-pi-bind",
+                )],
+            },
+        );
+        shared.chat.write().unwrap().busy = true;
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert_eq!(log.target.as_deref(), Some("w2R:p2"));
+        assert!(log.pinned);
+        assert!(log.busy);
+        let persisted = crate::panel_state::load_from(&path);
+        assert_eq!(persisted.control_target.as_deref(), Some("w2R:p2"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn submit_stale_pin_unpint_voor_auto_pick() {
+        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
+        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let path = temp_state_path("submit-stale");
+        std::env::set_var("CHEFBAR_PANEL_STATE", &path);
+        let shared = crate::state::Shared::new();
+        {
+            let mut log = shared.chat.write().unwrap();
+            log.target = Some("w2Q:p9".into());
+            log.pinned = true;
+        }
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![agent("pi", "w2S:p2", "idle", "/tmp/ops-lane")],
+            },
+        );
+        assert_eq!(submit(&shared, "status jan"), SubmitStatus::Sent);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(!log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2S:p2"));
+        std::env::remove_var("CHEFBAR_PANEL_STATE");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
