@@ -63,9 +63,13 @@ pub fn render_domain(
 /// Linear/taken-status → vaste bucket. Pure, GTK-vrij, getest.
 pub(crate) fn status_bucket(status: &str) -> &'static str {
     let s = status.to_ascii_lowercase();
-    if s.contains("fail") || s.contains("error") || s.contains("fout") {
-        "Vast"
-    } else if s.contains("block") || s.contains("hold") || s.contains("hulp") {
+    if s.contains("fail")
+        || s.contains("error")
+        || s.contains("fout")
+        || s.contains("block")
+        || s.contains("hold")
+        || s.contains("hulp")
+    {
         "Vast"
     } else if s.contains("progress") || s == "bezig" || s == "started" || s == "doing" {
         "Bezig"
