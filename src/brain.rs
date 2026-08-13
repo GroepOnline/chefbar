@@ -29,10 +29,13 @@ pub fn fetch_digest(profile: &EndpointProfile) -> BrainDigest {
     if let Some(base) = profile.brain_api.as_deref() {
         let policy = EndpointPolicy::default().with_profile_hosts(&[base]);
         let client = Client::new(base, policy).with_timeout(DIGEST_TIMEOUT);
-        if let Ok(value) = client.get_json("/digest") {
-            return parse_brain_digest(&value);
+        match client.get_json("/digest") {
+            Ok(value) => return parse_brain_digest(&value),
+            Err(err) => {
+                eprintln!("[warn] brain digest fetch failed: {err}");
+                return BrainDigest::default();
+            }
         }
-        return BrainDigest::default();
     }
     match local_digest_path().and_then(|path| std::fs::read_to_string(path).ok()) {
         Some(text) => serde_json::from_str(&text)
@@ -69,13 +72,17 @@ pub fn search<'a>(needle: &str, digest: &'a BrainDigest) -> Vec<&'a BrainChunk> 
         .collect()
 }
 
-/// Doel voor BrainOpen: url wint, anders pad.
+/// Doel voor BrainOpen: niet-lege url wint, anders pad.
 pub fn open_target(chunk: &BrainChunk) -> String {
-    chunk
-        .url
-        .clone()
-        .or_else(|| chunk.path.clone())
-        .unwrap_or_default()
+    nonempty(chunk.url.as_deref())
+        .unwrap_or_else(|| nonempty(chunk.path.as_deref()).unwrap_or_default())
+}
+
+fn nonempty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -137,6 +144,10 @@ mod tests {
         );
         assert_eq!(open_target(&c), "https://vault.chefgroep.online/t");
         let c = chunk("t", "/pad.md", None, None);
+        assert_eq!(open_target(&c), "/pad.md");
+        let c = chunk("t", "/pad.md", Some("   "), None);
+        assert_eq!(open_target(&c), "/pad.md");
+        let c = chunk("t", "/pad.md", Some(""), None);
         assert_eq!(open_target(&c), "/pad.md");
     }
 

@@ -12,8 +12,8 @@ use crate::models::{
     build_crm_deals, build_fleet, build_fleet_nodes, build_herdr_workspaces, build_inbox,
     build_kater_status, build_linear_issues, build_obs_summary, build_ops_snapshot,
     build_providers, build_secrets_meta, build_vault_accounts, day_score_from_agent_summary,
-    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo,
-    OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
+    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, BrainDigest,
+    HealthInfo, OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -528,6 +528,9 @@ impl Poller {
     fn poll_brain_digest(&self) {
         let profile = crate::config::global_profile();
         if profile.brain_api.is_none() && crate::brain::no_local_digest() {
+            let mut snap = self.shared.snapshot.write().unwrap();
+            snap.brain_digest = BrainDigest::default();
+            snap.last_poll_at.insert("brain_digest".into(), iso_now());
             return;
         }
         let digest = crate::brain::fetch_digest(profile);

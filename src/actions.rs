@@ -653,7 +653,6 @@ pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
     let needle = query.trim_start_matches('?');
     crate::brain::search(needle, &snap.brain_digest)
         .into_iter()
-        .take(8)
         .filter_map(|chunk| {
             let target = crate::brain::open_target(chunk);
             if target.is_empty() {
@@ -671,6 +670,7 @@ pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
                 RunSpec::BrainOpen(target),
             ))
         })
+        .take(8)
         .collect()
 }
 
@@ -1031,11 +1031,16 @@ impl Executor {
             }
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
             RunSpec::BrainOpen(target) => {
-                let target = target.clone();
+                let target = target.trim();
                 if target.starts_with("http://") || target.starts_with("https://") {
-                    crate::notify::open_url(&target);
+                    crate::notify::open_url(target);
+                } else if target.starts_with('/') && !target.contains('\0') {
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg("--")
+                        .arg(target)
+                        .spawn();
                 } else if !target.is_empty() {
-                    let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
+                    eprintln!("[warn] BrainOpen geweigerd: {target}");
                 }
             }
             RunSpec::Refresh => self.request_refresh(),
@@ -1376,6 +1381,31 @@ mod tests {
             ..Default::default()
         };
         assert!(build_brain_search_actions(&snap, "?geen").is_empty());
+    }
+
+    #[test]
+    fn brain_search_doelloze_hits_eten_limiet_niet_op() {
+        let mut chunks: Vec<BrainChunk> = (0..8)
+            .map(|i| BrainChunk {
+                title: format!("hard leeg {i}"),
+                ..Default::default()
+            })
+            .collect();
+        chunks.push(BrainChunk {
+            title: "hard constraints".into(),
+            path: Some("/brain/hard.md".into()),
+            ..Default::default()
+        });
+        let snap = Snapshot {
+            brain_digest: BrainDigest {
+                chunks,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let actions = build_brain_search_actions(&snap, "?hard");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].run, RunSpec::BrainOpen("/brain/hard.md".into()));
     }
 
     #[test]
