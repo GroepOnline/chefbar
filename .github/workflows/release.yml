@@ -1,0 +1,58 @@
+name: Release
+
+# Product name is ChefApp; the crate/binary stays `chefbar` until Joep
+# renames the repo. Tags `v*` build on the company-control heavy lane
+# (never ubuntu-latest; never the `company-control` label alone).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: ChefApp Linux x86_64
+    runs-on: [self-hosted, Linux, X64, heavy]
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo / target
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2.9.2)
+        with:
+          shared-key: chefbar-release
+          cache-bin: "false"
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Upload ChefApp binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: chefapp-linux-x86_64
+          path: target/release/chefbar
+          if-no-files-found: error
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          install -m 0755 target/release/chefbar "chefbar-linux-x86_64"
+          gh release create "${GITHUB_REF_NAME}" \
+            chefbar-linux-x86_64 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "ChefApp ${GITHUB_REF_NAME}" \
+            --generate-notes
