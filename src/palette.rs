@@ -24,11 +24,9 @@ impl Action {
         fuzzy_score(query, self).is_some()
     }
 
-    /// Stable lokale frecency-key; dezelfde titel met andere uitvoering blijft
-    /// daardoor een afzonderlijke actie in de ranking. `CopyText`-payloads
-    /// zitten er niet in — die belanden anders in `frecency.json`.
+    /// Stable lokale frecency-key zonder display-tekst of clipboard-payloads.
     pub fn frecency_id(&self) -> String {
-        format!("{}::{}", self.title, self.run.frecency_key())
+        self.run.frecency_key()
     }
 }
 
@@ -618,6 +616,19 @@ mod tests {
         };
         let ranked = rank_actions_with(&actions, "f", 10, Some(&ctx));
         assert_eq!(ranked[0].title, "Fleet infra overzicht");
+    }
+
+    #[test]
+    fn frecency_id_verbergt_clipboard_en_urls() {
+        let mut copy = action("Kopieer · super-secret-token", "meta", "clipboard");
+        copy.run = RunSpec::CopyText("super-secret-token".into());
+        assert_eq!(copy.frecency_id(), "CopyText");
+        assert!(!copy.frecency_id().contains("super-secret"));
+
+        let mut url = action("Open dashboard", "meta", "url");
+        url.run = RunSpec::OpenUrl("https://example.test/token=abc".into());
+        assert_eq!(url.frecency_id(), "OpenUrl");
+        assert!(!url.frecency_id().contains("token="));
     }
 
     #[test]
