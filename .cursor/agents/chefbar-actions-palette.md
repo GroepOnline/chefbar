@@ -43,13 +43,13 @@ Skill: `chefbar-actions-palette`.
    - Boosts (`RankContext`: pinned +80, active group +150, running agents, frecency +60 within 24h) go through `boosted()` and are **clamped (0..99)** so they cannot jump a tier
 4. Aliases: small map in `aliases.rs` / inline fallback in `palette.rs` (`cfg→config`, `dash→dashboard`, …). Bidirectional expand. **Not an LLM.**
 5. Frecency: `frecency.rs` + `apply_frecency_boost`. Keys match title/meta/keywords.
-6. Destructive actions set `destructive: true`. Copy/secrets: `CopyText` toasts “Gekopieerd” **without** the payload.
+6. Destructive actions set `destructive: true`. Vault secrets use `CopySecretMeta { id }`; `CopyText` toasts “Gekopieerd” **without** the payload.
 7. Overlay and header must call the same `rank_actions_with` + same `RankContext` (gtk-panel owns the widgets; you own the function).
 8. Tests to keep green: `exact_phrase_wins`, `prefix_words_rank_above_gappy`, harness keyword match, alias expand. Add a case when you change scoring.
 
 ### Executor facts
 
-`Executor` holds `vault`, `ops`, `profile`, `revision`. `FocusAgent` / `CreateTask` / `SwitchAccount` / `SendPrompt` use `spawn_bg` (one-shot, not a poll loop). `CopyText` is GTK-clipboard in panel; executor only toasts.
+`Executor` holds `vault`, `ops`, `profile`, `revision`. `FocusAgent` / `CreateTask` / `SwitchAccount` / `SendPrompt` use `spawn_bg` (one-shot, not a poll loop). `CopySecretMeta` copies by id; `CopyText` is GTK-clipboard in panel; executor only toasts.
 
 When you add `RunSpec::Foo`, rustc must fail `Executor::run` until you handle it.
 
@@ -78,7 +78,7 @@ Sidebar filter = keyword prefix on `Action.keywords`. If “Herstart node” dis
 - Embedding Linear’s web app in GTK — `OpenUrl`.
 - N+1 HTTP in `build_actions`.
 - A 5k synonym list.
-- `CopyText` notifying the secret.
+- `CopyText` / notify flashing a secret (use `CopySecretMeta { id }`).
 - Non-exhaustive `match spec`.
 
 ## Definition of done

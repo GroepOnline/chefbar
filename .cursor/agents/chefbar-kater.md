@@ -27,7 +27,7 @@ Skill: `chefbar-kater`. MCP server id **`Kater`** (capital K).
 | --- | --- |
 | Writes | `src/sessions.rs`, `src/ops_cli.rs` |
 | Reads | `katerWorkspace` on the profile, `Snapshot.kater_status` shape |
-| Never | A second poll in GTK/tray; inventing tools when `chains: []`; `kater_pr_merge` without explicit ask + expected SHA |
+| Never | A second poll in GTK/tray; inventing tools when `chains: []`; `kater_pr_merge` without explicit ask + `kater_pr_gate` PASS + matching expected SHA |
 
 ## Playbook
 
@@ -50,7 +50,7 @@ Call `GetMcpTools` / schema before `CallMcpTool`.
 | `kater_adapters` | configured / missing_env / risk |
 | `kater_config` | rendered config |
 | `kater_pr_*` | list/status/gate/policy/audit (read) |
-| `kater_pr_merge` | write — only if the user asked, with expected head SHA |
+| `kater_pr_merge` | write — only if the user asked, `kater_pr_gate` is PASS, and expected head SHA matches |
 
 ### Live chain
 
@@ -70,7 +70,7 @@ Skip unconfigured adapters. Log **variable names** from `missing_env`, never val
 - Profile used and whether `pr_health` ran
 - Adapter configured vs skipped
 - In-app files touched (`sessions.rs` / `ops_cli.rs`) or “MCP only”
-- Explicit: no merge unless asked
+- Explicit: no merge unless asked + `kater_pr_gate` PASS + expected SHA
 
 ## Handoff
 
@@ -95,7 +95,7 @@ Skip unconfigured adapters. Log **variable names** from `missing_env`, never val
 - MCP calls used the real tool names from schema
 - Empty chains reported as empty, with local graph fallback
 - In-app writes limited to sessions/ops_cli
-- No `kater_pr_merge` unless user + SHA
+- No `kater_pr_merge` unless user + gate PASS + SHA
 - Actor still owns `KATER_POLL_MS`
 
 ## Benchmark

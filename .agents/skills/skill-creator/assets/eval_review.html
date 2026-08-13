@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Eval Set Review - __SKILL_NAME_PLACEHOLDER__</title>
+  <title>Eval Set Review</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
@@ -38,8 +38,8 @@
   </style>
 </head>
 <body>
-  <h1>Eval Set Review: <span id="skill-name">__SKILL_NAME_PLACEHOLDER__</span></h1>
-  <p class="description">Current description: <span id="skill-desc">__SKILL_DESCRIPTION_PLACEHOLDER__</span></p>
+  <h1>Eval Set Review: <span id="skill-name"></span></h1>
+  <p class="description">Current description: <span id="skill-desc"></span></p>
 
   <div class="controls">
     <button class="btn btn-add" onclick="addRow()">+ Add Query</button>
@@ -59,8 +59,13 @@
 
   <p class="summary" id="summary"></p>
 
+  <script type="application/json" id="eval-review-payload">__EVAL_REVIEW_PAYLOAD__</script>
   <script>
-    const EVAL_DATA = __EVAL_DATA_PLACEHOLDER__;
+    const payload = JSON.parse(document.getElementById("eval-review-payload").textContent);
+    const EVAL_DATA = payload.eval_data || [];
+    document.getElementById("skill-name").textContent = payload.skill_name || "";
+    document.getElementById("skill-desc").textContent = payload.skill_description || "";
+    document.title = "Eval Set Review - " + (payload.skill_name || "");
 
     let evalItems = [...EVAL_DATA];
 
@@ -103,9 +108,12 @@
     }
 
     function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     function updateQuery(idx, value) { evalItems[idx].query = value; updateSummary(); }

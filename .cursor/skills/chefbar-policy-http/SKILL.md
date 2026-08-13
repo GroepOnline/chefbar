@@ -5,7 +5,7 @@ description: ChefBar policy and HTTP skill for EndpointPolicy, ureq Client redir
 
 # ChefBar policy + HTTP
 
-Every byte that leaves the machine goes through `EndpointPolicy` + `auth::get_headers` + `http::Client`.
+Outbound HTTP(S) requests go through `EndpointPolicy` + `auth::get_headers` + `http::Client`. Opening a policy-approved URL in the browser (`notify::open_url` / `xdg-open`) is a separate boundary and does not attach auth headers.
 
 ## Instructions
 
@@ -17,7 +17,7 @@ Every byte that leaves the machine goes through `EndpointPolicy` + `auth::get_he
    - `*.ts.net` https if `CHEFBAR_ALLOW_TSNET_HTTPS` (default true)
    - Tailnet CGNAT `100.64.0.0/10` **http** only if `CHEFBAR_ALLOW_TAILNET_HTTP`
    - public http/https otherwise denied
-4. `safe_join(base, path)`: reject `http://` paths that swap host; same origin (scheme, host, port); then `require` again.
+4. `safe_join(base, path)`: reject absolute URLs that swap origin (scheme, host, or port); then `require` again.
 5. `http::Client`: timeout 5s default, actor uses 2s. `ureq` **redirects(0)**. GET/POST/DELETE JSON. Attach `get_headers(json_body)`.
 6. Auth seam (`docs/auth-remote.md`):
    - Bearer: `CHEF_VAULT_API_TOKEN` / `CHEFBAR_VAULT_TOKEN` / `CHEFBAR_VAULT_TOKEN_FILE` / legacy `~/ChefFactory/chefgroep-vault/docker/.env`

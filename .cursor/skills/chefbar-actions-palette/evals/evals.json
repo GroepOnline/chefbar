@@ -40,10 +40,10 @@
     {
       "id": 5,
       "prompt": "Toast the copied secret so the user sees it.",
-      "expected_output": "CopyText toasts without payload.",
+      "expected_output": "CopySecretMeta { id }; toast without the secret payload.",
       "expectations": [
-        "Forbids secret in notify",
-        "Mentions CopyText"
+        "Uses CopySecretMeta, not CopyText, for the secret",
+        "Forbids secret in notify"
       ]
     }
   ]

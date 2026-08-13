@@ -9,7 +9,7 @@ One socket. One tray thread. One `mpsc` into GTK.
 
 ## Instructions
 
-1. Socket: `$XDG_RUNTIME_DIR/chefbar.sock` (0600), fallback `/tmp/chefbar.sock`. Bind = single-instance. Hotkeys talk to the running process (`chefbar --ipc …` / `--bar`).
+1. Socket: `$XDG_RUNTIME_DIR/chefbar.sock`, fallback `/tmp/chefbar.sock`. After every bind, set and **verify** mode `0600` (do not rely on umask). If chmod fails, drop the listener, remove the socket, and treat bind as failed. Bind = single-instance. Hotkeys talk to the running process (`chefbar --ipc …` / `--bar`).
 2. `parse_command` aliases stay backward compatible:
    - `bar|panel|open|show|dashboard` → `ShowPanel`
    - `toggle-panel`, `refresh|reload`, `doctor|check`, `quit|exit|stop`

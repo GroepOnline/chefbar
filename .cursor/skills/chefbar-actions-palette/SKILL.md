@@ -21,12 +21,12 @@ Actions are data. The GTK thread does not close over HTTP.
    - Boosts (`RankContext`, pinned +80, active group +150, running agents, frecency +60 within 24h) are **capped** via `boosted()` so they cannot outrank a higher tier (boost clamp 0..99 added onto the tier base)
 3. Aliases: small map in `aliases.rs` / inline fallback in `palette.rs` (`cfg→config`, `dash→dashboard`, …). Bidirectional expand. Not an LLM.
 4. Frecency: `frecency.rs` + `apply_frecency_boost`. Keys match title/meta/keywords.
-5. Destructive actions set `destructive: true`. Copy/secrets: notify without payload (`CopyText` already toasts “Gekopieerd” without the text).
+5. Destructive actions set `destructive: true`. Vault secrets use `CopySecretMeta { id }`; `CopyText` is non-secret clipboard. Notify without the payload.
 6. Tests: `exact_phrase_wins`, `prefix_words_rank_above_gappy`, harness keyword match, alias expand. Keep that style.
 
 ### Executor facts
 
-`Executor` holds `vault`, `ops`, `profile`, `revision`. `OpenUrl` goes through `notify::open_url` (policy still applies at construction time). `FocusAgent` / `CreateTask` / `SwitchAccount` / `SendPrompt` use `spawn_bg`. `CopyText` is GTK-clipboard in panel; executor only toasts.
+`Executor` holds `vault`, `ops`, `profile`, `revision`. `OpenUrl` goes through `notify::open_url` (policy still applies at construction time). `FocusAgent` / `CreateTask` / `SwitchAccount` / `SendPrompt` use `spawn_bg`. `CopySecretMeta` copies by id; `CopyText` is GTK-clipboard in panel; executor only toasts.
 
 ### Exhaustiveness
 
@@ -65,7 +65,7 @@ Output: `RunSpec::OpenLinearIssue(id)` already exists — wire keywords `linear`
 | Contains “fl” matches “fleet” | that is prefix, not contains; contains needs full needle |
 | Overlay ≠ header results | both must use `rank_actions_with` + same `RankContext` |
 | Executor compile after new variant | missing match arm |
-| Secret flashed in mako | CopyText must not put payload in notify |
+| Secret flashed in mako | `CopySecretMeta`; never put the secret in notify |
 
 ## Invariants to paste
 

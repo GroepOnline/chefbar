@@ -73,7 +73,7 @@ loops:
   - id: qa-converge
     start: qa
     on: fail
-    next: rust-core
+    next: owning-worker
     then: qa
     max_iterations: 3
     abort: orchestrator
@@ -90,4 +90,4 @@ chains:
   bugfix: [qa, owning-worker, rust-core, gate, qa-converge]
   review: [rust-core, architect, policy-http, gtk-panel]
   kater-ops: [kater, architect]
-  docs-only: [architect]
+  docs-only: [architect, qa]

@@ -101,15 +101,25 @@ def load_run_results(benchmark_dir: Path) -> dict:
         for config_dir in sorted(eval_dir.iterdir()):
             if not config_dir.is_dir():
                 continue
-            # Skip non-config directories (inputs, outputs, etc.)
-            if not list(config_dir.glob("run-*")):
+            nested_runs = sorted(config_dir.glob("run-*"))
+            if nested_runs:
+                run_dirs = nested_runs
+            elif (config_dir / "grading.json").exists() or (config_dir / "outputs").is_dir():
+                run_dirs = [config_dir]
+            else:
                 continue
             config = config_dir.name
             if config not in results:
                 results[config] = []
 
-            for run_dir in sorted(config_dir.glob("run-*")):
-                run_number = int(run_dir.name.split("-")[1])
+            for run_dir in run_dirs:
+                if run_dir.name.startswith("run-"):
+                    try:
+                        run_number = int(run_dir.name.split("-")[1])
+                    except ValueError:
+                        run_number = len(results[config]) + 1
+                else:
+                    run_number = len(results[config]) + 1
                 grading_file = run_dir / "grading.json"
 
                 if not grading_file.exists():
@@ -260,6 +270,13 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
         for r in config
     ))
 
+    runs_per_configuration = 0
+    if results:
+        runs_per_configuration = max(
+            (len({r["run_number"] for r in runs}) for runs in results.values()),
+            default=0,
+        )
+
     benchmark = {
         "metadata": {
             "skill_name": skill_name or "<skill-name>",
@@ -268,7 +285,7 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
             "analyzer_model": "<model-name>",
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "evals_run": eval_ids,
-            "runs_per_configuration": 3
+            "runs_per_configuration": runs_per_configuration
         },
         "runs": runs,
         "run_summary": run_summary,

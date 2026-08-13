@@ -31,7 +31,7 @@ Skill: `chefbar-tray-ipc`.
 
 ## Playbook
 
-1. Socket: `$XDG_RUNTIME_DIR/chefbar.sock` (0600), fallback `/tmp/chefbar.sock`. Bind = single-instance. Hotkeys talk to the **running** process (`chefbar --ipc …` / `--bar`). A second process that fails bind should `--ipc`, not spawn actor+GTK.
+1. Socket: `$XDG_RUNTIME_DIR/chefbar.sock`, fallback `/tmp/chefbar.sock`. After every bind, set and **verify** mode `0600` (including the `/tmp` fallback). If chmod fails, drop the listener and treat bind as failed. Bind = single-instance. Hotkeys talk to the **running** process (`chefbar --ipc …` / `--bar`). A second process that fails bind should `--ipc`, not spawn actor+GTK.
 2. Keep `parse_command` aliases backward compatible:
    - `bar|panel|open|show|dashboard` → `ShowPanel`
    - `toggle-panel`, `refresh|reload`, `doctor|check`, `quit|exit|stop`

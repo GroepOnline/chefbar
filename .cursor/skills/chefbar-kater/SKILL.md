@@ -28,7 +28,7 @@ Server id **`Kater`** (capital K). Call `GetMcpTools` before `CallMcpTool`.
 | `kater_adapters` | configured / missing_env / risk |
 | `kater_config` | rendered config |
 | `kater_pr_*` | list/status/gate/policy/audit (read) |
-| `kater_pr_merge` | write — only if the user asked, with expected head SHA |
+| `kater_pr_merge` | write — only if the user asked, `kater_pr_gate` is PASS, and expected head SHA matches |
 
 ### Live chain
 
@@ -84,7 +84,7 @@ See [references/invariants.md](references/invariants.md). Short form:
 
 - MCP server id `Kater`. `pr_health` on `code`/`ops`. Empty other profiles → local graph.
 - App poll stays in `state.rs` (actor). This skill writes `sessions.rs` / `ops_cli.rs`.
-- No `kater_pr_merge` unless asked. No tokio, reqwest, webview, Electron, or scrape-loop.
+- No `kater_pr_merge` unless asked + `kater_pr_gate` PASS + expected SHA. No tokio, reqwest, webview, Electron, or scrape-loop.
 
 ## Next
 

@@ -644,9 +644,9 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
+  <script type="application/json" id="embedded-data">/*__EMBEDDED_DATA__*/</script>
   <script>
-    // ---- Embedded data (injected by generate_review.py) ----
-    /*__EMBEDDED_DATA__*/
+    const EMBEDDED_DATA = JSON.parse(document.getElementById("embedded-data").textContent);
 
     // ---- State ----
     let feedbackMap = {};  // run_id -> feedback text
@@ -1097,9 +1097,12 @@
     }
 
     function escapeHtml(text) {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     // ---- View switching ----

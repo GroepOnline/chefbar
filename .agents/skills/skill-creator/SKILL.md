@@ -362,13 +362,11 @@ The key thing to avoid: don't make should-not-trigger queries obviously irreleva
 Present the eval set to the user for review using the HTML template:
 
 1. Read the template from `assets/eval_review.html`
-2. Replace the placeholders:
-   - `__EVAL_DATA_PLACEHOLDER__` → the JSON array of eval items (no quotes around it — it's a JS variable assignment)
-   - `__SKILL_NAME_PLACEHOLDER__` → the skill's name
-   - `__SKILL_DESCRIPTION_PLACEHOLDER__` → the skill's current description
-3. Write to a temp file (e.g., `/tmp/eval_review_<skill-name>.html`) and open it: `open /tmp/eval_review_<skill-name>.html`
-4. The user can edit queries, toggle should-trigger, add/remove entries, then click "Export Eval Set"
-5. The file downloads to `~/Downloads/eval_set.json` — check the Downloads folder for the most recent version in case there are multiple (e.g., `eval_set (1).json`)
+2. Build one JSON object `{ "eval_data": [...], "skill_name": "...", "skill_description": "..." }` with `json.dumps` (or equivalent). Replace every `<` with `\u003c` so a query or description cannot terminate the `<script>` element. Replace `__EVAL_REVIEW_PAYLOAD__` with that JSON (no extra quotes around it).
+3. Do **not** concatenate the skill name or description into HTML. The page assigns them with `textContent` after `JSON.parse`.
+4. Write to a temp file (e.g., `/tmp/eval_review_<skill-name>.html`) and open it: `open /tmp/eval_review_<skill-name>.html`
+5. The user can edit queries, toggle should-trigger, add/remove entries, then click "Export Eval Set"
+6. The file downloads to `~/Downloads/eval_set.json` — check the Downloads folder for the most recent version in case there are multiple (e.g., `eval_set (1).json`)
 
 This step matters — bad eval queries lead to bad descriptions.
 

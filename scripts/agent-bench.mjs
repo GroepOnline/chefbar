@@ -27,7 +27,16 @@ const args = new Set(process.argv.slice(2));
 const jsonOnly = args.has("--json");
 const minRouting = (() => {
   const i = process.argv.indexOf("--min-routing");
-  return i >= 0 ? Number(process.argv[i + 1]) : 0.75;
+  if (i < 0) return 0.75;
+  const raw = process.argv[i + 1];
+  const n = Number(raw);
+  if (raw === undefined || !Number.isFinite(n) || n < 0 || n > 1) {
+    console.error(
+      `invalid --min-routing ${raw === undefined ? "(missing)" : JSON.stringify(raw)}; expected a number in [0, 1]`,
+    );
+    process.exit(1);
+  }
+  return n;
 })();
 
 const STOP = new Set(
@@ -111,11 +120,22 @@ function overlap(query, doc) {
   return score;
 }
 
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function headingStartsWithName(heading, name) {
+  const h = heading.trim().toLowerCase();
+  const n = name.toLowerCase();
+  const re = new RegExp(`^${escapeRegExp(n)}s?(?:[^a-z0-9]|$)`);
+  return re.test(h);
+}
+
 function hasHeading(body, names) {
   const heads = [...body.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) =>
     m[1].trim().toLowerCase(),
   );
-  return names.some((n) => heads.some((h) => h.includes(n.toLowerCase())));
+  return names.some((n) => heads.some((h) => headingStartsWithName(h, n)));
 }
 
 function rel(p) {
@@ -146,11 +166,41 @@ function warn(msg) {
   report.warnings.push(msg);
 }
 
+function readTextOrFail(p, label) {
+  if (!fs.existsSync(p)) {
+    fail(`${label} missing`);
+    return "";
+  }
+  return fs.readFileSync(p, "utf8");
+}
+
+{
+  const headingCases = [
+    ["output", "Output", true],
+    ["output", "Output notes for done items", true],
+    ["done", "Output notes for done items", false],
+    ["done", "Definition of done", false],
+    ["definition", "Definition of done", true],
+    ["example", "Examples", true],
+    ["anti-pattern", "Anti-patterns", true],
+    ["performance", "Performance Notes", true],
+  ];
+  for (const [name, heading, expect] of headingCases) {
+    const got = hasHeading(`## ${heading}\n`, [name]);
+    if (got !== expect) {
+      fail(`hasHeading('${name}', '${heading}') expected ${expect}, got ${got}`);
+    }
+  }
+}
+
 // --- skills ---
-const skillDirs = fs
-  .readdirSync(path.join(CURSOR, "skills"), { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => path.join(CURSOR, "skills", e.name));
+const skillsRoot = path.join(CURSOR, "skills");
+const skillDirs = fs.existsSync(skillsRoot)
+  ? fs
+      .readdirSync(skillsRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(skillsRoot, e.name))
+  : (fail(".cursor/skills missing"), []);
 
 for (const dir of skillDirs) {
   const name = path.basename(dir);
@@ -368,10 +418,7 @@ if (fs.existsSync(graphPath)) {
   }
   for (const a of report.agents) {
     if (!unique.includes(a.name) && a.name !== "chefbar-orchestrator") {
-      // orchestrator is in graph; others should be
-      if (!unique.includes(a.name)) {
-        warn(`agent ${a.name} not referenced in graph.yaml`);
-      }
+      warn(`agent ${a.name} not referenced in graph.yaml`);
     }
   }
 } else {
@@ -401,7 +448,7 @@ for (const [agent, skill] of Object.entries(expectedPairing)) {
 }
 
 // --- invariants ---
-const cargo = fs.readFileSync(path.join(ROOT, "Cargo.toml"), "utf8");
+const cargo = readTextOrFail(path.join(ROOT, "Cargo.toml"), "Cargo.toml");
 report.invariants.forbidden_crates = [];
 for (const crate of ["tokio", "async-std", "reqwest", "hyper", "actix", "axum"]) {
   if (new RegExp(`^${crate}\\s*=`, "m").test(cargo) || cargo.includes(`"${crate}"`)) {
@@ -409,7 +456,7 @@ for (const crate of ["tokio", "async-std", "reqwest", "hyper", "actix", "axum"])
     fail(`Cargo.toml pulls forbidden crate ${crate}`);
   }
 }
-const css = fs.readFileSync(path.join(ROOT, "src/css.rs"), "utf8");
+const css = readTextOrFail(path.join(ROOT, "src/css.rs"), "src/css.rs");
 const cssHits = [];
 if (/^\s*--[a-zA-Z]/.test(css) || /[^A-Za-z]--[a-zA-Z-]+:/.test(css)) {
   cssHits.push("css-custom-properties");
@@ -419,8 +466,10 @@ if (/\binset\s*:/.test(css)) cssHits.push("inset");
 report.invariants.css_forbidden = cssHits;
 for (const h of cssHits) fail(`src/css.rs still emits GTK-illegal '${h}'`);
 
-report.invariants.laptop_rule =
-  fs.readFileSync(path.join(ROOT, "CONTRIBUTING.md"), "utf8").includes("geen Rust-toolchain");
+report.invariants.laptop_rule = readTextOrFail(
+  path.join(ROOT, "CONTRIBUTING.md"),
+  "CONTRIBUTING.md",
+).includes("geen Rust-toolchain");
 
 // disjoint owns: parse graph.yaml write lists
 const owns = {};

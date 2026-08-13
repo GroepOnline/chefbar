@@ -21,6 +21,28 @@ from scripts.run_eval import find_project_root, run_eval
 from scripts.utils import parse_skill_md
 
 
+def validate_holdout(eval_set: list[dict], holdout: float) -> None:
+    """Reject holdout values that empty a label's training split."""
+    if not 0 <= holdout < 1:
+        print(
+            "Error: --holdout must satisfy 0 <= holdout < 1. Use --holdout 0 to disable.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if holdout == 0:
+        return
+    trigger = [e for e in eval_set if e["should_trigger"]]
+    no_trigger = [e for e in eval_set if not e["should_trigger"]]
+    if len(trigger) < 2 or len(no_trigger) < 2:
+        print(
+            "Error: --holdout requires at least two queries in both trigger and "
+            "no_trigger so each label stays in train_set. Use --holdout 0 when "
+            "the eval set is too small.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def split_eval_set(eval_set: list[dict], holdout: float, seed: int = 42) -> tuple[list[dict], list[dict]]:
     """Split eval set into train and test sets, stratified by should_trigger."""
     random.seed(seed)
@@ -260,6 +282,7 @@ def main():
 
     eval_set = json.loads(Path(args.eval_set).read_text())
     skill_path = Path(args.skill_path)
+    validate_holdout(eval_set, args.holdout)
 
     if not (skill_path / "SKILL.md").exists():
         print(f"Error: No SKILL.md found at {skill_path}", file=sys.stderr)
