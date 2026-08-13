@@ -738,7 +738,11 @@ fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ok = snap.last_poll_ok.get(k.as_str()).copied().unwrap_or(false);
+        let ok = snap
+            .last_poll
+            .get(k.as_str())
+            .map(|h| h.ok)
+            .unwrap_or(false);
         let (meta, cls) = sync_stamp(ok, v);
         group.pack_start(
             &domain_row(cls, k, Some(meta.as_str()), None),

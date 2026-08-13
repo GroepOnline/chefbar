@@ -4,7 +4,7 @@
 //! linear 60s, kater 30s), fan-out per endpoint met een kort afnamebudget,
 //! en publiceert één gedeelde Snapshot. UI leest onder een korte read-lock;
 //! mislukte secties behouden hun laatste goede `last_poll_at` en zetten
-//! `last_poll_ok` op false. Sync toont fout, niet een verse attempt-tijd.
+//! `last_poll.ok` op false. Sync toont fout, niet een verse attempt-tijd.
 
 use crate::http::{ApiError, Client};
 use crate::models::{
@@ -13,7 +13,7 @@ use crate::models::{
     build_kater_status, build_linear_issues, build_obs_summary, build_ops_snapshot,
     build_providers, build_secrets_meta, build_vault_accounts, day_score_from_agent_summary,
     iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo,
-    OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
+    OpsSnapshot, PollHealth, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -47,16 +47,22 @@ fn all_results_ok(results: &HashMap<String, Option<Value>>) -> bool {
 
 /// Success: verse timestamp + ok. Failure: behoud laatste goede tijd, ok=false.
 /// Eerste fail zonder prior success zet de attempt-tijd zodat Sync een rij toont.
-fn mark_poll(snap: &mut Snapshot, source: &str, ok: bool) {
+fn mark_poll(snap: &mut Snapshot, source: &str, ok: bool, chip: &str) {
     if ok {
         snap.last_poll_at.insert(source.into(), iso_now());
-        snap.last_poll_ok.insert(source.into(), true);
     } else {
-        snap.last_poll_ok.insert(source.into(), false);
         snap.last_poll_at
             .entry(source.into())
             .or_insert_with(iso_now);
     }
+    snap.last_poll.insert(
+        source.into(),
+        if ok {
+            PollHealth::ok()
+        } else {
+            PollHealth::fail(chip)
+        },
+    );
 }
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
@@ -357,7 +363,7 @@ impl Poller {
         }
         // Availability stays any_ok (at least one endpoint). Sync freshness
         // requires every expected vault response — partial is fout, not verse.
-        mark_poll(&mut snap, "vault", all_results_ok(&results));
+        let vault_ok = all_results_ok(&results);
         snap.error = if errors.is_empty() {
             None
         } else if errors.len() == results.len() {
@@ -365,6 +371,12 @@ impl Poller {
         } else {
             Some(format!("gedeeltelijk: {}", errors.join(", ")))
         };
+        let vault_chip = match snap.error.as_deref() {
+            None => "ok",
+            Some("vault offline") => "offline",
+            Some(_) => "gedeeltelijk",
+        };
+        mark_poll(&mut snap, "vault", vault_ok, vault_chip);
 
         {
             let mut vault_online = self.shared.vault_online.write().unwrap();
@@ -437,7 +449,16 @@ impl Poller {
             }
         }
 
-        mark_poll(&mut snap, "vault_extra", all_results_ok(&results));
+        mark_poll(
+            &mut snap,
+            "vault_extra",
+            all_results_ok(&results),
+            if all_results_ok(&results) {
+                "ok"
+            } else {
+                "gedeeltelijk"
+            },
+        );
     }
 
     fn poll_linear(&self) {
@@ -445,7 +466,7 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("linear").cloned().flatten() {
             snap.linear_issues = build_linear_issues(Some(&val));
-            mark_poll(&mut snap, "linear", true);
+            mark_poll(&mut snap, "linear", true, "ok");
         } else {
             let linear_api = std::env::var("LINEAR_API")
                 .or_else(|_| std::env::var("CHEFBAR_LINEAR_API"))
@@ -455,7 +476,7 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false)
             {
-                mark_poll(&mut snap, "linear", false);
+                mark_poll(&mut snap, "linear", false, "offline");
             }
         }
     }
@@ -465,7 +486,7 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("kater").cloned().flatten() {
             snap.kater_status = build_kater_status(Some(&val));
-            mark_poll(&mut snap, "kater", true);
+            mark_poll(&mut snap, "kater", true, "ok");
         } else {
             let has_kater = crate::config::global_profile()
                 .kater_workspace
@@ -473,7 +494,7 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
             if has_kater {
-                mark_poll(&mut snap, "kater", false);
+                mark_poll(&mut snap, "kater", false, "offline");
             }
         }
     }
@@ -512,7 +533,12 @@ impl Poller {
                     "offline".into()
                 },
             };
-            mark_poll(&mut snap, "jcode_memory", online);
+            mark_poll(
+                &mut snap,
+                "jcode_memory",
+                online,
+                if online { "ok" } else { "offline" },
+            );
         });
     }
 
@@ -674,9 +700,9 @@ impl Poller {
             .get_json("/api/snapshot")
         {
             Ok(payload) => payload,
-            Err(_) => {
+            Err(err) => {
                 let mut snap = self.shared.snapshot.write().unwrap();
-                mark_poll(&mut snap, "ops", false);
+                mark_poll(&mut snap, "ops", false, &err.statuslijn_chip());
                 return;
             }
         };
@@ -687,7 +713,7 @@ impl Poller {
         }
         {
             let mut snap = self.shared.snapshot.write().unwrap();
-            mark_poll(&mut snap, "ops", true);
+            mark_poll(&mut snap, "ops", true, "ok");
         }
     }
 }
@@ -729,20 +755,26 @@ mod tests {
     #[test]
     fn mark_poll_keeps_last_good_time_on_failure() {
         let mut snap = Snapshot::default();
-        mark_poll(&mut snap, "linear", true);
+        mark_poll(&mut snap, "linear", true, "ok");
         let good = snap.last_poll_at.get("linear").cloned().unwrap();
-        assert_eq!(snap.last_poll_ok.get("linear"), Some(&true));
-        mark_poll(&mut snap, "linear", false);
+        assert_eq!(snap.last_poll.get("linear"), Some(&PollHealth::ok()));
+        mark_poll(&mut snap, "linear", false, "offline");
         assert_eq!(snap.last_poll_at.get("linear"), Some(&good));
-        assert_eq!(snap.last_poll_ok.get("linear"), Some(&false));
+        assert_eq!(
+            snap.last_poll.get("linear"),
+            Some(&PollHealth::fail("offline"))
+        );
     }
 
     #[test]
     fn mark_poll_first_failure_still_records_a_row() {
         let mut snap = Snapshot::default();
-        mark_poll(&mut snap, "ops", false);
+        mark_poll(&mut snap, "ops", false, "offline");
         assert!(snap.last_poll_at.contains_key("ops"));
-        assert_eq!(snap.last_poll_ok.get("ops"), Some(&false));
+        assert_eq!(
+            snap.last_poll.get("ops"),
+            Some(&PollHealth::fail("offline"))
+        );
     }
 
     #[test]
@@ -752,8 +784,11 @@ mod tests {
         results.insert("agents".into(), None);
         assert!(!all_results_ok(&results));
         let mut snap = Snapshot::default();
-        mark_poll(&mut snap, "vault", all_results_ok(&results));
-        assert_eq!(snap.last_poll_ok.get("vault"), Some(&false));
+        mark_poll(&mut snap, "vault", all_results_ok(&results), "gedeeltelijk");
+        assert_eq!(
+            snap.last_poll.get("vault"),
+            Some(&PollHealth::fail("gedeeltelijk"))
+        );
     }
 
     #[test]
@@ -764,8 +799,16 @@ mod tests {
         results.insert("brain".into(), Some(Value::Null));
         assert!(!all_results_ok(&results));
         let mut snap = Snapshot::default();
-        mark_poll(&mut snap, "vault_extra", all_results_ok(&results));
-        assert_eq!(snap.last_poll_ok.get("vault_extra"), Some(&false));
+        mark_poll(
+            &mut snap,
+            "vault_extra",
+            all_results_ok(&results),
+            "gedeeltelijk",
+        );
+        assert_eq!(
+            snap.last_poll.get("vault_extra"),
+            Some(&PollHealth::fail("gedeeltelijk"))
+        );
     }
 
     #[test]

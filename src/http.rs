@@ -101,6 +101,17 @@ pub enum ApiError {
     Transport(String),
 }
 
+impl ApiError {
+    /// Compact statuslijn-chip: HTTP-code, `offline`, of `geblokkeerd`.
+    pub fn statuslijn_chip(&self) -> String {
+        match self {
+            ApiError::Http(code, _) => code.to_string(),
+            ApiError::Blocked(_) => "geblokkeerd".to_string(),
+            ApiError::Transport(_) => "offline".to_string(),
+        }
+    }
+}
+
 impl From<String> for ApiError {
     fn from(reason: String) -> Self {
         ApiError::Blocked(reason)
@@ -128,5 +139,26 @@ fn run(response: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Valu
             Err(ApiError::Http(code, detail))
         }
         Err(ureq::Error::Transport(err)) => Err(ApiError::Transport(err.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statuslijn_chip_maps_variants() {
+        assert_eq!(
+            ApiError::Http(302, "access".into()).statuslijn_chip(),
+            "302"
+        );
+        assert_eq!(
+            ApiError::Transport("boom".into()).statuslijn_chip(),
+            "offline"
+        );
+        assert_eq!(
+            ApiError::Blocked("cf".into()).statuslijn_chip(),
+            "geblokkeerd"
+        );
     }
 }
