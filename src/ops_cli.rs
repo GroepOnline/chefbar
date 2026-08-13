@@ -91,8 +91,8 @@ pub fn send_control_prompt(target: &str, text: &str) -> bool {
     send_prompt(target, None, text)
 }
 
-/// Fleet-health plugin scan. `herdr fleet …` is not a real command.
-pub fn herdr_scan_node_args() -> Vec<String> {
+/// Fleet-health plugin scan for one node. Untargeted scan is not a success.
+pub fn herdr_scan_node_args(node: &str) -> Vec<String> {
     vec![
         "plugin".into(),
         "action".into(),
@@ -100,6 +100,8 @@ pub fn herdr_scan_node_args() -> Vec<String> {
         "--plugin".into(),
         "com.chefgroep.fleet-health".into(),
         "scan-node".into(),
+        "--arg".into(),
+        format!("node={node}"),
     ]
 }
 
@@ -153,21 +155,27 @@ pub fn send_prompt(terminal_id: &str, pane_id: Option<&str>, text: &str) -> bool
     true
 }
 
-/// Fleet deploy — ops API, then fleet-health scan as the only herdr fallback.
+/// Fleet deploy — ops API, then a node-targeted fleet-health scan.
 pub fn fleet_deploy(ops_client: &Client, node: &str) -> bool {
+    if node.trim().is_empty() {
+        return false;
+    }
     match ops_client.post_json("/api/fleet/deploy", &json!({"node": node})) {
         Ok(payload) => {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            run_herdr(&herdr_scan_node_args())
+            run_herdr(&herdr_scan_node_args(node))
         }
-        Err(_) => run_herdr(&herdr_scan_node_args()),
+        Err(_) => run_herdr(&herdr_scan_node_args(node)),
     }
 }
 
-/// Fleet exec — template via ops API; herdr fallback is plugin scan, not `herdr fleet`.
+/// Fleet exec — template via ops API; herdr fallback is a node-targeted plugin scan.
 pub fn fleet_exec(ops_client: &Client, node: &str, template: &str) -> bool {
+    if node.trim().is_empty() {
+        return false;
+    }
     match ops_client.post_json(
         "/api/fleet/exec",
         &json!({"node": node, "template": template}),
@@ -177,13 +185,13 @@ pub fn fleet_exec(ops_client: &Client, node: &str, template: &str) -> bool {
                 return true;
             }
             if fleet_template_is_scan(template) {
-                return run_herdr(&herdr_scan_node_args());
+                return run_herdr(&herdr_scan_node_args(node));
             }
             false
         }
         Err(_) => {
             if fleet_template_is_scan(template) {
-                run_herdr(&herdr_scan_node_args())
+                run_herdr(&herdr_scan_node_args(node))
             } else {
                 false
             }
@@ -232,11 +240,12 @@ mod tests {
 
     #[test]
     fn fleet_fallback_is_plugin_not_herdr_fleet() {
-        let node = herdr_scan_node_args();
+        let node = herdr_scan_node_args("sofie");
         let fleet = herdr_scan_fleet_args();
         assert_eq!(node[0], "plugin");
         assert!(node.contains(&"com.chefgroep.fleet-health".into()));
         assert!(node.contains(&"scan-node".into()));
+        assert!(node.contains(&"node=sofie".into()));
         assert!(fleet.contains(&"scan-fleet".into()));
         assert!(!node.iter().any(|a| a == "fleet"));
         assert!(!fleet.iter().any(|a| a == "deploy"));
