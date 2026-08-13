@@ -30,6 +30,7 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
         "toggle-autostart" => Some(UiCommand::ToggleAutostart),
         "palette" => Some(UiCommand::TogglePalette),
         "inbox" => Some(UiCommand::OpenInbox),
+        "drawer" | "open-drawer" => Some(UiCommand::DrawerPreview),
         _ if trimmed.starts_with("state ") => {
             let state = trimmed.trim_start_matches("state ").trim();
             if matches!(state, "stil" | "bezig" | "hulp" | "fout" | "offline") {
@@ -127,6 +128,7 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::FocusDomain(domain) => format!("focus-domain {domain}\n"),
         UiCommand::TogglePalette => "palette\n".to_string(),
         UiCommand::OpenInbox => "inbox\n".to_string(),
+        UiCommand::DrawerPreview => "drawer\n".to_string(),
     };
     use std::io::Write;
     let mut stream = stream;
@@ -352,6 +354,8 @@ mod tests {
         );
         assert_eq!(parse_command("palette"), Some(UiCommand::TogglePalette));
         assert_eq!(parse_command("inbox"), Some(UiCommand::OpenInbox));
+        assert_eq!(parse_command("drawer"), Some(UiCommand::DrawerPreview));
+        assert_eq!(parse_command("open-drawer"), Some(UiCommand::DrawerPreview));
         // unknown focus arg stays FocusAgent (backwards-compat)
         assert_eq!(
             parse_command("focus pane-99"),

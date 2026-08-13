@@ -10,7 +10,8 @@ use crate::harness::{HarnessGroup, HarnessKind};
 
 pub const SIDEBAR_WIDTH: i32 = 240;
 
-/// Canonieke nav-ids (15 domeinen + eval/sync compat).
+/// Canonieke nav-ids (15 domeinen + eval/sync compat), gegroepeerd per
+/// HarnessGroup zodat de hairlines in de sidebar schone secties vormen.
 pub const NAV_IDS: &[&str] = &[
     "inbox",
     "tasks",
@@ -50,6 +51,16 @@ pub const NAV_LABELS: &[&str] = &[
     "Evaluatie",
 ];
 
+/// Statische label voor een nav-id (for nav-count suffixes); onbekend → leeg.
+pub fn label_for(id: &str) -> &'static str {
+    NAV_IDS
+        .iter()
+        .zip(NAV_LABELS.iter())
+        .find(|(i, _)| **i == id)
+        .map(|(_, l)| *l)
+        .unwrap_or("")
+}
+
 /// Bouwt de volledige sidebar en geeft `(sidebar_container, nav_buttons)` terug.
 ///
 /// `active_group` bepaalt welke knop de `active` klas krijgt. De footer
@@ -66,7 +77,7 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     title_wrap.set_margin_start(14);
     title_wrap.set_margin_end(14);
     title_wrap.set_margin_bottom(10);
-    let title = gtk::Label::new(Some("ChefApp"));
+    let title = gtk::Label::new(Some("ChefBar"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.style_context().add_class("chefbar-sidebar-title");

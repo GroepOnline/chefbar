@@ -44,6 +44,8 @@ pub enum UiCommand {
     TogglePalette,
     /// Open de inbox-zone in het panel.
     OpenInbox,
+    /// Preview de detail-drawer met de eerste actie (visual-shot/CI path).
+    DrawerPreview,
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.

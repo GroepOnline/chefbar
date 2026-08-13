@@ -233,6 +233,7 @@ run_shot() {
   local app_pid=""
   local found=""
   local domain=""
+  local focused=""
   local stderr_keep="${out%.png}-stderr.log"
 
   finish() {
@@ -272,6 +273,9 @@ run_shot() {
 
   export DISPLAY="$DISPLAY_NUM"
   export XDG_RUNTIME_DIR="$rt_dir"
+  # Panel-state isoleren per shot: anders laadt de app Joeps persisted
+  # actieve domein en is de panel-baseline niet deterministisch.
+  export CHEFBAR_PANEL_STATE="$rt_dir/panel-state.json"
   if [ "$theme" != "auto" ]; then
     export CHEFBAR_THEME="$theme"
   fi
@@ -303,7 +307,15 @@ run_shot() {
       ipc_try "drawer" || ipc_try "open-drawer" || ipc_try "bar" || "$BIN" --bar >/dev/null 2>&1 || true
       ;;
     domain:*)
-      if ! ipc_try "focus-domain $domain" && ! ipc_try "focus $domain"; then
+      focused=0
+      for _ in 1 2 3; do
+        if ipc_try "focus-domain $domain" || ipc_try "focus $domain"; then
+          focused=1
+          break
+        fi
+        sleep 1
+      done
+      if [ "$focused" -ne 1 ]; then
         echo "visual-shot [$mode]: domain-focus faalde (focus-domain/focus $domain)" >&2
         cat "$rt_dir/app-stderr.log" >&2
         finish
@@ -320,7 +332,9 @@ run_shot() {
     return 1
   fi
 
-  found="$(convert "$out" -fuzz 8% -fill black +opaque "$ACCENT_HEX" -fill white -opaque "$ACCENT_HEX" -format "%[fx:mean*w*h]" info: 2>/dev/null | cut -d. -f1)"
+  # 20% fuzz: GTK3 rendert de accentkleur met kleurbeheer/antialiasing, exact
+  # matchen (8%) gaf false-negatives voor palette/drawer-streaks.
+  found="$(convert "$out" -fuzz 20% -fill black +opaque "$ACCENT_HEX" -fill white -opaque "$ACCENT_HEX" -format "%[fx:mean*w*h]" info: 2>/dev/null | cut -d. -f1)"
   echo "visual-shot [$mode]: accent-pixels ≈ ${found:-0} (${ACCENT_HEX}) in $out"
   if [ -z "${found:-}" ] || [ "$found" -eq 0 ] 2>/dev/null; then
     echo "visual-shot [$mode]: GEEN accent-pixels gevonden — paneel waarschijnlijk niet zichtbaar" >&2

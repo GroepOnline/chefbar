@@ -6,12 +6,13 @@
 
 use gtk::prelude::*;
 
-/// Bouwt de header en geeft `(header_box, search_entry, refresh_btn, min_btn, close_btn)` terug.
-///
-/// De caller wiret de knoppen (refresh → `refresh_global`, min → `iconify`,
-/// close → `fade_out`, drag, key-handlers) om GTK-ownership simpel te houden.
+/// Bouwt de header en geeft `(header_box, title_label, search_entry,
+/// refresh_btn, min_btn, close_btn)` terug. De caller wiret de knoppen en
+/// zet de titel op de actieve domeinnaam (deviant van statisch "ChefBar"
+/// in de sidebar).
 pub fn build_header() -> (
     gtk::Box,
+    gtk::Label,
     gtk::SearchEntry,
     gtk::Button,
     gtk::Button,
@@ -22,13 +23,14 @@ pub fn build_header() -> (
     header.set_margin_bottom(0);
 
     let title_block = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    let title = gtk::Label::new(Some("ChefApp"));
+    let title = gtk::Label::new(Some("ChefBar"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.set_ellipsize(pango::EllipsizeMode::End);
     title.style_context().add_class("chefbar-title");
+    // v2-heading tracking: −0.02em ≈ −20 pango-units (was −380, te agressief).
     let attrs = pango::AttrList::new();
-    attrs.insert(pango::AttrInt::new_letter_spacing(-380));
+    attrs.insert(pango::AttrInt::new_letter_spacing(-20));
     title.set_attributes(Some(&attrs));
     title_block.pack_start(&title, false, false, 0);
     let title_sub = gtk::Label::new(Some("chefgroep-online \u{00b7} 15 domeinen"));
@@ -40,9 +42,7 @@ pub fn build_header() -> (
     header.pack_start(&title_block, false, false, 0);
 
     let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some(
-        "Zoek acties, agents, providers, sessies \u{00b7} / of Ctrl+K",
-    ));
+    search.set_placeholder_text(Some("Zoek in alles \u{00b7} / of Ctrl+K"));
     search.style_context().add_class("chefbar-search");
     search.set_hexpand(true);
     search.set_halign(gtk::Align::Fill);
@@ -75,5 +75,5 @@ pub fn build_header() -> (
     header_controls.pack_start(&close_btn, false, false, 0);
     header.pack_end(&header_controls, false, false, 0);
 
-    (header, search, refresh_btn, min_btn, close_btn)
+    (header, title, search, refresh_btn, min_btn, close_btn)
 }

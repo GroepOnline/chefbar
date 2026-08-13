@@ -13,6 +13,7 @@
 //! Lane C: 1504 r monoliet gesplitst in 5 modules. Dit bestand blijft de
 //! lifecycle (Panel struct, new(), show/toggle, refresh-loop).
 
+pub mod domains;
 pub mod drawer;
 pub mod header;
 pub mod overlay;
@@ -32,8 +33,7 @@ use std::rc::Rc;
 use drawer::Drawer;
 use overlay::Overlay;
 use zones::{
-    empty_state, group_box, group_box_attention, info_row, row_top_stale, row_wrap, section_title,
-    short_ts, stamp_label, state_label, truncate_q,
+    empty_state, group_box, group_box_attention, row_wrap, section_title, stamp_label, truncate_q,
 };
 
 pub struct Panel {
@@ -54,6 +54,9 @@ pub struct Panel {
     overlay: Rc<Overlay>,
     density: Rc<RefCell<String>>,
     window_overlay: gtk::Overlay,
+    footer_label: gtk::Label,
+    theme: Rc<RefCell<String>>,
+    header_title: gtk::Label,
 }
 
 impl Panel {
@@ -70,7 +73,11 @@ impl Panel {
 
         // Persisted state — tolerant, backwards compat (harness → active_group)
         let persisted = crate::panel_state::load();
-        let persisted_density = crate::panel_state::normalize_density(&persisted.density);
+        // CHEFBAR_DENSITY (visual-shot/CI) wint over de persisted keuze.
+        let persisted_density = std::env::var("CHEFBAR_DENSITY")
+            .ok()
+            .map(|d| crate::panel_state::normalize_density(&d))
+            .unwrap_or_else(|| crate::panel_state::normalize_density(&persisted.density));
         let persisted_query = persisted.query.clone().unwrap_or_default();
         let persisted_drawer_open = persisted.drawer_open;
         let initial = persisted
@@ -102,8 +109,9 @@ impl Panel {
         main.style_context().add_class("chefbar-main");
         main.set_hexpand(true);
 
-        // Header via module
-        let (header, search, refresh_btn, min_btn, close_btn) = header::build_header();
+        // Header via module — titel toont de actieve domeinnaam (render_into).
+        let (header, header_title, search, refresh_btn, min_btn, close_btn) =
+            header::build_header();
         if !persisted_query.trim().is_empty() {
             search.set_text(&persisted_query);
         }
@@ -141,8 +149,7 @@ impl Panel {
         // ---- Content ----
         let scroller = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
         scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-        scroller.set_min_content_height(480);
-        scroller.set_max_content_height(480);
+        scroller.set_vexpand(true);
         main.pack_start(&scroller, true, true, 0);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -151,6 +158,122 @@ impl Panel {
         scroller.add(&content);
 
         root.pack_start(&main, true, true, 0);
+
+        // ---- Footer: gepind onder de scroller (live counts + toggles) ----
+        let persist_dirty = Rc::new(Cell::new(false));
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        footer.style_context().add_class("chefbar-footer");
+        let footer_label = gtk::Label::new(Some(""));
+        footer_label.set_halign(gtk::Align::Start);
+        footer_label.set_xalign(0.0);
+        footer_label.set_ellipsize(pango::EllipsizeMode::End);
+        footer_label.set_line_wrap(false);
+        footer_label.set_max_width_chars(64);
+        footer_label
+            .style_context()
+            .add_class("chefbar-footer-label");
+        footer.pack_start(&footer_label, true, true, 0);
+
+        // Density-toggle (rustig ↔ compact) — CSS-klas op het window
+        let density = Rc::new(RefCell::new(persisted_density.clone()));
+        let theme = Rc::new(RefCell::new(crate::css::active_theme()));
+        let density_btn = gtk::Button::with_label(
+            if persisted_density == crate::panel_state::DENSITY_COMPACT {
+                "Compact"
+            } else {
+                "Rustig"
+            },
+        );
+        density_btn.set_relief(gtk::ReliefStyle::None);
+        density_btn.style_context().add_class("chefbar-footer-btn");
+        if persisted_density == crate::panel_state::DENSITY_COMPACT {
+            density_btn.style_context().add_class("on");
+        }
+        let theme_btn =
+            gtk::Button::with_label(if theme.borrow().as_str() == crate::css::THEME_LIGHT {
+                "Licht"
+            } else {
+                "Donker"
+            });
+        theme_btn.set_relief(gtk::ReliefStyle::None);
+        theme_btn.style_context().add_class("chefbar-footer-btn");
+        if theme.borrow().as_str() == crate::css::THEME_LIGHT {
+            theme_btn.style_context().add_class("on");
+        }
+        {
+            let window_cls = window.clone();
+            let density_toggle = density.clone();
+            let dirty_cls = persist_dirty.clone();
+            let btn = density_btn.clone();
+            density_btn.connect_clicked(move |_| {
+                let compact =
+                    density_toggle.borrow().as_str() == crate::panel_state::DENSITY_COMPACT;
+                let next = if compact {
+                    crate::panel_state::DENSITY_COMFORTABLE
+                } else {
+                    crate::panel_state::DENSITY_COMPACT
+                };
+                *density_toggle.borrow_mut() = next.to_string();
+                window_cls.style_context().remove_class(if compact {
+                    "density-compact"
+                } else {
+                    "density-comfortable"
+                });
+                window_cls.style_context().add_class(
+                    if next == crate::panel_state::DENSITY_COMPACT {
+                        "density-compact"
+                    } else {
+                        "density-comfortable"
+                    },
+                );
+                btn.set_label(if next == crate::panel_state::DENSITY_COMPACT {
+                    "Compact"
+                } else {
+                    "Rustig"
+                });
+                if next == crate::panel_state::DENSITY_COMPACT {
+                    btn.style_context().add_class("on");
+                } else {
+                    btn.style_context().remove_class("on");
+                }
+                dirty_cls.set(true);
+            });
+        }
+        {
+            let theme_toggle = theme.clone();
+            let dirty_cls = persist_dirty.clone();
+            let btn = theme_btn.clone();
+            theme_btn.connect_clicked(move |_| {
+                let current = theme_toggle.borrow().clone();
+                let next = if current == crate::css::THEME_LIGHT {
+                    crate::css::THEME_DARK
+                } else {
+                    crate::css::THEME_LIGHT
+                };
+                crate::css::set_theme(next);
+                *theme_toggle.borrow_mut() = next.to_string();
+                btn.set_label(if next == crate::css::THEME_LIGHT {
+                    "Licht"
+                } else {
+                    "Donker"
+                });
+                if next == crate::css::THEME_LIGHT {
+                    btn.style_context().add_class("on");
+                } else {
+                    btn.style_context().remove_class("on");
+                }
+                dirty_cls.set(true);
+            });
+        }
+        let quit_btn = gtk::Button::with_label("Verbergen");
+        quit_btn.set_relief(gtk::ReliefStyle::None);
+        quit_btn.style_context().add_class("chefbar-footer-btn");
+        let window_hide = window.clone();
+        quit_btn.connect_clicked(move |_| fade_out(&window_hide, PANEL_MS));
+        footer.pack_end(&quit_btn, false, false, 0);
+        footer.pack_end(&theme_btn, false, false, 0);
+        footer.pack_end(&density_btn, false, false, 0);
+        main.pack_start(&footer, false, false, 0);
 
         // Drawer als derde kolom naast main (Revealer 300px)
         root.pack_start(drawer.widget(), false, false, 0);
@@ -161,12 +284,13 @@ impl Panel {
         // GtkOverlay voor palette-overlay bovenop root
         let window_overlay = gtk::Overlay::new();
         window_overlay.add(&root);
-        // Palette overlay: gecentreerd, pass-through wanneer hidden
+        // Palette overlay: zwevend boven het canvas (pass-through wanneer
+        // hidden, zodat het canvas gewoon klikbaar blijft).
         overlay.widget().set_halign(gtk::Align::Center);
         overlay.widget().set_valign(gtk::Align::Start);
-        overlay.widget().set_margin_top(80);
-        overlay.widget().set_margin_start(120);
-        overlay.widget().set_margin_end(120);
+        overlay.widget().set_margin_top(56);
+        overlay.widget().set_margin_start(96);
+        overlay.widget().set_margin_end(96);
         window_overlay.add_overlay(overlay.widget());
         window_overlay.set_overlay_pass_through(overlay.widget(), true);
         window.add(&window_overlay);
@@ -208,9 +332,9 @@ impl Panel {
             });
         }
 
-        let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
-        let density = Rc::new(RefCell::new(persisted_density.clone()));
+
+        // density + theme Rcs bestaan al (footer-wiring hierboven).
 
         // Wire sidebar nav → harness_state + content re-render + sync_nav_buttons + recent_domains
         {
@@ -228,8 +352,18 @@ impl Panel {
                 let dirty_clone = persist_dirty.clone();
                 let density_clone = density.clone();
                 let drawer_clone = drawer.clone();
+                let footer_label_clone = footer_label.clone();
+                let header_title_clone = header_title.clone();
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
+                    // Ctx binnen de closure: de clones leven in de closure zelf.
+                    let render_ctx = RenderCtx {
+                        executor: &executor_clone,
+                        window: &window_clone,
+                        drawer: &drawer_clone,
+                        footer_label: &footer_label_clone,
+                        header_title: &header_title_clone,
+                    };
                     *harness_state_clone.borrow_mut() = id.clone();
                     dirty_clone.set(true);
                     // recent_domains wordt bij persist meegeschreven (push hier is impliciet via dirty)
@@ -237,11 +371,9 @@ impl Panel {
                     render_into(
                         &content_clone,
                         &shared_clone,
-                        &executor_clone,
-                        &window_clone,
                         &q,
                         &harness_state_clone,
-                        &drawer_clone,
+                        &render_ctx,
                     );
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
@@ -263,6 +395,9 @@ impl Panel {
             overlay,
             density,
             window_overlay,
+            footer_label: footer_label.clone(),
+            theme: theme.clone(),
+            header_title: header_title.clone(),
         };
         panel.wire_search();
         panel.wire_overlay();
@@ -314,6 +449,23 @@ impl Panel {
 
     pub fn open_inbox(&self) {
         self.focus_domain("inbox");
+    }
+
+    /// Preview de detail-drawer met de eerste actie (CI/visual-shot path,
+    /// `chefbar --ipc drawer`). Voert niets uit.
+    pub fn preview_drawer(&self) {
+        self.show();
+        let (snap, ops) = {
+            let snap = self.shared.snapshot.read().unwrap().clone();
+            let ops = self.shared.ops.read().unwrap().clone();
+            (snap, ops)
+        };
+        let profile = crate::config::global_profile().clone();
+        let sessions = crate::sessions::load_ranked_sessions(&snap.events);
+        let actions = build_actions(&ops, &snap, &profile, sessions);
+        if let Some(action) = actions.first() {
+            self.drawer.show_for(action);
+        }
     }
 
     /// Idempotent tonen — voor tray-/hotkey-/IPC-commando's die "openen"
@@ -393,19 +545,20 @@ impl Panel {
         let harness_state = self.harness_state.clone();
         let dirty = self.persist_dirty.clone();
         let drawer = self.drawer.clone();
+        let footer_label = self.footer_label.clone();
+        let header_title = self.header_title.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                    &drawer,
-                );
+                let render_ctx = RenderCtx {
+                    executor: &executor,
+                    window: &window,
+                    drawer: &drawer,
+                    footer_label: &footer_label,
+                    header_title: &header_title,
+                };
+                render_into(&content, &shared, &query, &harness_state, &render_ctx);
             }
         });
     }
@@ -417,7 +570,9 @@ impl Panel {
             let snap = self.shared.snapshot.read().unwrap().clone();
             let ops = self.shared.ops.read().unwrap().clone();
             let harnesses = build_harnesses(&snap, &ops);
-            if !harnesses.is_empty() && !harnesses.iter().any(|h| h.id == current) {
+            let current_valid = harnesses.iter().any(|h| h.id == current)
+                || HarnessKind::all().iter().any(|k| k.id() == current);
+            if !harnesses.is_empty() && !current_valid {
                 if let Some(first) = harnesses.first() {
                     *self.harness_state.borrow_mut() = first.id.clone();
                     self.persist_dirty.set(true);
@@ -425,14 +580,19 @@ impl Panel {
             }
         }
         self.sync_sidebar_nav();
+        let render_ctx = RenderCtx {
+            executor: &self.executor,
+            window: &self.window,
+            drawer: &self.drawer,
+            footer_label: &self.footer_label,
+            header_title: &self.header_title,
+        };
         render_into(
             &self.content,
             &self.shared,
-            &self.executor,
-            &self.window,
             query,
             &self.harness_state,
-            &self.drawer,
+            &render_ctx,
         );
     }
 
@@ -452,6 +612,7 @@ impl Panel {
                     .filter(|q: &String| !q.trim().is_empty()),
                 drawer_open: self.drawer.is_open(),
                 density: self.density.borrow().clone(),
+                theme: self.theme.borrow().clone(),
                 recent_domains: crate::panel_state::load().recent_domains.clone(),
             };
             // push huidige group naar recent_domains MRU
@@ -476,18 +637,19 @@ impl Panel {
         let nav_buttons = self.nav_buttons.clone();
         let shared_nav = self.shared.clone();
         let drawer = self.drawer.clone();
+        let footer_label = self.footer_label.clone();
+        let header_title = self.header_title.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
+                let render_ctx = RenderCtx {
+                    executor: &executor,
+                    window: &window,
+                    drawer: &drawer,
+                    footer_label: &footer_label,
+                    header_title: &header_title,
+                };
                 let query = search.text().to_string();
-                render_into(
-                    &content,
-                    &shared,
-                    &executor,
-                    &window,
-                    &query,
-                    &harness_state,
-                    &drawer,
-                );
+                render_into(&content, &shared, &query, &harness_state, &render_ctx);
                 let active = harness_state.borrow().clone();
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
@@ -498,6 +660,7 @@ impl Panel {
         let search_persist = self.search.clone();
         let drawer_persist = self.drawer.clone();
         let density_persist = self.density.clone();
+        let theme_persist = self.theme.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             if dirty_persist.get() {
                 let current = harness_persist.borrow().clone();
@@ -508,6 +671,7 @@ impl Panel {
                     .filter(|q: &String| !q.trim().is_empty());
                 state.drawer_open = drawer_persist.is_open();
                 state.density = density_persist.borrow().clone();
+                state.theme = theme_persist.borrow().clone();
                 state.push_recent_domain(&current);
                 if crate::panel_state::save(&state) {
                     dirty_persist.set(false);
@@ -552,15 +716,27 @@ fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -
 // Render: Signaal v2 grouped sections
 // ---------------------------------------------------------------------------
 
+/// Gebundelde UI-referenties voor render_into (clippy: max 7 args).
+struct RenderCtx<'a> {
+    executor: &'a Executor,
+    window: &'a gtk::Window,
+    drawer: &'a Rc<Drawer>,
+    footer_label: &'a gtk::Label,
+    header_title: &'a gtk::Label,
+}
+
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
-    executor: &Executor,
-    window: &gtk::Window,
     query: &str,
     harness_state: &Rc<RefCell<String>>,
-    drawer: &Rc<Drawer>,
+    ctx: &RenderCtx,
 ) {
+    let executor = ctx.executor;
+    let window = ctx.window;
+    let drawer = ctx.drawer;
+    let footer_label = ctx.footer_label;
+    let header_title = ctx.header_title;
     for child in content.children() {
         content.remove(&child);
     }
@@ -580,7 +756,9 @@ fn render_into(
     let harnesses: Vec<Harness> = build_harnesses(&snap, &ops);
     let active_id = {
         let current = harness_state.borrow().clone();
-        if harnesses.iter().any(|h| h.id == current) {
+        let known = harnesses.iter().any(|h| h.id == current)
+            || HarnessKind::all().iter().any(|k| k.id() == current);
+        if known {
             current
         } else if let Some(first) = harnesses.first() {
             let id = first.id.clone();
@@ -593,7 +771,8 @@ fn render_into(
     let active_kind = harnesses
         .iter()
         .find(|h| h.id == active_id)
-        .map(|h| h.kind.clone());
+        .map(|h| h.kind.clone())
+        .or_else(|| HarnessKind::all().into_iter().find(|k| k.id() == active_id));
 
     let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
     let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
@@ -617,15 +796,14 @@ fn render_into(
     let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
 
     // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
+    // v2 worked-row: rust = line-strong, live = accent, hulp = amber,
+    // fout = rood, ok = groen.
     let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    status_row.set_margin_top(10);
-    status_row.set_margin_start(16);
-    status_row.set_margin_end(16);
     status_row.style_context().add_class("chefbar-statuslijn");
     let status_class = match state.as_str() {
         "offline" | "fout" => "error",
         "hulp" => "warn",
-        "bezig" => "info",
+        "bezig" => "running",
         _ => "ok",
     };
     let signature = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -648,7 +826,7 @@ fn render_into(
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
     updated.set_line_wrap(false);
-    updated.set_max_width_chars(28);
+    updated.set_max_width_chars(34);
     updated.style_context().add_class("chefbar-card-meta");
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
@@ -660,8 +838,107 @@ fn render_into(
         .find(|h| h.id == active_id)
         .map(|h| h.label.clone())
         .unwrap_or_else(|| active_id.clone());
-    // ---- Inbox: watcher-suggesties die jou opvallen (vers binnen TTL) ----
-    {
+    section_title(
+        content,
+        "Acties",
+        &format!("zoek of kies — {}", harness_label.to_lowercase()),
+    );
+    header_title.set_text(&harness_label);
+    let group = group_box();
+    if actions_visible.is_empty() && !q.is_empty() {
+        let sub = format!(
+            "Pas je zoekterm \u{201c}{}\u{201d} aan of wissel van harnas.",
+            truncate_q(&q, 24)
+        );
+        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
+    } else if actions_visible.is_empty() {
+        let sub = format!(
+            "Geen acties voor {} — wissel via de zijbalk of zoek breder.",
+            harness_label.to_lowercase()
+        );
+        group.pack_start(&empty_state("Niks hier", &sub), false, false, 0);
+    }
+    for action in &actions_visible {
+        let spec = action.run.clone();
+        let executor = executor.clone();
+        let window = window.clone();
+        let needs_text = action.needs_text;
+        let action = (*action).clone();
+        let row = gtk::Button::new();
+        row.set_relief(gtk::ReliefStyle::None);
+        row.style_context().add_class("chefbar-row-btn");
+        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let title = gtk::Label::new(Some(&action.title));
+        title.set_halign(gtk::Align::Start);
+        title.set_xalign(0.0);
+        title.set_ellipsize(pango::EllipsizeMode::End);
+        title.set_line_wrap(false);
+        title.set_max_width_chars(48);
+        title.style_context().add_class("chefbar-card-title");
+        row_box.pack_start(&title, true, true, 0);
+        let stamp = stamp_label(&action.stamp);
+        row_box.pack_end(&stamp, false, false, 0);
+        row.add(&row_box);
+        row.set_hexpand(true);
+        row.set_halign(gtk::Align::Fill);
+        let row_inner = row.child().unwrap();
+        row_inner.set_margin_start(10);
+        row_inner.set_margin_end(10);
+        row_inner.set_margin_top(6);
+        row_inner.set_margin_bottom(6);
+        let drawer = drawer.clone();
+        row.connect_clicked(move |_| {
+            if needs_text {
+                prompt_for(&executor, &window, &action);
+                return;
+            }
+            let drawer_for_action = drawer.clone();
+            let executor = executor.clone();
+            let spec = spec.clone();
+            let frecency_id = action.frecency_id();
+            drawer.show_for_with(&action, move || {
+                if let crate::actions::RunSpec::CopyText(text) = &spec {
+                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                    clipboard.set_text(text);
+                    notify_copied();
+                } else {
+                    executor.run_for_ui(&spec);
+                }
+                crate::frecency::record(&frecency_id);
+                drawer_for_action.hide();
+            });
+        });
+        group.pack_start(&row, false, false, 0);
+    }
+    content.pack_start(&group, false, false, 0);
+
+    let text_actions: Vec<&Action> = ranked.iter().filter(|a| a.needs_text).take(3).collect();
+    if !text_actions.is_empty() {
+        let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        wrap.set_margin_top(4);
+        wrap.set_margin_start(16);
+        wrap.set_margin_end(16);
+        for action in text_actions {
+            let btn = gtk::Button::with_label(&action.title);
+            btn.set_tooltip_text(Some(&action.meta));
+            btn.style_context().add_class("chefbar-btn");
+            let executor = executor.clone();
+            let window = window.clone();
+            let action = action.clone();
+            btn.connect_clicked(move |_| {
+                prompt_for(&executor, &window, &action);
+            });
+            wrap.pack_start(&btn, false, false, 0);
+        }
+        content.pack_start(&wrap, false, false, 0);
+    }
+
+    // ---- Domein-view: typed data per harnas (domains.rs) ----
+    let view_kind = active_kind.clone().unwrap_or(HarnessKind::Health);
+    domains::render_domain(content, &view_kind, &snap, query, executor, window);
+
+    // ---- Inbox: watcher-suggesties die jou opvallen (alleen op inbox) ----
+    if view_kind == HarnessKind::Inbox {
         let fresh: Vec<&crate::models::Suggestion> = snap
             .suggestions
             .iter()
@@ -674,7 +951,7 @@ fn render_into(
             } else {
                 format!("{count} meldingen vragen om jou")
             };
-            section_title(content, "Inbox", &sub);
+            section_title(content, "Signalen", &sub);
             let group = group_box_attention();
             for suggestion in fresh.iter().take(4) {
                 let row_btn = gtk::Button::new();
@@ -764,414 +1041,133 @@ fn render_into(
             content.pack_start(&group, false, false, 0);
         }
     }
-    section_title(
-        content,
-        "Acties",
-        &format!("zoek of kies — {}", harness_label.to_lowercase()),
+
+    // ---- Aandacht: sessies die jou nodig hebben (alleen werk-domeinen) ----
+    let show_attention = matches!(
+        view_kind,
+        HarnessKind::Inbox
+            | HarnessKind::Fleet
+            | HarnessKind::Herdr
+            | HarnessKind::Health
+            | HarnessKind::Eval
+            | HarnessKind::Tasks
+            | HarnessKind::Linear
     );
-    let group = group_box();
-    if actions_visible.is_empty() && !q.is_empty() {
-        let sub = format!(
-            "Pas je zoekterm “{}” aan of wissel van harnas.",
-            truncate_q(&q, 24)
-        );
-        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
-    } else if actions_visible.is_empty() {
-        let sub = format!(
-            "Geen acties voor {} — wissel via de zijbalk of zoek breder.",
-            harness_label.to_lowercase()
-        );
-        group.pack_start(&empty_state("Niks hier", &sub), false, false, 0);
-    }
-    for action in &actions_visible {
-        let spec = action.run.clone();
-        let executor = executor.clone();
-        let window = window.clone();
-        let needs_text = action.needs_text;
-        let action = (*action).clone();
-        let row = gtk::Button::new();
-        row.set_relief(gtk::ReliefStyle::None);
-        row.style_context().add_class("chefbar-row-btn");
-        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let title = gtk::Label::new(Some(&action.title));
-        title.set_halign(gtk::Align::Start);
-        title.set_xalign(0.0);
-        title.set_ellipsize(pango::EllipsizeMode::End);
-        title.set_line_wrap(false);
-        title.set_max_width_chars(48);
-        title.style_context().add_class("chefbar-card-title");
-        row_box.pack_start(&title, true, true, 0);
-        let stamp = stamp_label(&action.stamp);
-        row_box.pack_end(&stamp, false, false, 0);
-        row.add(&row_box);
-        row.set_hexpand(true);
-        row.set_halign(gtk::Align::Fill);
-        let row_inner = row.child().unwrap();
-        row_inner.set_margin_start(10);
-        row_inner.set_margin_end(10);
-        row_inner.set_margin_top(6);
-        row_inner.set_margin_bottom(6);
-        let drawer = drawer.clone();
-        row.connect_clicked(move |_| {
-            if needs_text {
-                prompt_for(&executor, &window, &action);
-                return;
-            }
-            let drawer_for_action = drawer.clone();
-            let executor = executor.clone();
-            let spec = spec.clone();
-            let frecency_id = action.frecency_id();
-            drawer.show_for_with(&action, move || {
-                if let crate::actions::RunSpec::CopyText(text) = &spec {
-                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
-                    clipboard.set_text(text);
-                    notify_copied();
-                } else {
-                    executor.run_for_ui(&spec);
-                }
-                crate::frecency::record(&frecency_id);
-                drawer_for_action.hide();
-            });
-        });
-        group.pack_start(&row, false, false, 0);
-    }
-    content.pack_start(&group, false, false, 0);
-
-    let text_actions: Vec<&Action> = ranked.iter().filter(|a| a.needs_text).take(3).collect();
-    if !text_actions.is_empty() {
-        let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        wrap.set_margin_top(4);
-        wrap.set_margin_start(16);
-        wrap.set_margin_end(16);
-        for action in text_actions {
-            let btn = gtk::Button::with_label(&action.title);
-            btn.set_tooltip_text(Some(&action.meta));
-            btn.style_context().add_class("chefbar-btn");
-            let executor = executor.clone();
-            let window = window.clone();
-            let action = action.clone();
-            btn.connect_clicked(move |_| {
-                prompt_for(&executor, &window, &action);
-            });
-            wrap.pack_start(&btn, false, false, 0);
-        }
-        content.pack_start(&wrap, false, false, 0);
-    }
-
-    // ---- Sectie: Gezondheid ----
-    section_title(content, "Gezondheid", "watchdog + dagscore + fleet");
-    let group = group_box();
-    let health_meta = match snap.health.updated_at.as_deref() {
-        Some(at) => format!("{} · update {}", state_label(&snap.health), short_ts(at)),
-        None => state_label(&snap.health),
-    };
-    let health_row = info_row(&snap.health.line(), Some(&health_meta));
-    group.pack_start(&health_row, false, false, 0);
-    let day_line = match (&snap.day_score.letter, snap.day_score.score) {
-        (Some(letter), Some(score)) => format!("Dagscore {letter} ({score}/100)"),
-        (None, Some(score)) => format!("Dagscore {score}/100"),
-        _ => "Dagscore · n.v.t.".to_string(),
-    };
-    let day_row = info_row(&day_line, snap.day_score.source.as_deref());
-    group.pack_start(&day_row, false, false, 0);
-    if snap.fleet.total > 0 {
-        let fleet_row = info_row(
-            &format!("Fleet · {}/{} online", snap.fleet.online, snap.fleet.total),
-            snap.fleet.host.as_deref(),
-        );
-        group.pack_start(&fleet_row, false, false, 0);
-    }
-    content.pack_start(&group, false, false, 0);
-
-    // ---- Sectie: Providers — strak, overflow-veilig ----
-    section_title(content, "Providers", "accounts, budgets en fleet");
-    let group = group_box();
-    let mut any_provider = false;
-    for row in snap.providers.iter().filter(|r| {
-        q.is_empty()
-            || r.label.to_lowercase().contains(&q)
-            || r.usage_text.to_lowercase().contains(&q)
-    }) {
-        any_provider = true;
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
-        card.set_margin_top(6);
-        card.set_margin_bottom(6);
-        let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let name = gtk::Label::new(Some(&row.label));
-        name.set_halign(gtk::Align::Start);
-        name.set_xalign(0.0);
-        name.set_ellipsize(pango::EllipsizeMode::End);
-        name.set_line_wrap(false);
-        name.set_max_width_chars(24);
-        name.set_tooltip_text(Some(&row.label));
-        name.style_context().add_class("chefbar-card-title");
-        top.pack_start(&name, true, true, 0);
-        if row.stale || !row.available {
-            let stale_badge = gtk::Label::new(Some("STALE"));
-            stale_badge.set_halign(gtk::Align::Start);
-            stale_badge.set_xalign(0.0);
-            stale_badge.style_context().add_class("chefbar-stamp");
-            stale_badge.style_context().add_class("error");
-            row_top_stale(
-                &top,
-                &stale_badge,
-                row.refresh_at.as_deref(),
-                row.stale_reason.as_deref(),
-            );
-        } else if let Some(ref at) = row.refresh_at {
-            let meta = gtk::Label::new(Some(&format!("update {}", short_ts(at))));
-            meta.set_halign(gtk::Align::Start);
-            meta.set_xalign(0.0);
-            meta.set_ellipsize(pango::EllipsizeMode::End);
-            meta.set_line_wrap(false);
-            meta.style_context().add_class("chefbar-card-meta");
-            top.pack_start(&meta, false, false, 0);
-        }
-        let active = gtk::Label::new(Some(&row.usage_text));
-        active.set_halign(gtk::Align::End);
-        active.set_xalign(1.0);
-        active.set_ellipsize(pango::EllipsizeMode::End);
-        active.set_line_wrap(false);
-        active.set_max_width_chars(22);
-        active.set_tooltip_text(Some(&row.usage_text));
-        active.style_context().add_class("chefbar-card-meta");
-        top.pack_end(&active, false, false, 0);
-        card.pack_start(&top, false, false, 0);
-        if row.requests.is_some() {
-            let frac = row.usage_frac;
-            let level = row.usage_level.clone();
-            let track = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            track.set_size_request(120, 4);
-            track.set_hexpand(true);
-            track.style_context().add_class("chefbar-bar-track");
-            let fill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            fill.set_size_request(((120.0 * frac).round() as i32).clamp(4, 120), 4);
-            fill.style_context().add_class("chefbar-bar-fill");
-            fill.style_context().add_class(&level);
-            track.pack_start(&fill, false, false, 0);
-            let bottom = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            bottom.pack_start(&track, true, true, 0);
-            let nums = gtk::Label::new(Some(&format!(
-                "{} req · {}M tok",
-                row.requests.unwrap_or(0),
-                row.tokens.unwrap_or(0) / 1_000_000
-            )));
-            nums.set_halign(gtk::Align::End);
-            nums.set_xalign(1.0);
-            nums.set_ellipsize(pango::EllipsizeMode::End);
-            nums.set_line_wrap(false);
-            nums.style_context().add_class("chefbar-card-meta");
-            bottom.pack_end(&nums, false, false, 0);
-            card.pack_start(&bottom, false, false, 0);
-        }
-        let wrap = row_wrap(&card);
-        group.pack_start(&wrap, false, false, 0);
-    }
-    if !any_provider {
-        if q.is_empty() {
-            group.pack_start(
-                &empty_state(
-                    "Nog geen providers",
-                    "Koppel een account in de vault of vernieuw de status.",
-                ),
-                false,
-                false,
-                0,
-            );
-        } else {
-            let sub = format!("Geen providers voor “{}”.", truncate_q(&q, 28));
-            group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
-        }
-    }
-    content.pack_start(&group, false, false, 0);
-
-    // ---- Sectie: Agents — strak, ellipsis, premium empty ----
-    section_title(content, "Agents", "herdr en lopende werkstromen");
-    let group = group_box();
-    let mut any_agent = false;
-    for agent in snap.agents.iter().filter(|a| {
-        q.is_empty()
-            || a.agent.to_lowercase().contains(&q)
-            || a.workspace.to_lowercase().contains(&q)
-    }) {
-        any_agent = true;
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 9);
-        let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        dot.set_size_request(8, 8);
-        dot.set_halign(gtk::Align::Start);
-        dot.set_valign(gtk::Align::Center);
-        let (cls, stamp) = match agent.status.as_str() {
-            "running" => ("info", "BEZIG"),
-            "blocked" | "waiting" | "needs_input" | "input" | "attention" => ("warn", "HULP"),
-            "failed" | "error" | "crashed" => ("down", "FOUT"),
-            _ => ("ok", "STIL"),
-        };
-        dot.style_context().add_class("chefbar-dot");
-        dot.style_context().add_class(cls);
-        row.pack_start(&dot, false, false, 0);
-        let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        let title_raw = format!("{} · {}", agent.agent, agent.workspace);
-        let title = gtk::Label::new(Some(&title_raw));
-        title.set_halign(gtk::Align::Start);
-        title.set_xalign(0.0);
-        title.set_ellipsize(pango::EllipsizeMode::End);
-        title.set_line_wrap(false);
-        title.set_max_width_chars(36);
-        title.set_tooltip_text(Some(&title_raw));
-        title.style_context().add_class("chefbar-card-title");
-        text.pack_start(&title, false, false, 0);
-        if !agent.summary.is_empty() {
-            let summary = gtk::Label::new(Some(&agent.summary));
-            summary.set_halign(gtk::Align::Start);
-            summary.set_xalign(0.0);
-            summary.set_line_wrap(true);
-            summary.set_lines(1);
-            summary.set_ellipsize(pango::EllipsizeMode::End);
-            summary.set_max_width_chars(56);
-            summary.set_tooltip_text(Some(&agent.summary));
-            summary.style_context().add_class("chefbar-card-meta");
-            text.pack_start(&summary, false, false, 0);
-        }
-        row.pack_start(&text, true, true, 0);
-        row.pack_end(&stamp_label(stamp), false, false, 0);
-        let wrap = row_wrap(&row);
-        group.pack_start(&wrap, false, false, 0);
-    }
-    if !any_agent {
-        if q.is_empty() {
-            group.pack_start(
-                &empty_state(
-                    "Geen agents actief",
-                    "Start een herdr-agent of open een workspace — ze verschijnen hier.",
-                ),
-                false,
-                false,
-                0,
-            );
-        } else {
-            let sub = format!("Geen agents voor “{}”.", truncate_q(&q, 28));
-            group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
-        }
-    }
-    content.pack_start(&group, false, false, 0);
-
-    // ---- Sectie: Aandacht (sessions die jou nodig hebben) — premium, actionable ----
-    let attention: Vec<_> = sessions.iter().filter(|s| s.needs_attention()).collect();
-    if !attention.is_empty() {
-        let count = attention.len();
-        let sub = if count == 1 {
-            "1 sessie vraagt om jou".to_string()
-        } else {
-            format!("{count} sessies vragen om jou")
-        };
-        section_title(content, "Heeft jou nodig", &sub);
-        let group = group_box_attention();
-        for session in attention.iter().take(4) {
-            let spec_and_label = session_cta(session, &profile);
-            let row_btn = gtk::Button::new();
-            row_btn.set_relief(gtk::ReliefStyle::None);
-            row_btn.set_hexpand(true);
-            row_btn.set_halign(gtk::Align::Fill);
-            row_btn.style_context().add_class("chefbar-row-btn");
-            let tooltip = if session.summary.is_empty() {
-                format!("{} · {} · {}", session.source, session.title, session.state)
+    if show_attention {
+        let attention: Vec<_> = sessions.iter().filter(|s| s.needs_attention()).collect();
+        if !attention.is_empty() {
+            let count = attention.len();
+            let sub = if count == 1 {
+                "1 sessie vraagt om jou".to_string()
             } else {
-                format!(
-                    "{} · {} — {}",
-                    session.source, session.title, session.summary
-                )
+                format!("{count} sessies vragen om jou")
             };
-            row_btn.set_tooltip_text(Some(&tooltip));
-            let inner = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            dot.set_size_request(8, 8);
-            dot.set_halign(gtk::Align::Start);
-            dot.set_valign(gtk::Align::Center);
-            dot.style_context().add_class("chefbar-dot");
-            dot.style_context().add_class(match session.state.as_str() {
-                "failed" => "down",
-                "blocked" => "warn",
-                _ => "warn",
-            });
-            inner.pack_start(&dot, false, false, 0);
-            let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
-            let title_raw = format!("{} · {}", session.source, session.title);
-            let title = gtk::Label::new(Some(&title_raw));
-            title.set_halign(gtk::Align::Start);
-            title.set_xalign(0.0);
-            title.set_ellipsize(pango::EllipsizeMode::End);
-            title.set_line_wrap(false);
-            title.set_max_width_chars(36);
-            title.style_context().add_class("chefbar-card-title");
-            text.pack_start(&title, false, false, 0);
-            if !session.summary.is_empty() {
-                let meta = gtk::Label::new(Some(&session.summary));
-                meta.set_halign(gtk::Align::Start);
-                meta.set_xalign(0.0);
-                meta.set_line_wrap(true);
-                meta.set_lines(1);
-                meta.set_ellipsize(pango::EllipsizeMode::End);
-                meta.set_max_width_chars(52);
-                meta.style_context().add_class("chefbar-card-meta");
-                text.pack_start(&meta, false, false, 0);
-            }
-            inner.pack_start(&text, true, true, 0);
-            let cta_label = spec_and_label
-                .as_ref()
-                .map(|(l, _)| l.as_str())
-                .unwrap_or("Open");
-            let pill = stamp_label(match session.state.as_str() {
-                "failed" => "FOUT",
-                _ => "HULP",
-            });
-            if cta_label != "Open" {
-                pill.set_text(&format!("{} · {}", pill.text(), cta_label));
-            }
-            inner.pack_end(&pill, false, false, 0);
-            row_btn.add(&inner);
-            let inner_child = row_btn.child().unwrap();
-            inner_child.set_margin_start(10);
-            inner_child.set_margin_end(10);
-            inner_child.set_margin_top(6);
-            inner_child.set_margin_bottom(6);
-            if let Some((_, spec)) = spec_and_label {
-                let executor_clone = executor.clone();
-                row_btn.connect_clicked(move |_| {
-                    if let crate::actions::RunSpec::CopyText(ref text) = spec {
-                        let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
-                        cb.set_text(text);
-                        notify_copied();
-                    } else {
-                        executor_clone.run_for_ui(&spec);
-                    }
+            section_title(content, "Heeft jou nodig", &sub);
+            let group = group_box_attention();
+            for session in attention.iter().take(4) {
+                let spec_and_label = session_cta(session, &profile);
+                let row_btn = gtk::Button::new();
+                row_btn.set_relief(gtk::ReliefStyle::None);
+                row_btn.set_hexpand(true);
+                row_btn.set_halign(gtk::Align::Fill);
+                row_btn.style_context().add_class("chefbar-row-btn");
+                let tooltip = if session.summary.is_empty() {
+                    format!("{} · {} · {}", session.source, session.title, session.state)
+                } else {
+                    format!(
+                        "{} · {} — {}",
+                        session.source, session.title, session.summary
+                    )
+                };
+                row_btn.set_tooltip_text(Some(&tooltip));
+                let inner = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                let dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                dot.set_size_request(8, 8);
+                dot.set_halign(gtk::Align::Start);
+                dot.set_valign(gtk::Align::Center);
+                dot.style_context().add_class("chefbar-dot");
+                dot.style_context().add_class(match session.state.as_str() {
+                    "failed" => "down",
+                    _ => "warn",
                 });
-            } else {
-                row_btn.set_sensitive(false);
+                inner.pack_start(&dot, false, false, 0);
+                let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+                let title_raw = format!("{} · {}", session.source, session.title);
+                let title = gtk::Label::new(Some(&title_raw));
+                title.set_halign(gtk::Align::Start);
+                title.set_xalign(0.0);
+                title.set_ellipsize(pango::EllipsizeMode::End);
+                title.set_line_wrap(false);
+                title.set_max_width_chars(36);
+                title.style_context().add_class("chefbar-card-title");
+                text.pack_start(&title, false, false, 0);
+                if !session.summary.is_empty() {
+                    let meta = gtk::Label::new(Some(&session.summary));
+                    meta.set_halign(gtk::Align::Start);
+                    meta.set_xalign(0.0);
+                    meta.set_line_wrap(true);
+                    meta.set_lines(1);
+                    meta.set_ellipsize(pango::EllipsizeMode::End);
+                    meta.set_max_width_chars(52);
+                    meta.style_context().add_class("chefbar-card-meta");
+                    text.pack_start(&meta, false, false, 0);
+                }
+                inner.pack_start(&text, true, true, 0);
+                let cta_label = spec_and_label
+                    .as_ref()
+                    .map(|(l, _)| l.as_str())
+                    .unwrap_or("Open");
+                let pill = stamp_label(match session.state.as_str() {
+                    "failed" => "FOUT",
+                    _ => "HULP",
+                });
+                if cta_label != "Open" {
+                    pill.set_text(&format!("{} · {}", pill.text(), cta_label));
+                }
+                inner.pack_end(&pill, false, false, 0);
+                row_btn.add(&inner);
+                let inner_child = row_btn.child().unwrap();
+                inner_child.set_margin_start(10);
+                inner_child.set_margin_end(10);
+                inner_child.set_margin_top(6);
+                inner_child.set_margin_bottom(6);
+                if let Some((_, spec)) = spec_and_label {
+                    let executor_clone = executor.clone();
+                    row_btn.connect_clicked(move |_| {
+                        if let crate::actions::RunSpec::CopyText(ref text) = spec {
+                            let cb = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                            cb.set_text(text);
+                            notify_copied();
+                        } else {
+                            executor_clone.run_for_ui(&spec);
+                        }
+                    });
+                } else {
+                    row_btn.set_sensitive(false);
+                }
+                group.pack_start(&row_btn, false, false, 0);
             }
-            group.pack_start(&row_btn, false, false, 0);
+            if attention.len() > 4 {
+                let more = gtk::Label::new(Some(&format!(
+                    "+{} meer — zoek om te filteren",
+                    attention.len() - 4
+                )));
+                more.set_halign(gtk::Align::Start);
+                more.set_xalign(0.0);
+                more.set_ellipsize(pango::EllipsizeMode::End);
+                more.style_context().add_class("chefbar-card-meta");
+                let wrap = row_wrap(&{
+                    let b = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                    b.pack_start(&more, false, false, 0);
+                    b
+                });
+                group.pack_start(&wrap, false, false, 0);
+            }
+            content.pack_start(&group, false, false, 0);
         }
-        if attention.len() > 4 {
-            let more = gtk::Label::new(Some(&format!(
-                "+{} meer — zoek om te filteren",
-                attention.len() - 4
-            )));
-            more.set_halign(gtk::Align::Start);
-            more.set_xalign(0.0);
-            more.set_ellipsize(pango::EllipsizeMode::End);
-            more.style_context().add_class("chefbar-card-meta");
-            let wrap = row_wrap(&{
-                let b = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                b.pack_start(&more, false, false, 0);
-                b
-            });
-            group.pack_start(&wrap, false, false, 0);
-        }
-        content.pack_start(&group, false, false, 0);
     }
 
-    // ---- Footer — strak, mono, met live counts ----
-    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    footer.style_context().add_class("chefbar-footer");
+    // ---- Footer (gepind, in Panel::new gebouwd): live counts bijwerken ----
     let attention_n = sessions.iter().filter(|s| s.needs_attention()).count();
     let running_n = snap.agents.iter().filter(|a| a.running).count();
     let footer_text = if attention_n > 0 {
@@ -1192,28 +1188,10 @@ fn render_into(
             fetched
         )
     };
-    let footer_label = gtk::Label::new(Some(&footer_text));
-    footer_label.set_halign(gtk::Align::Start);
-    footer_label.set_xalign(0.0);
-    footer_label.set_ellipsize(pango::EllipsizeMode::End);
-    footer_label.set_line_wrap(false);
-    footer_label.set_max_width_chars(64);
+    footer_label.set_text(&footer_text);
     footer_label.set_tooltip_text(Some(&footer_text));
-    footer_label
-        .style_context()
-        .add_class("chefbar-footer-label");
-    footer.pack_start(&footer_label, true, true, 0);
-    let quit_btn = gtk::Button::with_label("Verbergen");
-    quit_btn.style_context().add_class("chefbar-gbtn");
-    let window_hide = window.clone();
-    quit_btn.connect_clicked(move |_| fade_out(&window_hide, PANEL_MS));
-    footer.pack_end(&quit_btn, false, false, 0);
-    content.pack_start(&footer, false, false, 0);
 
     content.show_all();
-    // Herstel no_show_all voor overlay als hij hidden moet blijven
-    // (show_all maakt alles zichtbaar, ook hidden overlay)
-    // Caller zorgt dat overlay hidden blijft via widget hide; hier geen extra.
 }
 
 fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: &str) {
@@ -1225,10 +1203,17 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
     let harnesses = build_harnesses(&snap, &ops);
     for (id, btn) in buttons.iter() {
         if let Some(h) = harnesses.iter().find(|h| &h.id == id) {
-            let text = if h.queue_depth > 0 {
-                format!("{} · {}", h.label, h.queue_depth)
+            // Statische label behouden; alleen de live queue-count erachter.
+            let static_base = sidebar::label_for(id);
+            let base = if static_base.is_empty() {
+                h.label.as_str()
             } else {
-                h.label.clone()
+                static_base
+            };
+            let text = if h.queue_depth > 0 {
+                format!("{base} · {}", h.queue_depth)
+            } else {
+                base.to_string()
             };
             if btn.label().as_deref() != Some(text.as_str()) {
                 btn.set_label(&text);
@@ -1243,7 +1228,7 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
     }
 }
 
-fn notify_copied() {
+pub fn notify_copied() {
     crate::notify::notify("Gekopieerd", "Tekst staat op het klembord.", "ok");
 }
 

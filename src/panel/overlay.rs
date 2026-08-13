@@ -4,14 +4,18 @@
 //! Geen tweede socket, poll-loop of dataset.
 
 use gtk::prelude::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+type OverlayActivate = Rc<dyn Fn(crate::palette::Action)>;
 
 pub struct Overlay {
     pub container: gtk::Box,
     pub entry: gtk::SearchEntry,
     results: gtk::Box,
     revealed: Rc<Cell<bool>>,
+    first_action: Rc<RefCell<Option<crate::palette::Action>>>,
+    on_enter: Rc<RefCell<Option<OverlayActivate>>>,
 }
 
 impl Overlay {
@@ -31,7 +35,7 @@ impl Overlay {
 
         let results = gtk::Box::new(gtk::Orientation::Vertical, 2);
         results.style_context().add_class("chefbar-palette-results");
-        let hint = gtk::Label::new(Some("Typ om te filteren · Esc sluit overlay"));
+        let hint = gtk::Label::new(Some("Typ om te filteren \u{00b7} esc sluit"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
         hint.set_ellipsize(pango::EllipsizeMode::End);
@@ -40,9 +44,13 @@ impl Overlay {
         container.pack_start(&results, false, false, 0);
 
         let revealed = Rc::new(Cell::new(false));
+        let first_action = Rc::new(RefCell::new(None));
+        let on_enter: Rc<RefCell<Option<OverlayActivate>>> = Rc::new(RefCell::new(None));
         let container_esc = container.clone();
         let entry_esc = entry.clone();
         let revealed_esc = revealed.clone();
+        let first_keys = first_action.clone();
+        let enter_keys = on_enter.clone();
         entry.connect_key_press_event(move |_, event| {
             if event.keyval() == gdk::keys::constants::Escape {
                 container_esc.set_visible(false);
@@ -51,7 +59,18 @@ impl Overlay {
                 revealed_esc.set(false);
                 return gtk::glib::Propagation::Stop;
             }
+            if (event.keyval() == gdk::keys::constants::Return
+                || event.keyval() == gdk::keys::constants::KP_Enter)
+                && activate_first(&first_keys, &enter_keys)
+            {
+                return gtk::glib::Propagation::Stop;
+            }
             gtk::glib::Propagation::Proceed
+        });
+        let first_act = first_action.clone();
+        let enter_act = on_enter.clone();
+        entry.connect_activate(move |_| {
+            activate_first(&first_act, &enter_act);
         });
 
         Self {
@@ -59,6 +78,8 @@ impl Overlay {
             entry,
             results,
             revealed,
+            first_action,
+            on_enter,
         }
     }
 
@@ -70,6 +91,9 @@ impl Overlay {
         for child in self.results.children() {
             self.results.remove(&child);
         }
+        let callback: OverlayActivate = Rc::new(on_activate);
+        *self.on_enter.borrow_mut() = Some(callback.clone());
+        *self.first_action.borrow_mut() = actions.first().cloned();
         if actions.is_empty() {
             let empty = gtk::Label::new(Some("Geen actie gevonden · probeer een domein of /"));
             empty.set_halign(gtk::Align::Start);
@@ -79,15 +103,48 @@ impl Overlay {
             self.results.show_all();
             return;
         }
-        for action in actions.iter().take(8) {
-            let button = gtk::Button::with_label(&format!("{}  ·  {}", action.title, action.stamp));
+        let cap = gtk::Label::new(Some(&format!("ACTIES · {}", actions.len())));
+        cap.set_halign(gtk::Align::Start);
+        cap.set_xalign(0.0);
+        cap.style_context().add_class("chefbar-palette-section");
+        self.results.pack_start(&cap, false, false, 0);
+        for (idx, action) in actions.iter().take(8).enumerate() {
+            let button = gtk::Button::new();
             button.set_relief(gtk::ReliefStyle::None);
             button.set_halign(gtk::Align::Fill);
             button.set_hexpand(true);
             button.set_tooltip_text(Some(&action.meta));
-            button.style_context().add_class("chefbar-row-btn");
+            button.style_context().add_class("chefbar-palette-row");
+            if idx == 0 {
+                // Eerste rij is de default-selectie (Enter voert hem uit) —
+                // v2-selectie-streak in accent.
+                button.style_context().add_class("selected");
+            }
+            let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+            let title = gtk::Label::new(Some(&action.title));
+            title.set_halign(gtk::Align::Start);
+            title.set_xalign(0.0);
+            title.set_ellipsize(pango::EllipsizeMode::End);
+            title.style_context().add_class("chefbar-card-title");
+            text.pack_start(&title, false, false, 0);
+            if !action.meta.is_empty() {
+                let meta = gtk::Label::new(Some(&action.meta));
+                meta.set_halign(gtk::Align::Start);
+                meta.set_xalign(0.0);
+                meta.set_line_wrap(true);
+                meta.set_lines(1);
+                meta.set_ellipsize(pango::EllipsizeMode::End);
+                meta.set_max_width_chars(58);
+                meta.style_context().add_class("chefbar-card-meta");
+                text.pack_start(&meta, false, false, 0);
+            }
+            inner.pack_start(&text, true, true, 0);
+            let stamp = super::zones::stamp_label(&action.stamp);
+            inner.pack_end(&stamp, false, false, 0);
+            button.add(&inner);
             let action = action.clone();
-            let callback = on_activate.clone();
+            let callback = callback.clone();
             button.connect_clicked(move |_| callback(action.clone()));
             self.results.pack_start(&button, false, false, 0);
         }
@@ -126,6 +183,20 @@ impl Default for Overlay {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn activate_first(
+    first: &RefCell<Option<crate::palette::Action>>,
+    on_enter: &RefCell<Option<OverlayActivate>>,
+) -> bool {
+    let Some(action) = first.borrow().clone() else {
+        return false;
+    };
+    let Some(cb) = on_enter.borrow().clone() else {
+        return false;
+    };
+    cb(action);
+    true
 }
 
 pub fn build_overlay() -> Overlay {
