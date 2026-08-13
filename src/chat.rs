@@ -234,7 +234,12 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     log.kind = kind;
     log.pinned = true;
     drop(log);
-    let _ = crate::panel_state::persist_control_pin(Some(id), true);
+    let persist_id = id.to_string();
+    std::thread::spawn(move || {
+        if !crate::panel_state::persist_control_pin(Some(&persist_id), true) {
+            crate::log::log("control-pin opslaan lukte niet");
+        }
+    });
     shared
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);

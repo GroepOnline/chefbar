@@ -467,23 +467,16 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
-            let mut state = crate::panel_state::PanelState {
-                active_group: Some(current.clone()),
-                harness: None,
-                query: Some(self.search.text().to_string())
-                    .filter(|q: &String| !q.trim().is_empty()),
-                drawer_open: self.drawer.is_open(),
-                density: self.density.borrow().clone(),
-                recent_domains: crate::panel_state::load().recent_domains.clone(),
-                control_target: crate::panel_state::load().control_target.clone(),
-                control_pinned: crate::panel_state::load().control_pinned,
-            };
-            // push huidige group naar recent_domains MRU
+            let mut state = crate::panel_state::load();
+            state.active_group = Some(current.clone());
+            state.harness = None;
+            state.query =
+                Some(self.search.text().to_string()).filter(|q: &String| !q.trim().is_empty());
+            state.drawer_open = self.drawer.is_open();
+            state.density = self.density.borrow().clone();
             state.push_recent_domain(&current);
             if crate::panel_state::save(&state) {
                 self.persist_dirty.set(false);
-                // active_* fields in Panel zelf syncen
-                // (we kunnen niet &mut self, dus via try)
             }
         }
     }
