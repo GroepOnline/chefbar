@@ -332,7 +332,6 @@ impl Panel {
             });
         }
 
-        let persist_dirty = Rc::new(Cell::new(false));
         let harness_state = Rc::new(RefCell::new(initial.clone()));
 
         // density + theme Rcs bestaan al (footer-wiring hierboven).
@@ -1205,11 +1204,14 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
     for (id, btn) in buttons.iter() {
         if let Some(h) = harnesses.iter().find(|h| &h.id == id) {
             // Statische label behouden; alleen de live queue-count erachter.
-            let base = sidebar::label_for(id);
+            let static_base = sidebar::label_for(id);
+            let base = if static_base.is_empty() {
+                h.label.as_str()
+            } else {
+                static_base
+            };
             let text = if h.queue_depth > 0 {
                 format!("{base} · {}", h.queue_depth)
-            } else if base.is_empty() {
-                h.label.clone()
             } else {
                 base.to_string()
             };

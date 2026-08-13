@@ -22,6 +22,18 @@ use crate::models::Snapshot;
 /// Max rijen per domein-zone; de rest wordt "+n meer" in de sectie-sub.
 const MAX_ROWS: usize = 8;
 
+fn fleet_dot(online: usize, total: usize) -> &'static str {
+    if total == 0 {
+        ""
+    } else if online == total {
+        "ok"
+    } else if online == 0 {
+        "down"
+    } else {
+        "warn"
+    }
+}
+
 /// Render de domein-sectie(s) voor `kind` in `content`.
 pub fn render_domain(
     content: &gtk::Box,
@@ -46,7 +58,8 @@ pub fn render_domain(
         HarnessKind::Linear => render_linear(content, snap, q, executor, window),
         HarnessKind::Secrets => render_secrets(content, snap, q),
         HarnessKind::Kater => render_kater(content, snap, q),
-        HarnessKind::Health | HarnessKind::Eval => render_health(content, snap, q),
+        HarnessKind::Health => render_health(content, snap, q, "Gezondheid"),
+        HarnessKind::Eval => render_health(content, snap, q, "Evaluatie"),
     }
 }
 
@@ -140,11 +153,12 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
     section_title(content, "Fleet", &sub);
     let group = group_box();
     if snap.fleet.total > 0 {
-        let online = snap.fleet.online > 0;
+        let online = snap.fleet.online;
+        let total = snap.fleet.total;
         group.pack_start(
             &domain_row(
-                if online { "ok" } else { "down" },
-                &format!("Fleet · {}/{} online", snap.fleet.online, snap.fleet.total),
+                fleet_dot(online, total),
+                &format!("Fleet · {online}/{total} online"),
                 snap.fleet.host.as_deref(),
                 None,
             ),
@@ -243,6 +257,7 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
 
 fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
+    let unfiltered_empty = snap.containers.drift.is_empty();
     let drift: Vec<_> = snap
         .containers
         .drift
@@ -270,12 +285,24 @@ fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
-    if drift.is_empty() {
+    if unfiltered_empty {
         group.pack_start(
             &domain_row(
                 "ok",
                 "Geen drift",
                 Some("observed en desired liggen in lijn"),
+                None,
+            ),
+            false,
+            false,
+            0,
+        );
+    } else if drift.is_empty() {
+        group.pack_start(
+            &domain_row(
+                "warn",
+                "Drift gefilterd",
+                Some("er is drift, maar niets matcht de zoekterm"),
                 None,
             ),
             false,
@@ -920,8 +947,8 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Health (+ Eval-compat)
 // ---------------------------------------------------------------------------
 
-fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str) {
-    section_title(content, "Gezondheid", "watchdog + dagscore + fleet");
+fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str, title: &str) {
+    section_title(content, title, "watchdog + dagscore + fleet");
     let group = group_box();
     let health_meta = match snap.health.updated_at.as_deref() {
         Some(at) => format!("{} · update {}", state_label(&snap.health), short_ts(at)),
@@ -952,7 +979,7 @@ fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str) {
     if snap.fleet.total > 0 {
         group.pack_start(
             &domain_row(
-                if snap.fleet.online > 0 { "ok" } else { "down" },
+                fleet_dot(snap.fleet.online, snap.fleet.total),
                 &format!("Fleet · {}/{} online", snap.fleet.online, snap.fleet.total),
                 snap.fleet.host.as_deref(),
                 None,

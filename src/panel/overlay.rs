@@ -4,14 +4,18 @@
 //! Geen tweede socket, poll-loop of dataset.
 
 use gtk::prelude::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+type OverlayActivate = Rc<dyn Fn(crate::palette::Action)>;
 
 pub struct Overlay {
     pub container: gtk::Box,
     pub entry: gtk::SearchEntry,
     results: gtk::Box,
     revealed: Rc<Cell<bool>>,
+    first_action: Rc<RefCell<Option<crate::palette::Action>>>,
+    on_enter: Rc<RefCell<Option<OverlayActivate>>>,
 }
 
 impl Overlay {
@@ -40,9 +44,13 @@ impl Overlay {
         container.pack_start(&results, false, false, 0);
 
         let revealed = Rc::new(Cell::new(false));
+        let first_action = Rc::new(RefCell::new(None));
+        let on_enter: Rc<RefCell<Option<OverlayActivate>>> = Rc::new(RefCell::new(None));
         let container_esc = container.clone();
         let entry_esc = entry.clone();
         let revealed_esc = revealed.clone();
+        let first_keys = first_action.clone();
+        let enter_keys = on_enter.clone();
         entry.connect_key_press_event(move |_, event| {
             if event.keyval() == gdk::keys::constants::Escape {
                 container_esc.set_visible(false);
@@ -51,7 +59,18 @@ impl Overlay {
                 revealed_esc.set(false);
                 return gtk::glib::Propagation::Stop;
             }
+            if (event.keyval() == gdk::keys::constants::Return
+                || event.keyval() == gdk::keys::constants::KP_Enter)
+                && activate_first(&first_keys, &enter_keys)
+            {
+                return gtk::glib::Propagation::Stop;
+            }
             gtk::glib::Propagation::Proceed
+        });
+        let first_act = first_action.clone();
+        let enter_act = on_enter.clone();
+        entry.connect_activate(move |_| {
+            activate_first(&first_act, &enter_act);
         });
 
         Self {
@@ -59,6 +78,8 @@ impl Overlay {
             entry,
             results,
             revealed,
+            first_action,
+            on_enter,
         }
     }
 
@@ -70,6 +91,9 @@ impl Overlay {
         for child in self.results.children() {
             self.results.remove(&child);
         }
+        let callback: OverlayActivate = Rc::new(on_activate);
+        *self.on_enter.borrow_mut() = Some(callback.clone());
+        *self.first_action.borrow_mut() = actions.first().cloned();
         if actions.is_empty() {
             let empty = gtk::Label::new(Some("Geen actie gevonden · probeer een domein of /"));
             empty.set_halign(gtk::Align::Start);
@@ -120,7 +144,7 @@ impl Overlay {
             inner.pack_end(&stamp, false, false, 0);
             button.add(&inner);
             let action = action.clone();
-            let callback = on_activate.clone();
+            let callback = callback.clone();
             button.connect_clicked(move |_| callback(action.clone()));
             self.results.pack_start(&button, false, false, 0);
         }
@@ -159,6 +183,20 @@ impl Default for Overlay {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn activate_first(
+    first: &RefCell<Option<crate::palette::Action>>,
+    on_enter: &RefCell<Option<OverlayActivate>>,
+) -> bool {
+    let Some(action) = first.borrow().clone() else {
+        return false;
+    };
+    let Some(cb) = on_enter.borrow().clone() else {
+        return false;
+    };
+    cb(action);
+    true
 }
 
 pub fn build_overlay() -> Overlay {
