@@ -8,10 +8,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# PRs → pr-isolated; push → heavy. Do not use company-control alone — that
+# label is on the heavy runner too and queues behind unrelated heavy work.
 jobs:
   build:
     name: Rust build + test
-    runs-on: [self-hosted, Linux, X64, company-control]
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -64,7 +66,7 @@ jobs:
   visual:
     name: Visual shot (Xvfb + accent assert)
     needs: build
-    runs-on: [self-hosted, Linux, X64, company-control]
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
