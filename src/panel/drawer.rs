@@ -137,7 +137,10 @@ impl Drawer {
         let execute = gtk::Button::with_label("Uitvoeren");
         execute.style_context().add_class("chefbar-btn");
         execute.style_context().add_class("chefbar-primary");
-        execute.connect_clicked(move |_| on_activate());
+        execute.connect_clicked(move |btn| {
+            btn.set_sensitive(false);
+            on_activate();
+        });
         self.actions.pack_start(&execute, false, false, 0);
         let cancel = gtk::Button::with_label("Annuleren");
         cancel.style_context().add_class("chefbar-btn");

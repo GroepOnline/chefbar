@@ -315,7 +315,7 @@ impl Panel {
                     fade_out(&window_esc, PANEL_MS);
                     return gtk::glib::Propagation::Stop;
                 }
-                let ctrl_or_cmd = event.state().contains(
+                let ctrl_or_cmd = event.state().intersects(
                     gdk::ModifierType::CONTROL_MASK
                         | gdk::ModifierType::META_MASK
                         | gdk::ModifierType::SUPER_MASK,
@@ -426,18 +426,13 @@ impl Panel {
     }
 
     pub fn focus_domain(&self, domain: &str) {
-        let id_raw = domain.trim().to_lowercase();
-        if id_raw.is_empty() {
+        let id = crate::harness::HarnessKind::from_alias(domain)
+            .map(|kind| kind.id().to_string())
+            .unwrap_or_else(|| domain.trim().to_lowercase());
+        if id.is_empty() {
             return;
         }
-        // Aliasen voor oude/visual-shot namen → canonieke HarnessKind-ids.
-        let id = match id_raw.as_str() {
-            "accounts" | "providers" => "commerce",
-            "taken" => "tasks",
-            "instellingen" | "settings" => "health",
-            other => other,
-        };
-        *self.harness_state.borrow_mut() = id.to_string();
+        *self.harness_state.borrow_mut() = id;
         self.persist_dirty.set(true);
         self.show();
         let query = self.search.text().to_string();

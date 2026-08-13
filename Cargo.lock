@@ -187,13 +187,14 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chefbar"
-version = "3.1.0"
+version = "4.0.0-dev"
 dependencies = [
  "clap 4.6.6",
  "dirs",
  "gdk",
  "gtk",
  "ksni",
+ "libc",
  "pango",
  "serde",
  "serde_json",
