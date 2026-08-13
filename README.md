@@ -169,7 +169,9 @@ is de beste idle Pi; `jcode` is geheugen (context in de prompt, nooit een
 chat-doel). De werkende visual ChefApp-lane is gereserveerd en wordt
 overgeslagen; een idle Pi op die checkout blijft gewoon kiesbaar.
 
-Handmatige target (pane of agent-id):
+Handmatige target (pane of agent-id), zelfde volgorde als het Control-canvas
+en de palette-actie **Vraag control**: pin (overleeft herstart) > env > beste
+idle Pi.
 
 ```bash
 CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
@@ -182,7 +184,8 @@ CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
 ChefBar bouwt niet lokaal op de laptop. CI is notify-first en draait op de self-hosted runner. Zie `.github/workflows/ci.yml`.
 
 ```yaml
-runs-on: [self-hosted, Linux, X64, company-control]
+# PR → pr-isolated; push/main → heavy (niet alleen company-control)
+runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
 steps:
   - cargo test --all-targets
   - cargo build --release

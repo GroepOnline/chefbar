@@ -911,6 +911,8 @@ pub struct Executor {
     pub profile: EndpointProfile,
     /// Laatste bekende vault-revision (expectedRevision bij accountswitch).
     pub revision: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// Zelfde snapshot/pin als het Control-canvas (palette "Vraag control").
+    pub shared: crate::state::Shared,
 }
 
 impl Executor {
@@ -1160,35 +1162,12 @@ impl Executor {
                 crate::notify::notify("Palette", "toggle — Super+Space", "ok");
             }
             RunSpec::SendControlChat => {
-                let text = query.to_string();
-                if text.trim().is_empty() {
+                let text = query.trim();
+                if text.is_empty() {
                     crate::notify::notify("Control", "typ eerst een vraag", "hulp");
                     return;
                 }
-                let target = std::env::var("CHEFBAR_CONTROL_AGENT")
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-                    .or_else(|| {
-                        std::env::var("CHEFBAR_CONTROL_PANE")
-                            .ok()
-                            .filter(|s| !s.trim().is_empty())
-                    });
-                match target {
-                    Some(target) => {
-                        self.spawn_bg(move || {
-                            if crate::ops_cli::send_control_prompt(&target, &text) {
-                                crate::notify::notify("Control", "vraag verstuurd", "ok");
-                            } else {
-                                crate::notify::notify("Control", "sturen lukte niet", "error");
-                            }
-                        });
-                    }
-                    None => crate::notify::notify(
-                        "Control",
-                        "zet CHEFBAR_CONTROL_AGENT of open het Control-domein",
-                        "hulp",
-                    ),
-                }
+                crate::chat::submit(&self.shared, text);
             }
         }
     }
@@ -1235,6 +1214,16 @@ mod tests {
             &EndpointProfile::default(),
             Vec::new(),
         )
+    }
+
+    #[test]
+    fn vraag_control_zit_in_catalogus() {
+        let actions = catalogus_met(&Snapshot::default());
+        let vraag = actions
+            .iter()
+            .find(|a| a.title == "Vraag control")
+            .expect("palette-actie Vraag control");
+        assert!(matches!(vraag.run, RunSpec::SendControlChat));
     }
 
     #[test]

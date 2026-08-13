@@ -195,6 +195,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
         ops: ops.clone(),
         profile: profile.clone(),
         revision,
+        shared: shared.clone(),
     };
 
     let panel = chefbar::panel::Panel::new(shared.clone(), executor.clone());
