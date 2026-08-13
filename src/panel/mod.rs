@@ -403,6 +403,9 @@ impl Panel {
         panel.wire_overlay();
         let initial_query = panel.search.text().to_string();
         panel.render(&initial_query);
+        // W1: never map a 10×10 stub. Size is locked at 860×880; first show()
+        // is the only path that presents the window.
+        panel.window.set_visible(false);
         panel
     }
 
@@ -891,7 +894,6 @@ fn render_into(
         (snap, ops)
     };
     let profile = crate::config::global_profile().clone();
-    let vault_label = profile.label("vaultApi");
     let fetched = snap.fetched_label();
     let sessions = crate::sessions::load_ranked_sessions(&snap.events);
     let (state, line) = snap.tray_state();
@@ -969,12 +971,12 @@ fn render_into(
         .style_context()
         .add_class("chefbar-statuslijn-text");
     status_row.pack_start(&lijn_text, true, true, 0);
-    let updated = gtk::Label::new(Some(&format!("{} · {}", vault_label, fetched)));
+    let updated = gtk::Label::new(Some(&snap.poll_statuslijn()));
     updated.set_halign(gtk::Align::End);
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
     updated.set_line_wrap(false);
-    updated.set_max_width_chars(34);
+    updated.set_max_width_chars(52);
     updated.style_context().add_class("chefbar-card-meta");
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);

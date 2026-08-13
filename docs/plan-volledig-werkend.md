@@ -24,15 +24,13 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
       resize-jumps onafhankelijk van backend. (PR #17, gemerged)
 - [x] Fades alleen op open/dicht, nooit tijdens render; `present()` alleen
       als het venster verborgen was (nu: elke show → her-positionering). (PR #17)
-- [ ] **gtk-layer-shell evaluatie** (stond al op de roadmap als "bewust
-      uitgesteld"): echte Wayland-laag met tray-anker (top-right, margin),
-      geen XWayland meer. Beslis-tree: crate `gtk-layer-shell` aanwezig op
-      GNOME/Ubuntu → layer-shell; anders fallback = huidige X11 met W1-fixes.
+- [x] **gtk-layer-shell** niet voor 5.0 (head-engineer 2026-08-13): 860×880
+      echt venster, geen panel-layer. Evaluatie blijft later, niet deze campaign.
 - [ ] Alt+Space (chef-hud) vs Super+Space (chefbar) expliciteren: één
-      quick-command-overlay. Voorstel: chef-hud retireren of herstylen zodat
-      het nooit als "tweede ChefBar" leest.
-- [ ] Verborgen 10×10-venster: paneel start `visible=false` en krijgt pas
-      grootte bij eerste show (nu mapt hij 10×10 op X11).
+      quick-command-overlay. chef-hud opent ChefApp-palette als `chefbar`
+      draait (`CHEF_HUD_FORCE_ROFI=1` houdt rofi). PR in chefgroep-os.
+- [x] Verborgen venster: paneel start `visible=false`; geometrie is 860×880,
+      geen 10×10-map meer.
 
 ### W2 — Data-vlak robuust
 - [x] vault-api-route vervangen: ssh-forward (pid!) → duurzame route.
@@ -73,8 +71,8 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
       Geen "vault offline" meer door env-drift. (PR #18, gemerged)
 - [x] Doctor exit-codes: 0 ok / 1 degraded / 2 down — bruikbaar in
       systemd en scripts. (PR #18)
-- [ ] Poll-gezondheid zichtbaar in de statuslijn zelf ("laatste poll 4s
-      geleden · vault ok · ops 302").
+- [x] Poll-gezondheid zichtbaar in de statuslijn zelf ("laatste poll 4s
+      geleden · vault ok · ops 302") via `Snapshot::poll_statuslijn()`.
 
 ### W5 — QA-harnas (zodat dit niet terugkomt)
 - [x] `/tmp/chefbar-shot3.sh` volwassen maken als `scripts/visual-shot.sh`
