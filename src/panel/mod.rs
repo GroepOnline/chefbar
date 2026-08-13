@@ -993,14 +993,7 @@ fn render_into(
     domains::render_domain(content, &view_kind, &snap, query, executor, window);
 
     if !searching {
-        render_doen_chips(
-            content,
-            &ranked,
-            &harness_label,
-            executor,
-            window,
-            drawer,
-        );
+        render_doen_chips(content, &ranked, &harness_label, executor, window, drawer);
     }
 
     // ---- Inbox: watcher-suggesties die jou opvallen (alleen op inbox) ----

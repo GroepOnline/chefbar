@@ -247,10 +247,7 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
-    for (bucket, pred) in [
-        ("Online", true),
-        ("Offline", false),
-    ] {
+    for (bucket, pred) in [("Online", true), ("Offline", false)] {
         let rows: Vec<_> = all.iter().filter(|n| n.online == pred).collect();
         if rows.is_empty() {
             continue;
@@ -366,11 +363,7 @@ fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
         let des_s = desired.to_string();
         let drift_s = snap.containers.drift.len().to_string();
         content.pack_start(
-            &kpi_strip(&[
-                ("draait", &obs_s),
-                ("gewenst", &des_s),
-                ("drift", &drift_s),
-            ]),
+            &kpi_strip(&[("draait", &obs_s), ("gewenst", &des_s), ("drift", &drift_s)]),
             false,
             false,
             0,
@@ -936,7 +929,11 @@ fn render_linear(
     let todo_s = todo.to_string();
     let total_s = total.to_string();
     content.pack_start(
-        &kpi_strip(&[("bezig", &bezig_s), ("te doen", &todo_s), ("totaal", &total_s)]),
+        &kpi_strip(&[
+            ("bezig", &bezig_s),
+            ("te doen", &todo_s),
+            ("totaal", &total_s),
+        ]),
         false,
         false,
         0,
@@ -1052,10 +1049,7 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let k = &snap.kater_status;
     let online = k.online;
     content.pack_start(
-        &kpi_strip(&[(
-            "gateway",
-            if online { "online" } else { "offline" },
-        )]),
+        &kpi_strip(&[("gateway", if online { "online" } else { "offline" })]),
         false,
         false,
         0,
@@ -1090,7 +1084,11 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
         group.pack_start(
             &info_row(
                 "jcode-geheugen",
-                Some(if j.host.is_empty() { "lokaal" } else { j.host.as_str() }),
+                Some(if j.host.is_empty() {
+                    "lokaal"
+                } else {
+                    j.host.as_str()
+                }),
             ),
             false,
             false,
