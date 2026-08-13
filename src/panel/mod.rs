@@ -712,6 +712,143 @@ fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -
     }
 }
 
+fn bind_action_button(
+    row: &gtk::Button,
+    action: Action,
+    executor: Executor,
+    window: gtk::Window,
+    drawer: Rc<Drawer>,
+) {
+    let needs_text = action.needs_text;
+    let spec = action.run.clone();
+    row.connect_clicked(move |_| {
+        if needs_text {
+            prompt_for(&executor, &window, &action);
+            return;
+        }
+        let drawer_for_action = drawer.clone();
+        let executor = executor.clone();
+        let spec = spec.clone();
+        let frecency_id = action.frecency_id();
+        drawer.show_for_with(&action, move || {
+            if let crate::actions::RunSpec::CopyText(text) = &spec {
+                let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
+                clipboard.set_text(text);
+                notify_copied();
+            } else {
+                executor.run_for_ui(&spec);
+            }
+            crate::frecency::record(&frecency_id);
+            drawer_for_action.hide();
+        });
+    });
+}
+
+/// Compacte domein-chips onder de operate-view (idle). Geen tweede Acties-lijst.
+fn render_doen_chips(
+    content: &gtk::Box,
+    ranked: &[Action],
+    harness_label: &str,
+    executor: &Executor,
+    window: &gtk::Window,
+    drawer: &Rc<Drawer>,
+) {
+    let chips: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(3).collect();
+    let prompts: Vec<&Action> = ranked.iter().filter(|a| a.needs_text).take(2).collect();
+    if chips.is_empty() && prompts.is_empty() {
+        return;
+    }
+    section_title(
+        content,
+        "Doen",
+        &format!("in {}", harness_label.to_lowercase()),
+    );
+    let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    wrap.set_margin_top(4);
+    wrap.set_margin_start(16);
+    wrap.set_margin_end(16);
+    wrap.set_margin_bottom(8);
+    for action in chips.into_iter().chain(prompts) {
+        let btn = gtk::Button::with_label(&action.title);
+        btn.set_tooltip_text(Some(&action.meta));
+        btn.style_context().add_class("chefbar-btn");
+        bind_action_button(
+            &btn,
+            action.clone(),
+            executor.clone(),
+            window.clone(),
+            drawer.clone(),
+        );
+        wrap.pack_start(&btn, false, false, 0);
+    }
+    content.pack_start(&wrap, false, false, 0);
+}
+
+/// Zoektreffers als lijst — alleen als de query niet leeg is.
+fn render_doen_list(
+    content: &gtk::Box,
+    ranked: &[Action],
+    q: &str,
+    harness_label: &str,
+    executor: &Executor,
+    window: &gtk::Window,
+    drawer: &Rc<Drawer>,
+) {
+    let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(8).collect();
+    section_title(
+        content,
+        "Zoeken",
+        &format!(
+            "in {} — {}",
+            harness_label.to_lowercase(),
+            truncate_q(q, 24)
+        ),
+    );
+    let group = group_box();
+    if actions_visible.is_empty() {
+        let sub = format!(
+            "Pas je zoekterm \u{201c}{}\u{201d} aan of wissel van harnas.",
+            truncate_q(q, 24)
+        );
+        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
+        content.pack_start(&group, false, false, 0);
+        return;
+    }
+    for action in &actions_visible {
+        let row = gtk::Button::new();
+        row.set_relief(gtk::ReliefStyle::None);
+        row.style_context().add_class("chefbar-row-btn");
+        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let title = gtk::Label::new(Some(&action.title));
+        title.set_halign(gtk::Align::Start);
+        title.set_xalign(0.0);
+        title.set_ellipsize(pango::EllipsizeMode::End);
+        title.set_line_wrap(false);
+        title.set_max_width_chars(48);
+        title.style_context().add_class("chefbar-card-title");
+        row_box.pack_start(&title, true, true, 0);
+        let stamp = stamp_label(&action.stamp);
+        row_box.pack_end(&stamp, false, false, 0);
+        row.add(&row_box);
+        row.set_hexpand(true);
+        row.set_halign(gtk::Align::Fill);
+        let row_inner = row.child().unwrap();
+        row_inner.set_margin_start(10);
+        row_inner.set_margin_end(10);
+        row_inner.set_margin_top(6);
+        row_inner.set_margin_bottom(6);
+        bind_action_button(
+            &row,
+            (*action).clone(),
+            executor.clone(),
+            window.clone(),
+            drawer.clone(),
+        );
+        group.pack_start(&row, false, false, 0);
+    }
+    content.pack_start(&group, false, false, 0);
+}
+
 // ---------------------------------------------------------------------------
 // Render: Signaal v2 grouped sections
 // ---------------------------------------------------------------------------
@@ -831,111 +968,40 @@ fn render_into(
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
 
-    // ---- Sectie: Acties (eerste, want interactie eerst) ----
-    let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(6).collect();
     let harness_label = harnesses
         .iter()
         .find(|h| h.id == active_id)
         .map(|h| h.label.clone())
         .unwrap_or_else(|| active_id.clone());
-    section_title(
-        content,
-        "Acties",
-        &format!("zoek of kies — {}", harness_label.to_lowercase()),
-    );
     header_title.set_text(&harness_label);
-    let group = group_box();
-    if actions_visible.is_empty() && !q.is_empty() {
-        let sub = format!(
-            "Pas je zoekterm \u{201c}{}\u{201d} aan of wissel van harnas.",
-            truncate_q(&q, 24)
-        );
-        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
-    } else if actions_visible.is_empty() {
-        let sub = format!(
-            "Geen acties voor {} — wissel via de zijbalk of zoek breder.",
-            harness_label.to_lowercase()
-        );
-        group.pack_start(&empty_state("Niks hier", &sub), false, false, 0);
-    }
-    for action in &actions_visible {
-        let spec = action.run.clone();
-        let executor = executor.clone();
-        let window = window.clone();
-        let needs_text = action.needs_text;
-        let action = (*action).clone();
-        let row = gtk::Button::new();
-        row.set_relief(gtk::ReliefStyle::None);
-        row.style_context().add_class("chefbar-row-btn");
-        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let title = gtk::Label::new(Some(&action.title));
-        title.set_halign(gtk::Align::Start);
-        title.set_xalign(0.0);
-        title.set_ellipsize(pango::EllipsizeMode::End);
-        title.set_line_wrap(false);
-        title.set_max_width_chars(48);
-        title.style_context().add_class("chefbar-card-title");
-        row_box.pack_start(&title, true, true, 0);
-        let stamp = stamp_label(&action.stamp);
-        row_box.pack_end(&stamp, false, false, 0);
-        row.add(&row_box);
-        row.set_hexpand(true);
-        row.set_halign(gtk::Align::Fill);
-        let row_inner = row.child().unwrap();
-        row_inner.set_margin_start(10);
-        row_inner.set_margin_end(10);
-        row_inner.set_margin_top(6);
-        row_inner.set_margin_bottom(6);
-        let drawer = drawer.clone();
-        row.connect_clicked(move |_| {
-            if needs_text {
-                prompt_for(&executor, &window, &action);
-                return;
-            }
-            let drawer_for_action = drawer.clone();
-            let executor = executor.clone();
-            let spec = spec.clone();
-            let frecency_id = action.frecency_id();
-            drawer.show_for_with(&action, move || {
-                if let crate::actions::RunSpec::CopyText(text) = &spec {
-                    let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
-                    clipboard.set_text(text);
-                    notify_copied();
-                } else {
-                    executor.run_for_ui(&spec);
-                }
-                crate::frecency::record(&frecency_id);
-                drawer_for_action.hide();
-            });
-        });
-        group.pack_start(&row, false, false, 0);
-    }
-    content.pack_start(&group, false, false, 0);
-
-    let text_actions: Vec<&Action> = ranked.iter().filter(|a| a.needs_text).take(3).collect();
-    if !text_actions.is_empty() {
-        let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        wrap.set_margin_top(4);
-        wrap.set_margin_start(16);
-        wrap.set_margin_end(16);
-        for action in text_actions {
-            let btn = gtk::Button::with_label(&action.title);
-            btn.set_tooltip_text(Some(&action.meta));
-            btn.style_context().add_class("chefbar-btn");
-            let executor = executor.clone();
-            let window = window.clone();
-            let action = action.clone();
-            btn.connect_clicked(move |_| {
-                prompt_for(&executor, &window, &action);
-            });
-            wrap.pack_start(&btn, false, false, 0);
-        }
-        content.pack_start(&wrap, false, false, 0);
-    }
-
-    // ---- Domein-view: typed data per harnas (domains.rs) ----
     let view_kind = active_kind.clone().unwrap_or(HarnessKind::Health);
+    let searching = !q.is_empty();
+
+    // Zoeken: treffers eerst. Idle: domein-operate eerst, geen gekopieerde Acties-lijst.
+    if searching {
+        render_doen_list(
+            content,
+            &ranked,
+            &q,
+            &harness_label,
+            executor,
+            window,
+            drawer,
+        );
+    }
+
     domains::render_domain(content, &view_kind, &snap, query, executor, window);
+
+    if !searching {
+        render_doen_chips(
+            content,
+            &ranked,
+            &harness_label,
+            executor,
+            window,
+            drawer,
+        );
+    }
 
     // ---- Inbox: watcher-suggesties die jou opvallen (alleen op inbox) ----
     if view_kind == HarnessKind::Inbox {

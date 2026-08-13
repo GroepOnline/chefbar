@@ -297,3 +297,41 @@ pub fn state_label(health: &crate::models::HealthInfo) -> String {
         format!("{} van {} ok", health.ok, health.total)
     }
 }
+
+/// Kleine subkop binnen een domein (niet de zone-titel). Bestaande tokens.
+pub fn bucket_title(content: &gtk::Box, title: &str) {
+    let label = gtk::Label::new(Some(&title.to_uppercase()));
+    label.set_halign(gtk::Align::Start);
+    label.set_xalign(0.0);
+    label.set_ellipsize(pango::EllipsizeMode::End);
+    label.set_margin_start(16);
+    label.set_margin_end(16);
+    label.set_margin_top(8);
+    label.style_context().add_class("chefbar-section-sub");
+    content.pack_start(&label, false, false, 0);
+}
+
+/// Horizontale KPI-strip: waarde (titel) + label (meta). Geen nieuwe CSS-klassen.
+pub fn kpi_strip(items: &[(&str, &str)]) -> gtk::Box {
+    let wrap = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    wrap.set_margin_start(16);
+    wrap.set_margin_end(16);
+    wrap.set_margin_top(4);
+    wrap.set_margin_bottom(8);
+    wrap.style_context().add_class("chefbar-kpi");
+    for (label, value) in items {
+        let cell = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let v = gtk::Label::new(Some(value));
+        v.set_halign(gtk::Align::Start);
+        v.set_xalign(0.0);
+        v.style_context().add_class("chefbar-card-title");
+        let l = gtk::Label::new(Some(label));
+        l.set_halign(gtk::Align::Start);
+        l.set_xalign(0.0);
+        l.style_context().add_class("chefbar-card-meta");
+        cell.pack_start(&v, false, false, 0);
+        cell.pack_start(&l, false, false, 0);
+        wrap.pack_start(&cell, false, false, 0);
+    }
+    wrap
+}
