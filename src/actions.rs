@@ -95,6 +95,7 @@ impl RunSpec {
             RunSpec::PrunePreview => "PrunePreview".into(),
             RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
             RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
         }
     }
 }
@@ -1364,12 +1365,14 @@ mod tests {
 
     #[test]
     fn brain_search_slaat_chunks_zonder_doel_over() {
-        let mut snap = Snapshot::default();
-        snap.brain_digest = BrainDigest {
-            chunks: vec![BrainChunk {
-                title: "geen doel".into(),
+        let snap = Snapshot {
+            brain_digest: BrainDigest {
+                chunks: vec![BrainChunk {
+                    title: "geen doel".into(),
+                    ..Default::default()
+                }],
                 ..Default::default()
-            }],
+            },
             ..Default::default()
         };
         assert!(build_brain_search_actions(&snap, "?geen").is_empty());
