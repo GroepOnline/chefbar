@@ -38,7 +38,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Shellcheck
-        run: shellcheck install.sh scripts/*.sh
+        run: shellcheck install.sh .cursor/install.sh scripts/*.sh
 
       - name: Test
         run: cargo test --all-targets
