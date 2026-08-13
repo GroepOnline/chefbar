@@ -92,7 +92,11 @@ fn kind_of(agent: &HerdrAgent) -> String {
 }
 
 fn is_jcode(agent: &HerdrAgent) -> bool {
-    let hay = format!("{} {} {}", agent.name, agent.workspace, agent.cwd).to_lowercase();
+    let hay = format!(
+        "{} {} {} {} {}",
+        agent.name, agent.workspace, agent.cwd, agent.alias, agent.pane_id
+    )
+    .to_lowercase();
     hay.contains("jcode")
 }
 
@@ -233,7 +237,12 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     log.kind = kind;
     log.pinned = true;
     drop(log);
-    let _ = crate::panel_state::persist_control_pin(Some(id), true, alias.as_deref());
+    let persist_id = id.to_string();
+    std::thread::spawn(move || {
+        if !crate::panel_state::persist_control_pin(Some(&persist_id), true, alias.as_deref()) {
+            crate::log::log("control-pin opslaan lukte niet");
+        }
+    });
     shared
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -392,11 +401,19 @@ fn send_and_read(target: &str, prompt: &str) -> Result<String, String> {
     Ok(delta)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubmitStatus {
+    Empty,
+    Busy,
+    NoTarget,
+    Sent,
+}
+
 /// Zet de vraag op het transcript en stuur op een achtergrond-thread.
-pub fn submit(shared: &crate::state::Shared, text: &str) {
+pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     let text = text.trim();
     if text.is_empty() {
-        return;
+        return SubmitStatus::Empty;
     }
     let ops = shared.ops.read().unwrap().clone();
     let snap = shared.snapshot.read().unwrap().clone();
@@ -416,7 +433,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
     {
         let mut log = shared.chat.write().unwrap();
         if log.busy {
-            return;
+            return SubmitStatus::Busy;
         }
         log.busy = true;
         log.target = target.clone();
@@ -436,7 +453,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
             shared
                 .chat_revision
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return;
+            return SubmitStatus::NoTarget;
         }
     }
     shared
@@ -468,6 +485,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) {
             .chat_revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     });
+    SubmitStatus::Sent
 }
 
 #[cfg(test)]
@@ -592,6 +610,13 @@ mod tests {
         };
         assert!(list_targets(&ops).is_empty());
         assert_eq!(resolve_target(&ops, None), None);
+
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![agent_met_alias("jcode", "w9:p2", "/tmp/ops-lane")],
+        };
+        assert!(list_targets(&ops).is_empty());
+        assert_eq!(resolve_target(&ops, None), None);
     }
 
     #[test]
@@ -634,6 +659,15 @@ mod tests {
     fn terminal_delta_takes_suffix() {
         assert_eq!(terminal_delta("abc", "abcdef"), "def");
         assert_eq!(terminal_delta("nope", "hello"), "hello");
+    }
+
+    #[test]
+    fn submit_reports_empty_busy_and_no_target() {
+        let shared = crate::state::Shared::new();
+        assert_eq!(submit(&shared, "  "), SubmitStatus::Empty);
+        assert_eq!(submit(&shared, "status jan"), SubmitStatus::NoTarget);
+        shared.chat.write().unwrap().busy = true;
+        assert_eq!(submit(&shared, "nog een"), SubmitStatus::Busy);
     }
 
     #[test]
