@@ -2,14 +2,16 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# PRs → pr-isolated; push → heavy. Do not use company-control alone — that
-# label is on the heavy runner too and queues behind unrelated heavy work.
+# PRs → pr-isolated. Push to main → heavy. Feature-branch pushes do not
+# enqueue a second heavy job (the PR already covers that SHA). Do not use
+# company-control alone — that label is on the heavy runner too.
 jobs:
   build:
     name: Rust build + test
