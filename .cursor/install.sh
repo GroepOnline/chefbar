@@ -4,7 +4,7 @@
 # Idempotent and self-contained: works from Cursor's default image.
 set -euo pipefail
 
-# shellcheck source=lib.sh
+# shellcheck source=lib.sh disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 chefbar_cloud_setup_env

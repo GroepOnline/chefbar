@@ -27,8 +27,8 @@ libgdk-pixbuf-2.0-dev
 libatk1.0-dev
 libnss3
 libnspr4
-libatk-bridge2.0-0
-libcups2
+libatk-bridge2.0-0t64
+libcups2t64
 libdrm2
 libxkbcommon0
 libxcomposite1
@@ -69,6 +69,16 @@ chefbar_cloud_have_sudo() {
   sudo -n true >/dev/null 2>&1
 }
 
+chefbar_cloud_pkg_installed() {
+  local pkg="$1"
+  dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' && return 0
+  # Ubuntu 24.04 time64 transition: libfoo -> libfoo t64.
+  if [[ "$pkg" != *t64 ]]; then
+    dpkg-query -W -f='${Status}' "${pkg}t64" 2>/dev/null | grep -q 'install ok installed' && return 0
+  fi
+  return 1
+}
+
 chefbar_cloud_ensure_apt_packages() {
   local pkg
   local -a missing=()
@@ -77,7 +87,7 @@ chefbar_cloud_ensure_apt_packages() {
   mapfile -t wanted < <(chefbar_cloud_apt_packages)
   for pkg in "${wanted[@]}"; do
     [[ -z "$pkg" ]] && continue
-    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed'; then
+    if ! chefbar_cloud_pkg_installed "$pkg"; then
       missing+=("$pkg")
     fi
   done
@@ -94,12 +104,12 @@ chefbar_cloud_ensure_apt_packages() {
 
   export DEBIAN_FRONTEND=noninteractive
   sudo -n apt-get update -qq
-  # libasound2t64 is Ubuntu 24.04; fall back if a future image still uses libasound2.
+  # Ubuntu 24.04 uses t64 names; fall back to the unversioned package on older images.
   if ! sudo -n apt-get install -y --no-install-recommends "${missing[@]}"; then
     local -a fallback=()
     for pkg in "${missing[@]}"; do
-      if [[ "$pkg" == "libasound2t64" ]]; then
-        fallback+=("libasound2")
+      if [[ "$pkg" == *t64 ]]; then
+        fallback+=("${pkg%t64}")
       else
         fallback+=("$pkg")
       fi

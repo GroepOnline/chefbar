@@ -3,7 +3,7 @@
 # (install is not re-run). Must terminate; do not start long-lived servers.
 set -euo pipefail
 
-# shellcheck source=lib.sh
+# shellcheck source=lib.sh disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 chefbar_cloud_setup_env

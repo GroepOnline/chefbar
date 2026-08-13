@@ -31,8 +31,8 @@ RUN apt-get update \
         libatk1.0-dev \
         libnss3 \
         libnspr4 \
-        libatk-bridge2.0-0 \
-        libcups2 \
+        libatk-bridge2.0-0t64 \
+        libcups2t64 \
         libdrm2 \
         libxkbcommon0 \
         libxcomposite1 \
