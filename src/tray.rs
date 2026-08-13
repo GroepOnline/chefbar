@@ -294,7 +294,7 @@ impl ksni::Tray for ChefTray {
         "chefbar".into()
     }
     fn title(&self) -> String {
-        "ChefBar".into()
+        "ChefApp".into()
     }
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         vec![self.icon.clone()]
@@ -307,7 +307,7 @@ impl ksni::Tray for ChefTray {
             .unwrap_or_default();
         let _ = state;
         ksni::ToolTip {
-            title: "ChefBar".into(),
+            title: "ChefApp".into(),
             description: line,
             icon_name: "chefbar".into(),
             icon_pixmap: vec![self.icon.clone()],
