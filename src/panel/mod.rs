@@ -794,7 +794,9 @@ fn render_doen_list(
     window: &gtk::Window,
     drawer: &Rc<Drawer>,
 ) {
-    let actions_visible: Vec<&Action> = ranked.iter().filter(|a| !a.needs_text).take(8).collect();
+    // Include needs_text matches: bind_action_button routes them via prompt_for
+    // (Clipboard add, Commander prompts). Filtering them out showed "Niks gevonden".
+    let actions_visible: Vec<&Action> = ranked.iter().take(8).collect();
     section_title(
         content,
         "Zoeken",

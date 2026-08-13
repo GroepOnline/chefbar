@@ -170,7 +170,12 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         "Bezig" => 2,
         _ => 3,
     });
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
     for bucket in ["Fout", "Wacht op jou", "Bezig", "Overig"] {
+        if remaining == 0 {
+            break;
+        }
         let rows: Vec<_> = all
             .iter()
             .filter(|i| inbox_bucket(&i.status) == bucket)
@@ -181,7 +186,8 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         }
         bucket_title(content, bucket);
         let group = group_box();
-        for item in rows.iter().take(MAX_ROWS) {
+        let take_n = remaining.min(rows.len());
+        for item in rows.iter().take(take_n) {
             let stamp = if item.status.is_empty() {
                 None
             } else {
@@ -199,6 +205,7 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
                 0,
             );
         }
+        remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
 }
@@ -612,13 +619,20 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let group = group_box();
     for deal in all.iter().take(MAX_ROWS) {
         let amount = deal.amount.clone().unwrap_or_default();
-        let stamp = if !amount.is_empty() {
-            Some((amount.as_str(), ""))
-        } else if !deal.status.is_empty() {
-            Some((deal.status.as_str(), status_dot_cls(&deal.status)))
-        } else {
-            None
-        };
+        // Keep human-readable status when amount is present (amount beside status).
+        let stamp_owned: Option<(String, &'static str)> =
+            match (!amount.is_empty(), !deal.status.is_empty()) {
+                (true, true) => Some((
+                    format!("{} · {}", deal.status, amount),
+                    status_dot_cls(&deal.status),
+                )),
+                (true, false) => Some((amount, "")),
+                (false, true) => Some((deal.status.clone(), status_dot_cls(&deal.status))),
+                (false, false) => None,
+            };
+        let stamp = stamp_owned
+            .as_ref()
+            .map(|(text, cls)| (text.as_str(), *cls));
         group.pack_start(
             &domain_row(
                 status_dot_cls(&deal.status),
@@ -854,7 +868,12 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
     for bucket in BUCKET_ORDER {
+        if remaining == 0 {
+            break;
+        }
         let rows: Vec<_> = all
             .iter()
             .filter(|t| status_bucket(&t.status) == bucket)
@@ -864,7 +883,8 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
         }
         bucket_title(content, bucket);
         let group = group_box();
-        for task in rows.iter().take(MAX_ROWS) {
+        let take_n = remaining.min(rows.len());
+        for task in rows.iter().take(take_n) {
             group.pack_start(
                 &domain_row(
                     status_dot_cls(&task.status),
@@ -877,6 +897,7 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
                 0,
             );
         }
+        remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
 }
@@ -942,7 +963,12 @@ fn render_linear(
         false,
         0,
     );
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
     for bucket in BUCKET_ORDER {
+        if remaining == 0 {
+            break;
+        }
         let rows: Vec<_> = all
             .iter()
             .filter(|i| status_bucket(&i.status) == bucket)
@@ -952,7 +978,8 @@ fn render_linear(
         }
         bucket_title(content, bucket);
         let group = group_box();
-        for issue in rows.iter().take(MAX_ROWS) {
+        let take_n = remaining.min(rows.len());
+        for issue in rows.iter().take(take_n) {
             let meta = match (&issue.project, issue.meta.is_empty()) {
                 (Some(p), false) => format!("{p} · {}", issue.meta),
                 (Some(p), true) => p.clone(),
@@ -986,6 +1013,7 @@ fn render_linear(
             }
             group.pack_start(&row_btn, false, false, 0);
         }
+        remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
 }
