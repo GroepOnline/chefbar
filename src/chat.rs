@@ -173,7 +173,10 @@ pub fn list_targets(ops: &OpsSnapshot) -> Vec<ChatTarget> {
 /// Nooit jcode, nooit stiekem de visual ChefApp-lane, nooit auto-Cursor.
 pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String> {
     if let Some(pin) = pinned.map(str::trim).filter(|s| !s.is_empty()) {
-        if ops.agents.iter().any(|a| agent_id(a) == pin && is_picker_eligible(a))
+        if ops
+            .agents
+            .iter()
+            .any(|a| agent_id(a) == pin && is_picker_eligible(a))
             || env_target().as_deref() == Some(pin)
         {
             return Some(pin.to_string());

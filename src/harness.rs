@@ -773,7 +773,10 @@ mod tests {
             HarnessKind::from_alias("control").map(|k| k.id()),
             Some("control")
         );
-        assert_eq!(HarnessKind::from_alias("chat").map(|k| k.id()), Some("control"));
+        assert_eq!(
+            HarnessKind::from_alias("chat").map(|k| k.id()),
+            Some("control")
+        );
         assert!(HarnessKind::from_alias("pane-99").is_none());
     }
 
