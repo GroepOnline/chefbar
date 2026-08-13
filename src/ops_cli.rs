@@ -71,9 +71,10 @@ pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
             }
             run_herdr(&herdr_focus_args(target))
         }
-        Err(ApiError::Blocked(_)) | Err(ApiError::Http(_, _)) | Err(ApiError::Transport(_)) => {
-            run_herdr(&herdr_focus_args(target))
-        }
+        Err(ApiError::Blocked(_))
+        | Err(ApiError::Http(_, _))
+        | Err(ApiError::Transport(_))
+        | Err(ApiError::Decode(_)) => run_herdr(&herdr_focus_args(target)),
     }
 }
 
