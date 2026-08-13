@@ -99,6 +99,7 @@ pub enum ApiError {
     Blocked(String),
     Http(u16, String),
     Transport(String),
+    Decode(String),
 }
 
 impl ApiError {
@@ -108,6 +109,7 @@ impl ApiError {
             ApiError::Http(code, _) => code.to_string(),
             ApiError::Blocked(_) => "geblokkeerd".to_string(),
             ApiError::Transport(_) => "offline".to_string(),
+            ApiError::Decode(_) => "decode".to_string(),
         }
     }
 }
@@ -124,6 +126,7 @@ impl std::fmt::Display for ApiError {
             ApiError::Blocked(msg) => write!(f, "geblokkeerd: {msg}"),
             ApiError::Http(code, detail) => write!(f, "HTTP {code}: {detail}"),
             ApiError::Transport(msg) => write!(f, "{msg}"),
+            ApiError::Decode(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -132,7 +135,7 @@ fn run(response: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Valu
     match response {
         Ok(resp) => resp
             .into_json()
-            .map_err(|err| ApiError::Transport(format!("JSON-parse faalde: {err}"))),
+            .map_err(|err| ApiError::Decode(format!("JSON-parse faalde: {err}"))),
         Err(ureq::Error::Status(code, resp)) => {
             let body = resp.into_string().unwrap_or_default();
             let detail = body.chars().take(200).collect::<String>();
@@ -155,6 +158,10 @@ mod tests {
         assert_eq!(
             ApiError::Transport("boom".into()).statuslijn_chip(),
             "offline"
+        );
+        assert_eq!(
+            ApiError::Decode("JSON-parse faalde".into()).statuslijn_chip(),
+            "decode"
         );
         assert_eq!(
             ApiError::Blocked("cf".into()).statuslijn_chip(),
