@@ -92,7 +92,11 @@ fn kind_of(agent: &HerdrAgent) -> String {
 }
 
 fn is_jcode(agent: &HerdrAgent) -> bool {
-    let hay = format!("{} {} {}", agent.name, agent.workspace, agent.cwd).to_lowercase();
+    let hay = format!(
+        "{} {} {} {} {}",
+        agent.name, agent.workspace, agent.cwd, agent.alias, agent.pane_id
+    )
+    .to_lowercase();
     hay.contains("jcode")
 }
 
@@ -500,6 +504,13 @@ mod tests {
                 "idle",
                 "/var/lib/chef-jcode-memory/home",
             )],
+        };
+        assert!(list_targets(&ops).is_empty());
+        assert_eq!(resolve_target(&ops, None), None);
+
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![agent_met_alias("jcode", "w9:p2", "/tmp/ops-lane")],
         };
         assert!(list_targets(&ops).is_empty());
         assert_eq!(resolve_target(&ops, None), None);
