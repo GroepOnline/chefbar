@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-tray-ipc",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add chef-hud.sock for Alt+Space.",
+      "expected_output": "Refuse second socket; extend parse_command on chefbar.sock.",
+      "expectations": [
+        "Keeps a single chefbar.sock",
+        "Suggests UiCommand / parse_command"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Doctor should print the vault token so we can paste it.",
+      "expected_output": "Refuse; sha256[:12] only.",
+      "expectations": [
+        "Forbids token print",
+        "Mentions fingerprint or sha256"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Keep --bar working for Super+Space.",
+      "expected_output": "main.rs --bar alias to ipc bar; parse_command bar -> ShowPanel.",
+      "expectations": [
+        "Mentions --bar or parse_command bar",
+        "Does not require a second process"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Update a gtk::Label from the ksni tray thread.",
+      "expected_output": "Refuse; send UiCommand, GTK drains the bridge.",
+      "expectations": [
+        "Forbids GTK from tray thread",
+        "Names UiCommand"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Doctor exit 3 for TLS failure.",
+      "expected_output": "Only 0/1/2; map TLS to 2.",
+      "expectations": [
+        "Keeps exit 0/1/2",
+        "Mentions doctor.rs"
+      ]
+    }
+  ]
+}

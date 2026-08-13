@@ -1,81 +1,84 @@
 ---
 name: chefbar-rust
-description: ChefBar-specific Rust skill for this crate. Use when writing, reviewing, refactoring, or testing Rust in chefbar. Overrides generic rust-patterns/rust-testing/rust-best-practices on tokio, async, mockall, extra crates, and laptop toolchain. Use for clippy -D warnings, ownership across Snapshot/GTK, and inline #[cfg(test)] modules.
+description: ChefBar Rust skill for this crate only. Use when writing, reviewing, refactoring, or testing Rust in chefbar; when clippy -D warnings fail; when ownership crosses Snapshot and GTK; when something suggests tokio, async, reqwest, mockall, or unwrap outside tests. Overrides rust-patterns, rust-testing, and rust-best-practices on stack and concurrency. Covers Cargo.toml gtk 0.18 ksni ureq clap, inline cfg(test) modules, exhaustive RunSpec matches.
 ---
 
 # ChefBar Rust
 
-Generic skills in `.agents/skills/` (`rust-best-practices`, `rust-patterns`, `rust-testing`) are useful for ownership and `Result`. This skill **wins** on stack, tests, and concurrency.
+Ecosysteem-skills in `.agents/skills/` (`rust-best-practices`, `rust-patterns`, `rust-testing`) mogen ownership en `Result` leren. **Deze skill wint** op stack, tests, en concurrency.
 
-## Stack (do not expand casually)
+## Instructions
 
-`gtk 0.18` (v3_24), `ksni 0.2`, `ureq 2` (`json`, redirects 0), `clap 4`, `url 2`, `serde`/`serde_json`, `dirs`, `sha2`, `libc`, `pango`, `gdk`. Edition 2021. Release: `lto = true`, `strip = true`.
+1. Read `Cargo.toml`. If the change needs a crate that is not already there, stop and justify it in the plan — default is **no new crate**.
+2. Keep the process two-world: actor thread (`state.rs`, blocking ureq) and GTK thread (widgets, `Rc`/`RefCell`). `Snapshot` crosses via `Arc<RwLock<_>>`. Widgets are not `Send`.
+3. Prefer `&str` / `&[T]` / borrowed snapshot fields. Clone at the GTK/snapshot boundary when you must own a row for a widget, not in a ranking loop.
+4. Fallible work returns `Result`. Vault/ops JSON is tolerant (`Option`/`unwrap_or_default`), never `unwrap` on parse in production.
+5. Match `RunSpec`, `UiCommand`, `HarnessKind`, `HarnessGroup`, `ActorCommand`, `DomainStatus` exhaustively. A `_` arm hides the next domain.
+6. Tests go in `#[cfg(test)]` in the same file as the code. Name them after behavior (`coalesce_toasts_caps_one_per_cycle`), not methods.
+7. Before handing off: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --all-targets` in this cloud agent or CI. Never tell the laptop `joep` to install rustup.
 
-Do **not** add: tokio, async-std, reqwest, hyper, thiserror, anyhow, mockall, proptest, rstest, criterion, gtk4, relm4, tauri, wry.
+### Allowed stack
 
-## Concurrency
+`gtk 0.18` (feature `v3_24`), `ksni 0.2`, `ureq 2` (`json`), `clap 4`, `url 2`, `serde`/`serde_json`, `dirs`, `sha2`, `libc`, `pango`, `gdk`. Edition 2021. Release: `lto`, `strip`.
 
-The process is two worlds:
+### Forbidden unless the user explicitly changes Cargo.toml
 
-1. **Actor thread** — `state.rs`, blocking `ureq`, publishes into `Arc<RwLock<Snapshot>>`.
-2. **GTK main thread** — panel/tray bridge. Talks to the actor via `mpsc` (`ActorCommand`, `UiCommand`).
+tokio, async-std, reqwest, hyper, thiserror, anyhow, mockall, proptest, rstest, criterion, gtk4, relm4, tauri, wry, WebKit.
 
-GTK types are not `Send`. Do not move widgets onto the actor. Do not take a write-lock on `Snapshot` on the UI thread for long; clone the small bits you need.
+`ureq` must keep `redirects(0)` — bearers never follow 302.
 
-`Arc<Mutex<…>>` is already used for tray bits. Prefer existing `Shared` over a new lock.
+### Concurrency that already exists (do not “clean up”)
 
-## Errors and parsing
+- `Poller::fetch_all` / `fanout` spawn short GET threads inside an 8s budget. That is not a second actor.
+- `Executor::spawn_bg` is one-shot. Do not turn it into `loop { sleep; poll }`.
+- Tray has its own ksni thread and only sends `UiCommand`.
 
-- Network: `http::ApiError`, never unwrap.
-- Config/JSON: degrade to defaults (`models.rs` comment: tolerant parse, never panic).
-- CLI: clap + explicit `process::exit` codes (doctor 0/1/2, ipc unknown = 2).
+## Examples
 
-## Tests
+**Example 1 — clippy redundant_clone**
 
-Existing tests are **inline** `#[cfg(test)]` in the module under test (`actions`, `config`, `palette`, `models`, `motion`, `harness`, `ipc`, `policy`, `sessions`, `panel_state`, …).
+Input: clone of `String` in `rank_actions_with`
 
-Keep that pattern:
+Output: rank by index/`&Action`, clone only the `take(limit)` winners (already the pattern). Do not collect owned `Action` before sort.
 
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
+**Example 2 — rust-testing says add mockall**
 
-    #[test]
-    fn coalesce_toasts_caps_one_per_cycle() {
-        // behavior name, not method name
-    }
-}
-```
+Input: “unit-test Executor::run without HTTP”
 
-Ignore `rust-testing` advice about `tests/`, tokio::test, mockall, proptest, and 80% llvm-cov gates unless the user asks to introduce them.
+Output: extract a tiny function that builds the `json!` body and assert on that; or test `RunSpec` construction. Do not add mockall. Do not hit the network.
 
-Helpers: build small `Snapshot` / `EndpointProfile` fixtures in the test module. Do not hit the network.
+**Example 3 — unwrap in doctor**
 
-## Clippy / fmt
+Input: parse fingerprint
 
-CI: `cargo fmt --all -- --check` and `cargo clippy --all-targets -- -D warnings`. Match that locally in this cloud environment.
+Output: `sha2` digest → hex truncate 12. On missing token, skip with a warn line, do not `expect`.
 
-Prefer `#[expect(clippy::lint)]` with a reason over silent `#[allow]`.
+## Performance Notes
 
-## Exhaustiveness
+- Palette ranking is O(actions × needle). Keep haystack formatting cheap; do not clone `RunSpec` unless returning winners.
+- Snapshot write-lock is held only while swapping the new struct. UI takes a short read-lock and clones the rows it paints.
+- Clippy `perf` lints are CI-blocking because `-D warnings`.
+- Ignore ecosysteem chapters on llvm-cov 80% gates and tokio::test.
 
-When matching `RunSpec`, `UiCommand`, `HarnessKind`, `HarnessGroup`, `ActorCommand`, `DomainStatus`, list every variant. A `_` arm hides the next domain.
+## Troubleshooting
 
-## Toolchain
-
-| Where | cargo |
+| Symptom | Fix |
 | --- | --- |
-| This cloud agent | yes (`/usr/local/cargo`) |
-| CI self-hosted runner | yes |
-| Laptop `joep` | **no** — stubs, see `CONTRIBUTING.md` |
+| `cannot Send gtk::Label` | work stayed on GTK thread; send `UiCommand` instead |
+| clippy fail in CI, pass local | CI uses `-D warnings`; run the same flags |
+| agent added tokio “for linear poll” | point at `LINEAR_POLL_MS`; revert Cargo.toml |
+| laptop user asks for rustup | `CONTRIBUTING.md` — runner / this cloud agent only |
 
-Never instruct `rustup` on the laptop.
+## Invariants to paste
 
-## Review checklist
+See [references/invariants.md](references/invariants.md). Short form:
 
-- No new thread that polls
-- No clone in a hot GTK rebuild unless owned data is required
-- No `unwrap` outside tests
-- Keywords on new actions include harness prefixes
-- Dutch module docs, English identifiers
+- `Cargo.toml` allowed stack only. Clippy `-D warnings`. Inline `#[cfg(test)]`.
+- Exhaustive `RunSpec` / `UiCommand` / `HarnessKind`. No `unwrap` in production.
+- No tokio, reqwest, webview, Electron, mockall, or proptest.
+
+## Next
+
+Actor/snapshot → `chefbar-actor`. GTK types → `chefbar-gtk-panel`. Review diff → agent `chefbar-rust-core`.
+
+Copy [references/invariants.md](references/invariants.md) into worker prompts. No tokio, reqwest, webview, or Electron unless the user explicitly changes `Cargo.toml`.

@@ -242,6 +242,12 @@ Cursor-agents in deze repo krijgen ChefBar-eigen skills, file-disjoint subagents
 
 Rust-skills uit het ecosysteem (`rust-best-practices`, `rust-patterns`, `rust-testing`) staan onder `.agents/skills/`. ChefBar blijft **sync** (geen tokio): de lokale skill `chefbar-rust` wint.
 
+Harness-score (deterministisch):
+
+```bash
+node scripts/agent-bench.mjs
+```
+
 ## Licentie
 
 MIT. Zie `Cargo.toml`.

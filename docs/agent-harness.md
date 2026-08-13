@@ -36,11 +36,18 @@ Bijwerken: `npx skills update -p -y`. Lockfile: [`skills-lock.json`](../skills-l
 | Skill | Pad |
 | --- | --- |
 | chefbar-architecture | `.cursor/skills/chefbar-architecture/` |
+| chefbar-actor | `.cursor/skills/chefbar-actor/` |
 | chefbar-rust | `.cursor/skills/chefbar-rust/` |
 | chefbar-gtk-panel | `.cursor/skills/chefbar-gtk-panel/` |
+| chefbar-tray-ipc | `.cursor/skills/chefbar-tray-ipc/` |
 | chefbar-policy-http | `.cursor/skills/chefbar-policy-http/` |
+| chefbar-actions-palette | `.cursor/skills/chefbar-actions-palette/` |
 | chefbar-kater | `.cursor/skills/chefbar-kater/` |
+| chefbar-qa | `.cursor/skills/chefbar-qa/` |
+| chefbar-bench | `.cursor/skills/chefbar-bench/` |
 | chefbar-graph-loop | `.cursor/skills/chefbar-graph-loop/` |
+
+Elke ChefBar-skill heeft `evals/evals.json` (≥3 cases) en `evals/triggers.json`. Agents in `.cursor/agents/` zijn volledige playbooks (owns, playbook, output, handoff, anti-patterns, definition of done).
 
 ## Workers
 
@@ -71,6 +78,18 @@ Machine-map: `.cursor/skills/chefbar-graph-loop/references/graph.yaml`.
 Named chains: `feature`, `bugfix`, `review`, `ci-red`, `kater-ops`, `docs-only`.
 
 Slash: `/chefbar-graph`, `/chefbar-review`, `/find-skills`, `/chefbar-new-skill`.
+
+## Benchmark
+
+Deterministisch, geen LLM, geen netwerk:
+
+```bash
+node scripts/agent-bench.mjs
+```
+
+Scoort structure (frontmatter/secties/evals), graph-pairing, routing-corpus (`.cursor/evals/routing.json`, drempel 0.75), Cargo-verboden crates, GTK3-CSS-bans in `src/css.rs`. Rapport: `.cursor/evals/last-report.json` (gitignored). CI draait dezelfde stap.
+
+Nieuwe skill of worker: beschrijving 120–1024 tekens met unieke bestandsnamen/constanten, evals ≥3, triggers-termen in de **description**, daarna de bench groen.
 
 ## Kater-koppeling
 

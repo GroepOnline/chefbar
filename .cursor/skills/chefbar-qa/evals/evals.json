@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-qa",
+  "evals": [
+    {
+      "id": "clippy-d",
+      "prompt": "Welke clippy-vlag is verplicht in CI?",
+      "expected_output": "cargo clippy --all-targets -- -D warnings",
+      "expectations": [
+        {"name": "d", "text": "-D warnings"},
+        {"name": "clippy", "text": "clippy"}
+      ]
+    },
+    {
+      "id": "visual-shot",
+      "prompt": "Waar mag visual-shot PNG schrijven?",
+      "expected_output": "Onder docs/, niet als nieuwe PNG in de repo-root.",
+      "expectations": [
+        {"name": "script", "text": "visual-shot"},
+        {"name": "docs", "text": "docs/"}
+      ]
+    },
+    {
+      "id": "bench",
+      "prompt": "Hoe draai je de agent-benchmark?",
+      "expected_output": "node scripts/agent-bench.mjs",
+      "expectations": [
+        {"name": "cmd", "text": "agent-bench.mjs"},
+        {"name": "node", "text": "node"}
+      ]
+    },
+    {
+      "id": "xvfb-skip",
+      "prompt": "visual-shot exit 2 op CI",
+      "expected_output": "X-stack ontbreekt; warning-only skip, geen productbug.",
+      "expectations": [
+        {"name": "exit", "text": "exit 2"},
+        {"name": "warn", "text": "warning-only"}
+      ]
+    },
+    {
+      "id": "laptop",
+      "prompt": "clippy faalt op laptop joep omdat rustc ontbreekt",
+      "expected_output": "Verwacht. Geen rustup; gates op cloud/CI.",
+      "expectations": [
+        {"name": "joep", "text": "joep"},
+        {"name": "rustup", "text": "rustup"}
+      ]
+    }
+  ]
+}

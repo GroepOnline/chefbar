@@ -1,63 +1,93 @@
 ---
 name: chefbar-kater
-description: ChefBar ↔ Kater coupling — MCP chains, adapters, profiles, PR health chain, and the in-app Kater poll. Use when touching Kater status in ChefBar, sessions attach, ops CLI, or when orchestrating workers via Kater chains/adapters. Also use before a PR when Kater profile code/ops is available.
+description: ChefBar Kater skill for MCP kater_chains, kater_adapters, kater_doctor, kater_profiles, pr_health on profile code and ops, and in-app KATER_POLL_MS poll in state.rs. Use when coupling ChefBar to Kater, debugging katerWorkspace, session katerSessionId attach in sessions.rs, ops_cli.rs, or before a PR health check across GitHub Linear Sentry. Use when empty chains on core/cloud should fall back to chefbar-graph-loop.
 ---
 
 # ChefBar × Kater
 
-ChefBar **talks to** Kater; it does not replace the gateway. Poll Kater from the existing actor only.
+ChefBar talks to Kater. It does not replace the gateway. App poll stays on the one actor.
 
-## In-app poll
+## Instructions
 
-`src/state.rs`: `KATER_POLL_MS = 30_000`. `fetch_kater` uses `katerWorkspace` from the profile, strips a trailing `/agents/`, then tries `/api/status` and `/status`. Result → `build_kater_status` on `Snapshot`. Missing profile → skip, no extra thread.
+### In-app
 
-Sessions: `src/sessions.rs` prefers `katerSessionId` for attach when present.
+1. `KATER_POLL_MS = 30_000` in `src/state.rs`. `fetch_kater` uses profile `katerWorkspace`, strips trailing `/agents/`, tries `/api/status` then `/status`.
+2. Result → `build_kater_status` on `Snapshot.kater_status`. Missing profile → skip (no extra thread).
+3. Sessions: `src/sessions.rs` prefers `katerSessionId` for attach when present.
+4. Actions: `OpenUrl` to the workspace. No embedded gateway, no second poll.
 
-## MCP (this Cursor session)
+### MCP (Cursor)
 
-Server id: `Kater` (capital K). Tools:
+Server id **`Kater`** (capital K). Call `GetMcpTools` before `CallMcpTool`.
 
 | Tool | Use |
 | --- | --- |
-| `kater_profiles` | List profiles (`cloud`, `code`, `content`, `core`, `docs`, `email`, `image`, `ops`, `reasoning`, `research`, `utils`, `web`) |
-| `kater_doctor` | Gateway health for a profile |
-| `kater_chains` | Named step lists (profile-scoped) |
-| `kater_adapters` | MCP adapters + missing env + risk |
-| `kater_config` | Rendered profile config |
-| `kater_pr_list` / `kater_pr_status` / `kater_pr_gate` / `kater_pr_policy` / `kater_pr_audit` | PR gate (read) |
-| `kater_pr_merge` | Write — only if the user explicitly asks to merge |
+| `kater_profiles` | `cloud`, `code`, `content`, `core`, `docs`, `email`, `image`, `ops`, `reasoning`, `research`, `utils`, `web` |
+| `kater_doctor` | gateway health |
+| `kater_chains` | named steps, profile-scoped |
+| `kater_adapters` | configured / missing_env / risk |
+| `kater_config` | rendered config |
+| `kater_pr_*` | list/status/gate/policy/audit (read) |
+| `kater_pr_merge` | write — only if the user asked, with expected head SHA |
 
-Always `GetMcpTools` for schema before `CallMcpTool`.
+### Live chain
 
-## Live chains (discovered)
+`pr_health` on **code** and **ops**: `github_pr_status` → `linear_issue_status` → `sentry_issue_search`.
 
-Profile `code` and `ops` currently expose:
+`core` / `cloud` / `reasoning` often return `chains: []`. That is normal. Use local `chefbar-graph-loop`, do not invent tool names.
 
-**`pr_health`** — `github_pr_status` → `linear_issue_status` → `sentry_issue_search`
+### Adapters
 
-Profiles `core`, `cloud`, `reasoning` may return `chains: []`. Empty means: use the **local** ChefBar graph in `chefbar-graph-loop`, do not invent remote steps.
+- code: github (high), sqlite, filesystem, context7, deepwiki
+- ops: github, linear, sentry, cloudflare; upstash/postgres/notion often `configured: false`
 
-## Adapters (discovered)
+Skip unconfigured adapters. Log **variable names** from `missing_env`, never values.
 
-- **code:** github (high), sqlite, filesystem, context7, deepwiki
-- **ops:** github, linear, sentry, cloudflare; upstash/postgres/notion often unconfigured (`missing_env`)
+## Examples
 
-Skip adapters with `configured: false`. Do not print secret values from `missing_env` names beyond the variable name.
+**Example 1 — empty chains**
 
-## Coupling rules
+Input: `kater_chains` profile `core` → `[]`
 
-1. App-side Kater traffic stays on the actor + policy client.
-2. Agent-side Kater traffic stays on MCP tools — do not scrape `kater.chefgroep.online` in a second scrape-loop.
-3. Before opening/updating a PR, the orchestrator may run chain `pr_health` on profile `code` or `ops`.
-4. `kater_pr_merge` is user-gated. Default is report, not merge.
-5. High-risk adapters (github, cloudflare) are for the task at hand, not inventory dumps into chat.
+Output: say empty; run local graph (`feature` / `review`). Do not fake `github_pr_status` on core.
 
-## When implementing ChefBar features for Kater
+**Example 2 — merge**
 
-- Status cards: `models::build_kater_status` + harness kind `Kater`
-- Actions: `OpenUrl` to `katerWorkspace`, no embedded gateway
-- Doctor: domain probe already in `doctor.rs`
+Input: “merge the PR”
+
+Output: only with explicit user intent + `kater_pr_gate` PASS + expected SHA. Default is report.
+
+**Example 3 — status card**
+
+Input: show gateway online in Health/Kater room
+
+Output: `kater_status` from actor poll + harness kind `Kater`. MCP is for the coding agent, not for the GTK main loop.
+
+## Performance Notes
+
+- 30s tick is enough for a status card. Do not drop it to 2s.
+- MCP chains are sequential tools; do not also scrape `kater.chefgroep.online` in a browser loop.
+- High-risk adapters (github, cloudflare) are for the current task, not inventory dumps.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Snapshot kater empty | profile field unset or policy blocked host |
+| MCP server `kater` 404 | use server `Kater` |
+| pr_health missing | wrong profile — use `code` or `ops` |
+| Agent scrape-loop | stop; actor + MCP only |
+
+## Invariants to paste
+
+See [references/invariants.md](references/invariants.md). Short form:
+
+- MCP server id `Kater`. `pr_health` on `code`/`ops`. Empty other profiles → local graph.
+- App poll stays in `state.rs` (actor). This skill writes `sessions.rs` / `ops_cli.rs`.
+- No `kater_pr_merge` unless asked. No tokio, reqwest, webview, Electron, or scrape-loop.
 
 ## Next
 
-Multi-worker implementation → `chefbar-graph-loop` (local graph + this MCP chain as an edge).
+Orchestrate workers after `pr_health` → `chefbar-graph-loop`. Poll implementation → `chefbar-actor`.
+
+Copy [references/invariants.md](references/invariants.md) into worker prompts. No tokio, reqwest, webview, Electron, or invented MCP tool names when `chains: []`.

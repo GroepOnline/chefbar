@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-bench",
+  "evals": [
+    {
+      "id": "command",
+      "prompt": "Hoe draai je de agent-bench?",
+      "expected_output": "node scripts/agent-bench.mjs",
+      "expectations": [
+        {"name": "script", "text": "agent-bench.mjs"},
+        {"name": "routing", "text": "routing.json"}
+      ]
+    },
+    {
+      "id": "min-routing",
+      "prompt": "Wat is de default routing-drempel?",
+      "expected_output": "0.75 via --min-routing",
+      "expectations": [
+        {"name": "flag", "text": "--min-routing"},
+        {"name": "default", "text": "0.75"}
+      ]
+    },
+    {
+      "id": "no-llm",
+      "prompt": "Mag de bench een LLM aanroepen?",
+      "expected_output": "Nee. Deterministisch, geen netwerk.",
+      "expectations": [
+        {"name": "det", "text": "Deterministic"},
+        {"name": "llm", "text": "LLM"}
+      ]
+    },
+    {
+      "id": "css-scan",
+      "prompt": "Wat scant de bench in css.rs?",
+      "expected_output": "GTK3-bans: gap, inset, CSS custom properties.",
+      "expectations": [
+        {"name": "gap", "text": "gap"},
+        {"name": "css", "text": "css.rs"}
+      ]
+    },
+    {
+      "id": "pairing",
+      "prompt": "Welke skill hoort bij chefbar-actor in de bench?",
+      "expected_output": "chefbar-actor (niet architecture).",
+      "expectations": [
+        {"name": "pair", "text": "chefbar-actor"},
+        {"name": "graph", "text": "graph.yaml"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-graph-loop",
+  "evals": [
+    {
+      "id": "qa-converge-cap",
+      "prompt": "QA faalt twee keer. Hoe vaak mag je opnieuw?",
+      "expected_output": "qa-converge max 3 loops, daarna stoppen.",
+      "expectations": [
+        {"name": "cap", "text": "max 3"},
+        {"name": "name", "text": "qa-converge"}
+      ]
+    },
+    {
+      "id": "disjoint",
+      "prompt": "Mogen actor en gtk-panel parallel?",
+      "expected_output": "Ja als files disjoint zijn (state.rs vs panel/).",
+      "expectations": [
+        {"name": "disjoint", "text": "file-disjoint"},
+        {"name": "files", "text": "state.rs"}
+      ]
+    },
+    {
+      "id": "no-second-actor",
+      "prompt": "Moet de graph-loop een extra thread in state.rs starten?",
+      "expected_output": "Nee. Workers zijn agents, niet een tweede poll-actor.",
+      "expectations": [
+        {"name": "actor", "text": "poll-actor"},
+        {"name": "orch", "text": "orchestrator"}
+      ]
+    },
+    {
+      "id": "chains",
+      "prompt": "Welke chain voor een nieuwe feature over twee modules?",
+      "expected_output": "feature: architect → parallel domain workers → rust-core → qa.",
+      "expectations": [
+        {"name": "chain", "text": "feature"},
+        {"name": "parallel", "text": "file-disjoint"}
+      ]
+    },
+    {
+      "id": "empty-kater",
+      "prompt": "kater_chains op core is leeg. Stoppen?",
+      "expected_output": "Nee. Lege core/cloud/reasoning is normaal; val terug op de lokale graph.",
+      "expectations": [
+        {"name": "fallback", "text": "local graph"},
+        {"name": "empty", "text": "chains"}
+      ]
+    }
+  ]
+}

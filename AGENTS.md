@@ -27,11 +27,16 @@ Dit bestand is de ingang voor agents. Skills, subagents, chains en graph-loops s
 | Skill | Wanneer |
 | --- | --- |
 | `chefbar-architecture` | Nieuwe domeinen, snapshot-vorm, harnassen, “waar hoort dit?” |
+| `chefbar-actor` | Poll-actor: `state.rs`, `models.rs`, ritme, last-good, `coalesce_toasts` |
 | `chefbar-rust` | Rust schrijven/reviewen in *deze* crate (overrides ecosysteem-async) |
 | `chefbar-gtk-panel` | Panel, overlay, drawer, CSS, motion, density |
+| `chefbar-tray-ipc` | Tray, `chefbar.sock`, doctor, notify/quiet/mutes |
 | `chefbar-policy-http` | `policy`, `http`, `auth`, `config`, doctor-probes |
-| `chefbar-kater` | Kater MCP-koppeling, chains/adapters, ChefBar↔Kater poll |
-| `chefbar-graph-loop` | Multi-worker: chains, fan-out, graph-loops tot CI groen |
+| `chefbar-actions-palette` | `RunSpec`, `Executor`, ranking 1000/700/500, harness-prefixes |
+| `chefbar-kater` | Kater MCP-koppeling, chains/adapters, ChefBar↔Kater poll-vorm |
+| `chefbar-qa` | fmt/clippy/test, visual-shot, CI |
+| `chefbar-bench` | `node scripts/agent-bench.mjs`, routing.json, harness-score |
+| `chefbar-graph-loop` | Multi-worker: chains, fan-out, qa-converge tot CI groen |
 
 ### Ecosysteem (`.agents/skills/`, lockfile `skills-lock.json`)
 
@@ -74,9 +79,10 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 shellcheck install.sh scripts/*.sh
+node scripts/agent-bench.mjs
 ```
 
-CI: `.github/workflows/ci.yml` op `[self-hosted, Linux, X64, company-control]`. Visual shots (`scripts/visual-shot.sh`) zijn warning-only.
+CI: `.github/workflows/ci.yml` op `[self-hosted, Linux, X64, company-control]`. Visual shots (`scripts/visual-shot.sh`) zijn warning-only. Agent-bench is deterministisch (geen LLM, geen netwerk) en faalt bij structure/invariants of routing < 0.75.
 
 ## Commits
 

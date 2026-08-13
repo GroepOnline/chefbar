@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "chains",
+      "prompt": "kater_chains",
+      "must_match_description": ["kater_chains", "pr_health"]
+    },
+    {
+      "id": "poll",
+      "prompt": "KATER_POLL_MS",
+      "must_match_description": ["KATER_POLL_MS", "state.rs"]
+    },
+    {
+      "id": "session",
+      "prompt": "katerSessionId",
+      "must_match_description": ["katerSessionId", "sessions.rs"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "css",
+      "prompt": "drawer padding",
+      "must_not_all_match": ["drawer.rs", "860x880"]
+    }
+  ]
+}

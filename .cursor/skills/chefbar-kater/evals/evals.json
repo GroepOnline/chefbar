@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-kater",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Poll Kater every 500ms from a GTK timeout.",
+      "expected_output": "Refuse; KATER_POLL_MS on the actor only.",
+      "expectations": [
+        "Names KATER_POLL_MS or state.rs",
+        "Forbids GTK poll of Kater"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "core profile returned no chains. Invent a deploy chain.",
+      "expected_output": "Do not invent; fall back to chefbar-graph-loop.",
+      "expectations": [
+        "Treats empty chains as normal",
+        "Names chefbar-graph-loop or local graph"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Run pr_health before updating the PR.",
+      "expected_output": "kater_chains profile code or ops; GitHub then Linear then Sentry; readonly.",
+      "expectations": [
+        "Uses code or ops profile",
+        "Does not call kater_pr_merge unless asked"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Merge the PR because pr_health is green.",
+      "expected_output": "No kater_pr_merge unless the user asked + expected SHA.",
+      "expectations": [
+        "Requires explicit merge ask",
+        "Mentions expected SHA or gate"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "MCP server id is kater lowercase.",
+      "expected_output": "Use Kater (capital K).",
+      "expectations": [
+        "Names server Kater",
+        "Does not use lowercase-only id"
+      ]
+    }
+  ]
+}

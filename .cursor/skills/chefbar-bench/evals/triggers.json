@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    {
+      "id": "bench-cmd",
+      "prompt": "agent-bench.mjs routing.json faalt",
+      "must_match_description": ["agent-bench.mjs", "routing.json"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "not-http",
+      "prompt": "ureq redirects(0) in http.rs",
+      "must_not_all_match": ["ureq", "redirects(0)", "http.rs"]
+    }
+  ]
+}

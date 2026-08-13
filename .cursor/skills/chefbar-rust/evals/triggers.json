@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "clippy",
+      "prompt": "clippy fail",
+      "must_match_description": ["clippy", "-D warnings"]
+    },
+    {
+      "id": "tokio",
+      "prompt": "tokio toevoegen",
+      "must_match_description": ["tokio", "unwrap"]
+    },
+    {
+      "id": "cargo",
+      "prompt": "nieuwe crate",
+      "must_match_description": ["Cargo.toml", "ureq"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "css-only",
+      "prompt": "css gap",
+      "must_not_all_match": ["drawer", "860"]
+    }
+  ]
+}

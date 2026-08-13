@@ -5,6 +5,7 @@ description: File-disjoint workers, Kater MCP edges, QA-converge loop.
 nodes:
   - id: orchestrator
     agent: chefbar-orchestrator
+    skill: chefbar-graph-loop
     writes: []
   - id: architect
     agent: chefbar-architect
@@ -16,7 +17,7 @@ nodes:
     writes: [diff-nits]
   - id: actor
     agent: chefbar-actor
-    skill: chefbar-architecture
+    skill: chefbar-actor
     writes: [src/state.rs, src/models.rs]
   - id: gtk-panel
     agent: chefbar-gtk-panel
@@ -24,6 +25,7 @@ nodes:
     writes: [src/panel/, src/css.rs, src/motion.rs, src/panel_state.rs]
   - id: tray-ipc
     agent: chefbar-tray-ipc
+    skill: chefbar-tray-ipc
     writes: [src/tray.rs, src/ipc.rs, src/notify.rs, src/quiet.rs, src/mutes.rs, src/doctor.rs, src/log.rs]
   - id: policy-http
     agent: chefbar-policy-http
@@ -31,9 +33,11 @@ nodes:
     writes: [src/policy.rs, src/http.rs, src/auth.rs, src/config.rs]
   - id: actions-palette
     agent: chefbar-actions-palette
+    skill: chefbar-actions-palette
     writes: [src/actions.rs, src/palette.rs, src/aliases.rs, src/frecency.rs, src/harness.rs]
   - id: qa
     agent: chefbar-qa
+    skill: chefbar-qa
     writes: [scripts/, .github/workflows/, inline-tests-in-touched-modules]
   - id: kater
     agent: chefbar-kater

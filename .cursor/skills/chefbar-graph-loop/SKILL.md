@@ -1,87 +1,117 @@
 ---
 name: chefbar-graph-loop
-description: ChefBar multi-agent orchestration — file-disjoint workers, Kater MCP chains, and graph loops until gates pass. Use for features spanning modules, bugfix loops, PR review fan-in, CI red loops, or when the user asks for chains, subagents, workers, graph loops, or parallel lanes. Do not implement the whole change in the parent when this skill applies.
+description: >-
+  ChefBar graph-loop: file-disjoint workers, orchestrator dispatch, architect plan,
+  parallel domain workers, chefbar-rust-core, chefbar-qa, then qa-converge max 3.
+  Machine graph at graph.yaml. Optional Kater MCP pr_health chain after local
+  converge. Use when the user asks for a graph loop, multi-agent run, sequential
+  workers, or how to dispatch without a second poll-actor.
 ---
 
-# ChefBar graph loop
+# ChefBar graph-loop
 
-Parent agents **orchestrate**. Domain workers **write**. The architect **does not** land product diffs. Max three QA-converge iterations unless the user raises the cap.
+This skill is the **SSOT** for multi-worker runs. Ecosysteem `continuous-agent-loop` is generic; ignore its poll/tokio chapters.
 
-Read [`references/graph.yaml`](references/graph.yaml) for the machine map and [`references/chains.md`](references/chains.md) for named chains.
+Load [references/graph.yaml](references/graph.yaml) and [references/chains.md](references/chains.md). Parent agent: `chefbar-orchestrator`.
 
-## Dispatch
+## Instructions
 
-1. Classify the job: `feature` | `bugfix` | `review` | `ci-red` | `kater-ops` | `docs-only`.
-2. Map files to workers using the ownership table in `AGENTS.md`. If two workers would edit the same file, **serialize** those two; parallelize the rest.
-3. Spawn workers with the Task tool:
-   - Prefer `subagent_type` equal to the agent file stem (`chefbar-actor`, …) when the harness lists it.
-   - Otherwise `subagent_type: "generalPurpose"` and paste the body of `.cursor/agents/<stem>.md` at the top of the prompt.
-   - Read-only exploration: `explore`.
-   - Never spawn `chefbar-orchestrator` from a worker (no nested graphs).
-4. One message, multiple Task calls = parallel. Sequential steps = wait, then the next message.
-5. After workers return: `chefbar-rust-core` reviews the combined diff, then `chefbar-qa` runs gates.
+1. Start as `chefbar-orchestrator`. It does **not** write product files under `src/`.
+2. `chefbar-architect` produces a plan: files, owns-set, workers, tests, refusals. No product edits.
+3. Dispatch **file-disjoint** domain workers in parallel. Overlapping writes **serialize**.
+4. Fan-in: `chefbar-rust-core` (clippy `-D warnings`, ownership, no tokio, exhaustive matches).
+5. Gate: `chefbar-qa` (fmt, clippy, test, shellcheck, visual-shot warning-only, `agent-bench.mjs` if harness changed).
+6. If QA fails: **qa-converge** — only the failing worker (or rust-core if cross-cutting) + qa. Max **3** loops. Then **stop**.
+7. Optional readonly: Kater MCP `kater_chains` profile `code`/`ops` name `pr_health`. Never `kater_pr_merge` unless the user asked.
 
-## File-disjoint rule
+Do **not** spawn a second poll-actor. Workers are sequential/parallel **agents**, not extra `std::thread` loops in the poll-actor. In-budget GET fan-out already exists inside that actor.
 
-A worker may **read** anything, but may **write** only its owns-set (plus tests inside those files). `Cargo.toml` / `install.sh` / CI YAML → `chefbar-qa` or architect-approved exception in the prompt.
+### Owns-set (copy into every worker prompt)
 
-`src/main.rs` and `src/lib.rs` are seams: the domain worker patches them only to add a module or CLI flag named in the plan.
+| Worker | Writes |
+| --- | --- |
+| `chefbar-orchestrator` | — |
+| `chefbar-architect` | — (plan) |
+| `chefbar-rust-core` | nits on the existing diff |
+| `chefbar-actor` | `src/state.rs`, `src/models.rs` |
+| `chefbar-gtk-panel` | `src/panel/**`, `src/css.rs`, `src/motion.rs`, `src/panel_state.rs` |
+| `chefbar-tray-ipc` | `tray.rs`, `ipc.rs`, `notify.rs`, `quiet.rs`, `mutes.rs`, `doctor.rs`, `log.rs` |
+| `chefbar-policy-http` | `policy.rs`, `http.rs`, `auth.rs`, `config.rs` |
+| `chefbar-actions-palette` | `actions.rs`, `palette.rs`, `aliases.rs`, `frecency.rs`, `harness.rs` |
+| `chefbar-qa` | `scripts/**`, `.github/workflows/**`, tests in already-touched modules |
+| `chefbar-kater` | `src/sessions.rs`, `src/ops_cli.rs` + MCP |
 
-## Graph
+`src/main.rs` / `src/lib.rs` are thin seams — architect splits, the nearest domain worker edits.
+
+### Named chains
+
+| Chain | Sequence |
+| --- | --- |
+| `feature` | architect → [domain ∥] → rust-core → qa ⟲ qa-converge |
+| `bugfix` | qa reproduces → owning worker → rust-core → qa ⟲ |
+| `review` | rust-core + architect + policy/gtk if those files moved (readonly unless asked to apply) |
+| `ci-red` | classify CI log → owning worker → qa ⟲ |
+| `kater-ops` | kater MCP `pr_health` on `code`/`ops`; empty other profiles → this graph |
+| `docs-only` | architect + qa; no GTK/actor workers |
+
+Slash: `/chefbar-graph <chain>`.
+
+### MCP vs in-process
+
+| Kind | Where | Loop? |
+| --- | --- | --- |
+| ChefBar poll of Kater | `state.rs` `KATER_POLL_MS` 30s | **No** — one actor |
+| Agent Kater chain | MCP `kater_chains` | Sequential tools, readonly default |
+| QA-converge | Cursor Task workers | Yes, cap 3 |
+
+Local graph is SSOT. Empty Kater `core`/`cloud`/`reasoning` is not a failure.
+
+## Examples
+
+**Example 1 — two modules**
 
 ```text
-                    orchestrator
-                          |
-            +-------------+-------------+
-            |             |             |
-       architect      kater-probe      (optional pr_health MCP)
-            |
-            |  plan + file map
-            v
-     parallel domain workers
-     (actor / gtk / tray / policy / actions)
-            |
-            v
-        rust-core review
-            |
-            v
-            qa  ----fail----> rust-core patch --+
-            |                                   |
-            pass                                |
-            v                                   |
-          done  <-------- loop qa-converge -----+  (max 3)
+User: "haal de poll-timeout omlaag en fix de drawer CSS"
+Architect: chefbar-actor (state.rs) + chefbar-gtk-panel (css.rs, drawer.rs)
+Orchestrator: both in parallel (disjoint files)
+Then rust-core → qa
+If visual-shot fails: qa-converge gtk-panel only, not actor
 ```
 
-## Loops
+**Example 2 — graph on a PR**
 
-### `qa-converge` (default graph loop)
+```text
+User: "run the graph loop on this PR"
+Orchestrator: architect plan from diff → dispatch owns-sets → rust-core → qa → optional pr_health
+```
 
-1. `chefbar-qa` runs fmt/clippy/test (and shellcheck if scripts changed).
-2. On fail: extract the failing crate/module → the owning worker patches, or `chefbar-rust-core` if it is a clippy/ownership nit.
-3. Re-run QA. Stop on pass, on the same error twice (report stuck), or at iteration 3.
+**Example 3 — refuse a second actor**
 
-### `ci-red`
+```text
+User: "start a worker thread that polls Linear so the graph can wait"
+Output: refuse. Linear already ticks on the one poll-actor. Graph-loop ≠ poll-actor.
+```
 
-Same as `qa-converge` but QA starts from CI logs. Do not rewrite unrelated modules to silence a gate.
+## Performance Notes
 
-### `kater-pr-health`
+- Parallelize only **file-disjoint** workers. Overlapping writes serialize — cheaper than merge conflicts.
+- qa-converge is cheaper than a full graph restart. Cap 3 is a hard stop, not a suggestion.
+- Architect and orchestrator never touch `src/` — keeps the diff reviewable.
+- Do not call Kater MCP on every keystroke; `pr_health` is post-converge / review / ci-red.
+- After harness edits, QA runs the agent-bench (routing corpus includes `graph-loop`).
 
-MCP chain on profile `code` or `ops`: GitHub PR checks → Linear issue → Sentry search. Read-only. Attach findings to the orchestrator summary; do not block a local green test unless the user asked for merge-readiness.
+## Troubleshooting
 
-## Worker prompts (minimum)
+| Symptom | Fix |
+| --- | --- |
+| Two workers edit `state.rs` | Architect split was wrong; serialize on actor |
+| QA loops forever | Cap is 3; stop and report remaining failures |
+| Agent wants tokio for “the loop” | Wrong loop. Graph-loop is agents; poll-actor is `state.rs` |
+| `kater_chains` empty | Fall back to this YAML graph; do not invent tool names |
+| Worker writes outside owns-set | Reject; re-dispatch the owning agent |
+| visual-shot exit 2 | Xvfb missing — warning-only, not a converge reason |
+| Bench routing miss | Distinctive filenames in skill **descriptions** (triggers are description-only) |
 
-Each Task prompt must include:
+## Next
 
-- Goal (one paragraph)
-- Owns-set (files they may write)
-- Files they must not write
-- Invariants reminder (one actor / no tokio / GTK3 CSS / no secrets)
-- Definition of done (tests to add, clippy clean)
-
-## Fan-in review (`review` chain)
-
-Parallel readonly: `chefbar-rust-core`, `chefbar-architect`, `chefbar-policy-http` (if network files changed), `chefbar-gtk-panel` (if UI files changed). Orchestrator synthesizes; no code from reviewers unless the user asked to apply nits.
-
-## Stuck / abort
-
-Abort to the user when: ownership overlaps cannot be split; a worker asks for tokio/webview; policy would allow a new origin without a profile field; QA failed three times with a new error each round (scope too big).
+Single-module change → skip this skill, call the owning worker. Harness score → `chefbar-bench`.
