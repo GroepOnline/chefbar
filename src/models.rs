@@ -1747,28 +1747,21 @@ mod chefapp_tolerant_tests {
     #[test]
     fn poll_statuslijn_vault_ok_ops_http() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let mut snap = Snapshot::default();
-        snap.fetched_at_unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0)
-            - 4;
+        let mut snap = Snapshot {
+            fetched_at_unix: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+                - 4,
+            ..Default::default()
+        };
         snap.last_poll.insert("vault".into(), PollHealth::ok());
         snap.last_poll
             .insert("ops".into(), PollHealth::fail("302"));
         let line = snap.poll_statuslijn();
-        assert!(
-            line.contains("vault ok"),
-            "expected vault ok in {line}"
-        );
-        assert!(
-            line.contains("ops 302"),
-            "expected ops 302 in {line}"
-        );
-        assert!(
-            line.contains("laatste poll"),
-            "expected poll age in {line}"
-        );
+        assert!(line.contains("vault ok"), "expected vault ok in {line}");
+        assert!(line.contains("ops 302"), "expected ops 302 in {line}");
+        assert!(line.contains("laatste poll"), "expected poll age in {line}");
         assert!(
             line.contains("s geleden"),
             "expected seconds chip in {line}"
