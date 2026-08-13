@@ -42,8 +42,10 @@
       "prompt": "Mag een .cursor/rules mdc alwaysApply true of globs hebben?",
       "expected_output": "Nee. Stateless: alwaysApply false, geen globs, laden via description of chain.",
       "expectations": [
-        {"name": "always", "text": "alwaysApply"},
-        {"name": "globs", "text": "globs"}
+        {"name": "always-false", "text": "alwaysApply false"},
+        {"name": "no-globs", "text": "geen globs"},
+        {"name": "load-via", "text": "description"},
+        {"name": "chain-load", "text": "chain"}
       ]
     },
     {

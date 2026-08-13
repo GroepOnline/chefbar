@@ -32,9 +32,9 @@ Do **not** spawn a second poll-actor. Workers are sequential/parallel **agents**
 | `chefbar-rust-core` | nits on the existing diff |
 | `chefbar-actor` | `src/state.rs`, `src/models.rs` |
 | `chefbar-gtk-panel` | `src/panel/**`, `src/css.rs`, `src/motion.rs`, `src/panel_state.rs` |
-| `chefbar-tray-ipc` | `tray.rs`, `ipc.rs`, `notify.rs`, `quiet.rs`, `mutes.rs`, `doctor.rs`, `log.rs` |
-| `chefbar-policy-http` | `policy.rs`, `http.rs`, `auth.rs`, `config.rs` |
-| `chefbar-actions-palette` | `actions.rs`, `palette.rs`, `aliases.rs`, `frecency.rs`, `harness.rs` |
+| `chefbar-tray-ipc` | `src/tray.rs`, `src/ipc.rs`, `src/notify.rs`, `src/quiet.rs`, `src/mutes.rs`, `src/doctor.rs`, `src/log.rs` |
+| `chefbar-policy-http` | `src/policy.rs`, `src/http.rs`, `src/auth.rs`, `src/config.rs` |
+| `chefbar-actions-palette` | `src/actions.rs`, `src/palette.rs`, `src/aliases.rs`, `src/frecency.rs`, `src/harness.rs` |
 | `chefbar-qa` | `scripts/**`, `.github/workflows/**`, tests in already-touched modules |
 | `chefbar-kater` | `src/sessions.rs`, `src/ops_cli.rs` + MCP |
 

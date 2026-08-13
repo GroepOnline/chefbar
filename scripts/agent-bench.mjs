@@ -138,7 +138,7 @@ function isFoldedDescription(raw) {
 
 /** Stateless harness: rules must not auto-attach. */
 function isAlwaysApplyTrue(raw) {
-  return /^alwaysApply:\s*true\s*$/im.test(raw || "");
+  return /^alwaysApply:\s*true(?:\s+#.*)?\s*$/im.test(raw || "");
 }
 
 function hasGlobsKey(raw) {
@@ -146,7 +146,7 @@ function hasGlobsKey(raw) {
 }
 
 function hasDisableModelInvocation(raw) {
-  return /^disable-model-invocation:\s*true\s*$/im.test(raw || "");
+  return /^disable-model-invocation:\s*true(?:\s+#.*)?\s*$/im.test(raw || "");
 }
 
 function hasHeading(body, names) {
@@ -225,6 +225,7 @@ function readTextOrFail(p, label) {
   }
   const alwaysCases = [
     ["alwaysApply: true\n", true],
+    ["alwaysApply: true # stateless rules load via chain\n", true],
     ["alwaysApply: false\n", false],
     ["alwaysApply: True\n", true],
     ["description: x\n", false],
@@ -248,6 +249,7 @@ function readTextOrFail(p, label) {
   }
   const dmiCases = [
     ["disable-model-invocation: true\n", true],
+    ["disable-model-invocation: true # ambient off\n", true],
     ["disable-model-invocation: false\n", false],
     ["description: x\n", false],
   ];
