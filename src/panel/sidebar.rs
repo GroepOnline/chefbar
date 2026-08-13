@@ -13,6 +13,8 @@ pub const SIDEBAR_WIDTH: i32 = 240;
 /// Canonieke nav-ids (15 domeinen + eval/sync compat).
 pub const NAV_IDS: &[&str] = &[
     "inbox",
+    "tasks",
+    "linear",
     "fleet",
     "herdr",
     "control",
@@ -24,8 +26,6 @@ pub const NAV_IDS: &[&str] = &[
     "clipboard",
     "desktop",
     "sync",
-    "tasks",
-    "linear",
     "secrets",
     "kater",
     "health",
@@ -33,6 +33,8 @@ pub const NAV_IDS: &[&str] = &[
 ];
 pub const NAV_LABELS: &[&str] = &[
     "Inbox",
+    "Taken",
+    "Linear",
     "Fleet",
     "Herdr",
     "Control",
@@ -44,8 +46,6 @@ pub const NAV_LABELS: &[&str] = &[
     "Clipboard",
     "Desktop",
     "Sync",
-    "Taken",
-    "Linear",
     "Secrets",
     "Kater",
     "Health",

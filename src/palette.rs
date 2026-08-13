@@ -25,9 +25,10 @@ impl Action {
     }
 
     /// Stable lokale frecency-key; dezelfde titel met andere uitvoering blijft
-    /// daardoor een afzonderlijke actie in de ranking.
+    /// daardoor een afzonderlijke actie in de ranking. `CopyText`-payloads
+    /// zitten er niet in — die belanden anders in `frecency.json`.
     pub fn frecency_id(&self) -> String {
-        format!("{}::{:?}", self.title, self.run)
+        format!("{}::{}", self.title, self.run.frecency_key())
     }
 }
 

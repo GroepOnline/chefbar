@@ -192,6 +192,8 @@ steps:
   - upload artifact: target/release/chefbar
 ```
 
+Cursor Cloud Agents bootstrap via `.cursor/environment.json` (`install` + `start`): toolchain-updates en de Chrome-wrapper zitten daar, niet in een handmatige `apt`/`bun`-ronde. Daytona nood-runner en Cloudflare browser-kit notes: [docs/cloud-agent.md](docs/cloud-agent.md).
+
 Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rustup` zijn fail-fast stubs die naar de runner verwijzen (zie `~/AGENTS.md`). Build/test altijd op de runner:
 
 ```bash
