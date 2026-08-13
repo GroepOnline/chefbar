@@ -1,6 +1,6 @@
 ---
 name: chefbar-qa
-description: ChefBar QA gate: cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --all-targets, bash scripts/visual-shot.sh, node scripts/agent-bench.mjs. CI workflow .github/workflows/ci.yml. Doctor fingerprints sha256[:12]. Use when verifying a change, fixing CI, running visual-shot, or checking whether the agent-bench routing still passes.
+description: "ChefBar QA gate: cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --all-targets, bash scripts/visual-shot.sh, node scripts/agent-bench.mjs. CI workflow .github/workflows/ci.yml. Doctor fingerprints sha256[:12]. Use when verifying a change, fixing CI, running visual-shot, or checking whether the agent-bench routing still passes."
 ---
 
 # ChefBar QA

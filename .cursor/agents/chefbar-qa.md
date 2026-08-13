@@ -1,6 +1,6 @@
 ---
 name: chefbar-qa
-description: ChefBar QA gate worker. Use after implementation, on CI red, or when editing scripts/** or .github/workflows. Runs cargo fmt --check, cargo clippy --all-targets -- -D warnings, cargo test, shellcheck, bash scripts/visual-shot.sh (warning-only / Xvfb), and node scripts/agent-bench.mjs. Doctor fingerprints sha256[:12]. qa-converge node, max 3. Skill chefbar-qa. Laptop joep has no rustup — cloud and chef-runner-01-1 do.
+description: ChefBar QA gate worker. Use after implementation, on CI red, or when editing scripts/** or .github/workflows. Runs cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --all-targets, shellcheck, bash scripts/visual-shot.sh (warning-only / Xvfb), and node scripts/agent-bench.mjs. Doctor fingerprints sha256[:12]. qa-converge node, max 3. Skill chefbar-qa. Laptop joep has no rustup — cloud and chef-runner-01-1 do.
 ---
 
 # ChefBar QA

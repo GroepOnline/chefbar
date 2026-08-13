@@ -56,13 +56,13 @@ Elke ChefBar-skill heeft `evals/evals.json` (≥3 cases) en `evals/triggers.json
 | chefbar-orchestrator | — |
 | chefbar-architect | — (plan) |
 | chefbar-rust-core | clippy/ownership-nits |
-| chefbar-actor | `state.rs`, `models.rs` |
-| chefbar-gtk-panel | `panel/**`, `css.rs`, `motion.rs`, `panel_state.rs` |
+| chefbar-actor | `src/state.rs`, `src/models.rs` |
+| chefbar-gtk-panel | `src/panel/**`, `src/css.rs`, `src/motion.rs`, `src/panel_state.rs` |
 | chefbar-tray-ipc | `src/tray.rs`, `src/ipc.rs`, `src/notify.rs`, `src/quiet.rs`, `src/mutes.rs`, `src/doctor.rs`, `src/log.rs` |
 | chefbar-policy-http | `src/policy.rs`, `src/http.rs`, `src/auth.rs`, `src/config.rs` |
 | chefbar-actions-palette | `src/actions.rs`, `src/palette.rs`, `src/aliases.rs`, `src/frecency.rs`, `src/harness.rs` |
 | chefbar-qa | `scripts/**`, CI, tests in geraakte modules |
-| chefbar-kater | `sessions.rs`, `ops_cli.rs` + Kater MCP |
+| chefbar-kater | `src/sessions.rs`, `src/ops_cli.rs` + Kater MCP |
 
 Parallel alleen bij disjuncte write-sets (zelfde idee als ChefApp 4.0 lanes).
 

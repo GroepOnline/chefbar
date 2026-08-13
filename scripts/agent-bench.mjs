@@ -138,7 +138,7 @@ function isFoldedDescription(raw) {
 
 /** Stateless harness: rules must not auto-attach. */
 function isAlwaysApplyTrue(raw) {
-  return /^alwaysApply:\s*true(?:\s+#.*)?\s*$/im.test(raw || "");
+  return /^[ \t]*alwaysApply[ \t]*:[ \t]*true[ \t]*(?:#.*)?$/im.test(raw || "");
 }
 
 function hasGlobsKey(raw) {
@@ -146,7 +146,17 @@ function hasGlobsKey(raw) {
 }
 
 function hasDisableModelInvocation(raw) {
-  return /^disable-model-invocation:\s*true(?:\s+#.*)?\s*$/im.test(raw || "");
+  return /^[ \t]*disable-model-invocation[ \t]*:[ \t]*true[ \t]*(?:#.*)?$/im.test(
+    raw || "",
+  );
+}
+
+function hasForbiddenCrate(cargo, crate) {
+  const dependencyKey = new RegExp(
+    `^\\s*${escapeRegExp(crate)}(?:\\s*=|\\s*\\.)`,
+    "m",
+  );
+  return dependencyKey.test(cargo) || cargo.includes(`"${crate}"`);
 }
 
 function hasHeading(body, names) {
@@ -225,9 +235,11 @@ function readTextOrFail(p, label) {
   }
   const alwaysCases = [
     ["alwaysApply: true\n", true],
-    ["alwaysApply: true # stateless rules load via chain\n", true],
     ["alwaysApply: false\n", false],
     ["alwaysApply: True\n", true],
+    ["alwaysApply: true # reason\n", true],
+    ["alwaysApply: false # reason\n", false],
+    ["  alwaysApply: true # x\n", true],
     ["description: x\n", false],
   ];
   for (const [raw, expect] of alwaysCases) {
@@ -249,14 +261,30 @@ function readTextOrFail(p, label) {
   }
   const dmiCases = [
     ["disable-model-invocation: true\n", true],
-    ["disable-model-invocation: true # ambient off\n", true],
     ["disable-model-invocation: false\n", false],
+    ["disable-model-invocation: true # reason\n", true],
+    ["  disable-model-invocation: true # x\n", true],
     ["description: x\n", false],
   ];
   for (const [raw, expect] of dmiCases) {
     const got = hasDisableModelInvocation(raw);
     if (got !== expect) {
       fail(`hasDisableModelInvocation(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
+    }
+  }
+  const crateCases = [
+    ["tokio = \"1\"\n", "tokio", true],
+    ["tokio.workspace = true\n", "tokio", true],
+    ["  reqwest.workspace = true\n", "reqwest", true],
+    ["serde = \"1\"\n", "tokio", false],
+    ["# tokio = \"1\"\n", "tokio", false],
+  ];
+  for (const [cargo, crate, expect] of crateCases) {
+    const got = hasForbiddenCrate(cargo, crate);
+    if (got !== expect) {
+      fail(
+        `hasForbiddenCrate(${JSON.stringify(cargo)}, ${crate}) expected ${expect}, got ${got}`,
+      );
     }
   }
 }
@@ -587,7 +615,7 @@ for (const [agent, skill] of Object.entries(expectedPairing)) {
 const cargo = readTextOrFail(path.join(ROOT, "Cargo.toml"), "Cargo.toml");
 report.invariants.forbidden_crates = [];
 for (const crate of ["tokio", "async-std", "reqwest", "hyper", "actix", "axum"]) {
-  if (new RegExp(`^${crate}(\\.[\\w-]+)?\\s*=`, "m").test(cargo) || cargo.includes(`"${crate}"`)) {
+  if (hasForbiddenCrate(cargo, crate)) {
     report.invariants.forbidden_crates.push(crate);
     fail(`Cargo.toml pulls forbidden crate ${crate}`);
   }
