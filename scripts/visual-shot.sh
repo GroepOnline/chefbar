@@ -21,8 +21,10 @@ set -u
 MODE=""
 THEME=""
 OUT=""
-DISPLAY_NUM="${CHEFBAR_XVFB_DISPLAY:-:97}"
-ACCENT_HEX="${CHEFBAR_ACCENT:-#5C97FF}"
+# :97 collides when pr-isolated and heavy share one host (same /tmp/.X11-unix).
+# Prefer CHEFBAR_XVFB_DISPLAY; otherwise pick a free display per shot.
+DISPLAY_NUM="${CHEFBAR_XVFB_DISPLAY:-}"
+ACCENT_HEX="${CHEFBAR_ACCENT:-${ACCENT_HEX:-#5C97FF}}"
 DOMAIN=""
 
 DOMAINS=(
@@ -52,30 +54,44 @@ is_domain() {
   return 1
 }
 
+need_val() {
+  if [ "$#" -lt 2 ] || [ -z "${2:-}" ] || [[ "${2}" == --* ]]; then
+    echo "visual-shot: $1 vereist een waarde" >&2
+    usage >&2
+    exit 1
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode)
-      MODE="${2:-}"
+      need_val "$@"
+      MODE="$2"
       shift 2
       ;;
     --theme)
-      THEME="${2:-}"
+      need_val "$@"
+      THEME="$2"
       shift 2
       ;;
     --out)
-      OUT="${2:-}"
+      need_val "$@"
+      OUT="$2"
       shift 2
       ;;
     --display)
-      DISPLAY_NUM="${2:-}"
+      need_val "$@"
+      DISPLAY_NUM="$2"
       shift 2
       ;;
     --accent)
-      ACCENT_HEX="${2:-}"
+      need_val "$@"
+      ACCENT_HEX="$2"
       shift 2
       ;;
     --domain)
-      DOMAIN="${2:-}"
+      need_val "$@"
+      DOMAIN="$2"
       shift 2
       ;;
     --help|-h)
@@ -147,6 +163,51 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
+# Vrije X-display: CI draait pr-isolated en heavy op dezelfde host, dus :97
+# is vaak al bezet (lock van een andere job of een achtergebleven Xvfb).
+display_busy() {
+  local num="${1#:}"
+  [ -e "/tmp/.X${num}-lock" ] || [ -S "/tmp/.X11-unix/X${num}" ]
+}
+
+# Start Xvfb op een vrije display. Print "PID :N" op stdout.
+# Logt stderr naar $1. Exit 1 als geen display start.
+start_xvfb() {
+  local log="$1"
+  local seed start n pid i
+  local -a try_nums=()
+
+  if [ -n "${DISPLAY_NUM:-}" ]; then
+    try_nums+=("${DISPLAY_NUM#:}")
+  fi
+
+  seed=$$
+  if [ -n "${GITHUB_RUN_ID:-}" ]; then
+    seed=$((GITHUB_RUN_ID + $$))
+  fi
+  start=$((90 + seed % 80))
+  for i in $(seq 0 79); do
+    n=$((90 + (start - 90 + i) % 80))
+    try_nums+=("$n")
+  done
+
+  for n in "${try_nums[@]}"; do
+    if display_busy "$n"; then
+      continue
+    fi
+    : >"$log"
+    Xvfb ":$n" -screen 0 900x1000x24 -nolisten tcp >"$log" 2>&1 &
+    pid=$!
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "$pid :$n"
+      return 0
+    fi
+    wait "$pid" 2>/dev/null || true
+  done
+  return 1
+}
+
 ipc_try() {
   local command="$1"
   "$BIN" --ipc "$command" >/dev/null 2>&1 && return 0
@@ -162,6 +223,16 @@ run_shot() {
   local app_pid=""
   local found=""
   local domain=""
+  local stderr_keep="${out%.png}-stderr.log"
+
+  finish() {
+    if [ -n "${rt_dir:-}" ] && [ -f "$rt_dir/app-stderr.log" ]; then
+      cp "$rt_dir/app-stderr.log" "$stderr_keep" 2>/dev/null || true
+    fi
+    if [ -n "${app_pid:-}" ]; then kill "$app_pid" 2>/dev/null || true; fi
+    if [ -n "${xvfb_pid:-}" ]; then kill "$xvfb_pid" 2>/dev/null || true; fi
+    if [ -n "${rt_dir:-}" ]; then rm -rf "$rt_dir"; fi
+  }
 
   if [[ "$mode" == domain:* ]]; then
     domain="${mode#domain:}"
@@ -175,14 +246,19 @@ run_shot() {
   chmod 700 "$rt_dir"
   mkdir -p "$(dirname "$out")"
 
-  Xvfb "$DISPLAY_NUM" -screen 0 900x1000x24 >/dev/null 2>&1 &
-  xvfb_pid=$!
-  sleep 2
-  if ! kill -0 "$xvfb_pid" 2>/dev/null; then
-    echo "visual-shot [$mode]: Xvfb startte niet" >&2
-    rm -rf "$rt_dir"
+  local started
+  started="$(start_xvfb "$rt_dir/xvfb.log")" || {
+    echo "visual-shot [$mode]: Xvfb startte niet (geen vrije display :90-:169)" >&2
+    if [ -s "$rt_dir/xvfb.log" ]; then
+      echo "visual-shot [$mode]: Xvfb log:" >&2
+      cat "$rt_dir/xvfb.log" >&2
+    fi
+    finish
     return 1
-  fi
+  }
+  xvfb_pid="${started%% *}"
+  DISPLAY_NUM="${started##* }"
+  echo "visual-shot [$mode]: Xvfb $DISPLAY_NUM pid=$xvfb_pid"
 
   export DISPLAY="$DISPLAY_NUM"
   export XDG_RUNTIME_DIR="$rt_dir"
@@ -202,8 +278,7 @@ run_shot() {
   if ! kill -0 "$app_pid" 2>/dev/null; then
     echo "visual-shot [$mode]: app overleed — stderr:" >&2
     cat "$rt_dir/app-stderr.log" >&2
-    kill "$xvfb_pid" 2>/dev/null || true
-    rm -rf "$rt_dir"
+    finish
     return 1
   fi
 
@@ -218,7 +293,12 @@ run_shot() {
       ipc_try "drawer" || ipc_try "open-drawer" || ipc_try "bar" || "$BIN" --bar >/dev/null 2>&1 || true
       ;;
     domain:*)
-      ipc_try "focus-domain $domain" || ipc_try "focus $domain" || true
+      if ! ipc_try "focus-domain $domain" && ! ipc_try "focus $domain"; then
+        echo "visual-shot [$mode]: domain-focus faalde (focus-domain/focus $domain)" >&2
+        cat "$rt_dir/app-stderr.log" >&2
+        finish
+        return 1
+      fi
       ipc_try "bar" || "$BIN" --bar >/dev/null 2>&1 || true
       ;;
   esac
@@ -226,9 +306,7 @@ run_shot() {
 
   if ! import -window root "$out" 2>/dev/null || [ ! -s "$out" ]; then
     echo "visual-shot [$mode]: screenshot mislukt ($out)" >&2
-    kill "$app_pid" 2>/dev/null || true
-    kill "$xvfb_pid" 2>/dev/null || true
-    rm -rf "$rt_dir"
+    finish
     return 1
   fi
 
@@ -238,16 +316,12 @@ run_shot() {
     echo "visual-shot [$mode]: GEEN accent-pixels gevonden — paneel waarschijnlijk niet zichtbaar" >&2
     echo "--- app stderr ---" >&2
     cat "$rt_dir/app-stderr.log" >&2
-    kill "$app_pid" 2>/dev/null || true
-    kill "$xvfb_pid" 2>/dev/null || true
-    rm -rf "$rt_dir"
+    finish
     return 1
   fi
 
   echo "visual-shot [$mode]: OK ($theme, $out)"
-  kill "$app_pid" 2>/dev/null || true
-  kill "$xvfb_pid" 2>/dev/null || true
-  rm -rf "$rt_dir"
+  finish
   sleep 1
   return 0
 }
