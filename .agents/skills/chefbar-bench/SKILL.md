@@ -12,7 +12,7 @@ Scoring notes: [references/scoring.md](references/scoring.md). Runner: `scripts/
 ## Instructions
 
 1. From repo root: `node scripts/agent-bench.mjs` (optional `--json`, `--min-routing 0.8`).
-2. **Skills** (`.cursor/skills/*/SKILL.md`):
+2. **Skills** (`.agents/skills/chefbar-*/SKILL.md`; `.cursor/skills/chefbar-*` must be a symlink here):
    - YAML frontmatter `name` == directory, kebab-case
    - `description` **one physical line** (no `>-` / `|` folds — Cursor ignores them), 120–1024 chars, **no `<>`**
    - no `disable-model-invocation: true` (kills description triggers; harness is stateless)
@@ -63,7 +63,7 @@ node scripts/agent-bench.mjs --json | head
 
 **Example — new skill**
 
-Input: add `.cursor/skills/chefbar-foo/SKILL.md` without evals
+Input: add `.agents/skills/chefbar-foo/SKILL.md` without evals
 
 Output: blocking `missing evals/evals.json`. Add ≥3 evals + triggers whose terms occur in the description. Add a routing case if the skill should win a distinctive prompt.
 

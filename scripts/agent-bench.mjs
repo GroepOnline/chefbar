@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const CURSOR = path.join(ROOT, ".cursor");
+const AGENTS_SKILLS = path.join(ROOT, ".agents/skills");
 const args = new Set(process.argv.slice(2));
 const jsonOnly = args.has("--json");
 const minRouting = (() => {
@@ -159,6 +160,24 @@ function hasForbiddenCrate(cargo, crate) {
   return dependencyKey.test(cargo) || cargo.includes(`"${crate}"`);
 }
 
+function cursorSkillSymlinkOk(name, canonicalDir) {
+  const alias = path.join(CURSOR, "skills", name);
+  let st;
+  try {
+    st = fs.lstatSync(alias);
+  } catch {
+    return `missing Cursor discovery symlink .cursor/skills/${name} -> ../../.agents/skills/${name}`;
+  }
+  if (!st.isSymbolicLink()) {
+    return `.cursor/skills/${name} must be a symlink to .agents/skills/${name} (not a Cursor-native copy)`;
+  }
+  const resolved = path.resolve(path.dirname(alias), fs.readlinkSync(alias));
+  if (resolved !== path.resolve(canonicalDir)) {
+    return `.cursor/skills/${name} symlink resolves to ${resolved}, expected ${canonicalDir}`;
+  }
+  return "";
+}
+
 function hasHeading(body, names) {
   const heads = [...body.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) =>
     m[1].trim().toLowerCase(),
@@ -289,19 +308,27 @@ function readTextOrFail(p, label) {
   }
 }
 
-// --- skills ---
-const skillsRoot = path.join(CURSOR, "skills");
-const skillDirs = fs.existsSync(skillsRoot)
+// --- skills (SSOT: .agents/skills/chefbar-* ; Cursor gets a discovery symlink) ---
+const skillDirs = fs.existsSync(AGENTS_SKILLS)
   ? fs
-      .readdirSync(skillsRoot, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => path.join(skillsRoot, e.name))
-  : (fail(".cursor/skills missing"), []);
+      .readdirSync(AGENTS_SKILLS, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith("chefbar-"))
+      .map((e) => path.join(AGENTS_SKILLS, e.name))
+  : (fail(".agents/skills missing"), []);
+if (skillDirs.length === 0) {
+  fail("no chefbar-* skills under .agents/skills");
+}
 
 for (const dir of skillDirs) {
   const name = path.basename(dir);
   const skillMd = path.join(dir, "SKILL.md");
   const rec = { name, path: rel(skillMd), ok: true, issues: [], quality: [] };
+  const symlinkErr = cursorSkillSymlinkOk(name, dir);
+  if (symlinkErr) {
+    rec.ok = false;
+    rec.issues.push(symlinkErr);
+    fail(`skill ${name}: ${symlinkErr}`);
+  }
   if (!fs.existsSync(skillMd)) {
     rec.ok = false;
     rec.issues.push("SKILL.md missing");
@@ -566,8 +593,8 @@ for (const file of ruleFiles) {
 
 // --- graph ---
 const graphPath = path.join(
-  CURSOR,
-  "skills/chefbar-graph-loop/references/graph.yaml",
+  AGENTS_SKILLS,
+  "chefbar-graph-loop/references/graph.yaml",
 );
 let graphText = "";
 if (fs.existsSync(graphPath)) {
@@ -714,7 +741,7 @@ if (!fs.existsSync(routingPath)) {
 
 // --- per-skill trigger files ---
 for (const rec of report.skills) {
-  const trigPath = path.join(CURSOR, "skills", rec.name, "evals", "triggers.json");
+  const trigPath = path.join(AGENTS_SKILLS, rec.name, "evals", "triggers.json");
   if (!fs.existsSync(trigPath)) continue;
   let trig;
   try {

@@ -35,7 +35,7 @@ release-artifact heet `chefbar-release`.
   CI als harde checks — lokaal voorlopen kan alleen op de runner.
 - PR's naar `main` worden squash-gemerged; geen force-push naar `main`.
 - Wijzigingen aan `install.sh`, `.cursor/*.sh` of systemd-units: `shellcheck` + dry-run in CI.
-- Wijzigingen aan `.cursor/skills`, `.cursor/agents` of `scripts/agent-bench.mjs`:
+- Wijzigingen aan `.agents/skills/chefbar-*`, `.cursor/agents` of `scripts/agent-bench.mjs`:
   `node scripts/agent-bench.mjs` (deterministisch, geen LLM; CI-gate).
 
 ## ChefApp 4.0 lanes — file-disjoint
@@ -54,4 +54,4 @@ release-artifact heet `chefbar-release`.
 
 ## Agent skills
 
-Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). Harness is **stateless**: rules/skills niet always-on, alleen via YAML-`description` of een named chain. File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a cursor --copy -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync.
+Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). Harness is **stateless**: rules/skills niet always-on, alleen via YAML-`description` of een named chain. File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a '*' -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync. ChefBar-skills horen in `.agents/skills/` (niet als Cursor-only boom onder `.cursor/skills/`).

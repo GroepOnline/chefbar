@@ -71,7 +71,7 @@ Output: `node scripts/agent-bench.mjs` blocking; skill `chefbar-bench` playbook.
 ## Performance Notes
 
 - fmt/clippy/test before visual-shot (shot is slower and warning-only).
-- agent-bench is O(skills × routing cases) string scans — fine; run it whenever `.cursor/` changed.
+- agent-bench is O(skills × routing cases) string scans — fine; run it whenever `.agents/skills/chefbar-*` or `.cursor/agents` changed.
 - qa-converge: re-run only the failing slice, not the whole graph.
 - Do not start GTK from QA except via `visual-shot.sh`.
 

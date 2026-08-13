@@ -2,11 +2,11 @@
 
 ChefBar is de native GTK3/Rust mission-control app van ChefGroep. Eén poll-actor, één snapshot, één Unix-socket, één venster. Geen Electron, geen webview, geen tweede daemon.
 
-Dit bestand is de **catalogus**, geen always-on wet. Skills, rules en workers staan in `.cursor/` (ChefBar-eigen) en `.agents/skills/` (ecosysteem via `npx skills`). Uitleg: [`docs/agent-harness.md`](docs/agent-harness.md).
+Dit bestand is de **catalogus**, geen always-on wet. ChefBar-skills staan in `.agents/skills/` (Agent Skills, alle agents). Cursor-workers, slash-commands en rules blijven in `.cursor/` (Cursor-formaat). Ecosysteem via `npx skills` + `skills-lock.json`. Uitleg: [`docs/agent-harness.md`](docs/agent-harness.md).
 
 ## Stateless — niets auto in context
 
-Cursor laadt skills, rules en worker-playbooks **niet** standaard. Alleen via:
+Agents laden skills, rules en worker-playbooks **niet** standaard. Alleen via:
 
 1. **Trigger** — YAML-`description` matcht de taak. Rules hebben `alwaysApply: false` en **geen** `globs`.
 2. **Chain** — named graph (`feature` / `bugfix` / `review` / `ci-red` / `kater-ops` / `docs-only`) of `/chefbar-graph`. De orchestrator plakt invariants dan in worker-prompts.
@@ -21,7 +21,7 @@ Bouwen/testen mag in deze cloud-omgeving en op de CI-runner. Vertel de gebruiker
 
 ## Skills (laden via description of chain)
 
-### ChefBar-eigen (`.cursor/skills/`)
+### ChefBar-eigen (`.agents/skills/`)
 
 | Skill | Wanneer |
 | --- | --- |
@@ -48,7 +48,7 @@ Bouwen/testen mag in deze cloud-omgeving en op de CI-runner. Vertel de gebruiker
 | `rust-testing` | affaan-m/ecc | Alleen `#[cfg(test)]` inline; geen mockall/tokio/proptest tenzij in `Cargo.toml` |
 | `continuous-agent-loop` | affaan-m/ecc | Generiek; ChefBar gebruikt `chefbar-graph-loop` als SSOT |
 
-Nieuwe ecosysteem-skill: `npx skills find <query>` daarna `npx skills add <owner/repo> --skill <name> -a cursor --copy -y`. Verifieer installs (≥1k), bron, en of het tokio/LSP verzint. Lockfile committen.
+Nieuwe ecosysteem-skill: `npx skills find <query>` daarna `npx skills add <owner/repo> --skill <name> -a '*' -y` (project, alle agents, symlink — niet `-a cursor --copy`). Verifieer installs (≥1k), bron, en of het tokio/LSP verzint. Lockfile committen. `-g` alleen als de gebruiker skills **buiten deze repo** op de machine wil.
 
 ## Subagent-workers (`.cursor/agents/`)
 

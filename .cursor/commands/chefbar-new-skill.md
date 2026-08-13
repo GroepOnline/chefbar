@@ -1,6 +1,6 @@
 ---
 name: chefbar-new-skill
-description: Create a new ChefBar-specific Cursor skill under .cursor/skills using skill-creator conventions.
+description: Create a new ChefBar Agent Skill under .agents/skills using skill-creator conventions, with a Cursor discovery symlink.
 ---
 
 # /chefbar-new-skill
@@ -9,9 +9,10 @@ Read `.agents/skills/skill-creator/SKILL.md`, then create a ChefBar skill.
 
 ## Placement
 
-- ChefBar-specific: `.cursor/skills/<kebab-name>/SKILL.md`
-- Subagent that executes it: `.cursor/agents/<kebab-name>.md`
-- Ecosysteem-install: `/find-skills` + `npx skills add` → `.agents/skills/` + `skills-lock.json`
+- ChefBar-specific (SSOT, alle agents): `.agents/skills/<kebab-name>/SKILL.md`
+- Cursor discovery: symlink `.cursor/skills/<kebab-name>` → `../../.agents/skills/<kebab-name>`
+- Subagent that executes it: `.cursor/agents/<kebab-name>.md` (Cursor Task-formaat)
+- Ecosysteem-install: `/find-skills` + `npx skills add` → `.agents/skills/` + `skills-lock.json` (`-a '*'`, geen `--copy`)
 
 ## Required frontmatter
 
@@ -29,6 +30,6 @@ Required next to `SKILL.md`:
 - `evals/evals.json` — `skill_name`, ≥3 cases (`prompt`, `expected_output`, ≥2 `expectations`)
 - `evals/triggers.json` — `should_trigger[].must_match_description` terms must appear in the YAML **description**
 
-If the skill has a worker, add `.cursor/agents/<name>.md` (owns, playbook, output, handoff, anti-patterns, definition of done) and a `skill:` + `writes:` row in `.cursor/skills/chefbar-graph-loop/references/graph.yaml`. Distinctive filenames in the **description** so `node scripts/agent-bench.mjs` routing stays ≥ 0.75.
+If the skill has a worker, add `.cursor/agents/<name>.md` (owns, playbook, output, handoff, anti-patterns, definition of done) and a `skill:` + `writes:` row in `.agents/skills/chefbar-graph-loop/references/graph.yaml`. Distinctive filenames in the **description** so `node scripts/agent-bench.mjs` routing stays ≥ 0.75.
 
 Do not duplicate `chefbar-architecture` or invent a second poll-loop as a “helper daemon.”

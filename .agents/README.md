@@ -1,8 +1,12 @@
-# Ecosysteem-skills (lockfile)
+# Agent Skills (lockfile)
 
-Project-local Cursor skills installed with `npx skills add <pkg> --skill <name> -a cursor --copy -y`.
+Project skills live here — **all agents**, not Cursor-native copies.
 
-Canonical ChefBar behavior lives in `../.cursor/skills/` and `../AGENTS.md`. If an installed skill recommends tokio, mockall, a second HTTP loop, or an `LSP()` tool, ignore that chapter.
+- ChefBar first-party: `.agents/skills/chefbar-*` (SSOT). Cursor discovery: symlink `.cursor/skills/chefbar-*` → this directory.
+- Ecosysteem: `npx skills add <pkg> --skill <name> -a '*' -y` (symlink, geen `--copy`). Lockfile: `../skills-lock.json`.
+- `-g` / user-home alleen op expliciet verzoek; cloud-agents en CI restoren uit de repo.
+
+Canonical ChefBar behavior: this tree + `../AGENTS.md`. If an installed skill recommends tokio, mockall, a second HTTP loop, or an `LSP()` tool, ignore that chapter.
 
 Update: `npx skills update -p -y`
 

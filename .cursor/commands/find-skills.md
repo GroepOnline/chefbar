@@ -11,15 +11,15 @@ ChefBar extras:
 
 1. Search with `npx skills find <query>` (non-interactive). Leaderboard: https://skills.sh/
 2. Prefer ≥1k installs and known publishers (`vercel-labs`, `anthropics`, `apollographql`).
-3. Install **project-local** for Cursor, copied (not global, not symlink):
+3. Install **project-local for all agents**, symlink (niet Cursor-only copy, niet user-home `-g` — cloud/CI moeten de lockfile kunnen restoren):
 
 ```bash
-npx skills add <owner/repo> --skill <name> -a cursor --copy -y
+npx skills add <owner/repo> --skill <name> -a '*' -y
 ```
 
 4. Commit `skills-lock.json` and `.agents/skills/<name>/`.
 5. Reject or wrap skills that push **tokio/async**, Electron, or a fictional `LSP()` tool — this crate is sync GTK3 + Grep/Read.
 6. After install, add a row to `AGENTS.md` (ecosystem table) and note ChefBar overrides if any.
-7. Custom ChefBar skills belong in `.cursor/skills/` (use `/chefbar-new-skill` / `skill-creator`), not as a random GitHub copy.
+7. Custom ChefBar skills belong in `.agents/skills/` (use `/chefbar-new-skill` / `skill-creator`) with a `.cursor/skills/<name>` symlink, not as a random GitHub copy and not as a Cursor-native-only tree.
 
 Do not install the whole of `affaan-m/ecc` (285 skills). Pick named `--skill`s.

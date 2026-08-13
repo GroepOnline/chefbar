@@ -33,6 +33,7 @@ Overlap: query tokens vs `name + description + body[:4000]`. Tokens containing `
 - `src/css.rs` must not emit `gap:`, `inset:`, or `--custom-property:`
 - `graph.yaml` `writes:` paths must be file-disjoint
 - `.cursor/rules/*.mdc` must be stateless: no `alwaysApply: true`, no `globs:` key, description one physical line
+- ChefBar skills live in `.agents/skills/chefbar-*`; `.cursor/skills/chefbar-*` must be a symlink to that directory
 - ChefBar skills must not set `disable-model-invocation: true`
 
 ## Report
