@@ -148,7 +148,8 @@ Logs: `journalctl --user -u chefbar.service -f`
 ChefBar bouwt niet lokaal op de laptop. CI is notify-first en draait op de self-hosted runner. Zie `.github/workflows/ci.yml`.
 
 ```yaml
-runs-on: [self-hosted, Linux, X64, company-control]
+# pull_request → pr-isolated; push → heavy
+runs-on: [self-hosted, Linux, X64, heavy]
 steps:
   - cargo test --all-targets
   - cargo build --release
