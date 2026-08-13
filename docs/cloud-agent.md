@@ -36,11 +36,21 @@ chefgroep-os / cheffactory Docker schemas are not in this tree. ChefBar's copy l
 
 ## Daytona emergency sandbox
 
-Separate from GitHub Actions (`pr-isolated` / `heavy`) and from Cursor Cloud VMs. It is a Daytona sandbox named `chefbar-cursor-emergency` for emergency `code_run` / `process.exec` when the self-hosted runner is busy.
+Separate from GitHub Actions (`pr-isolated` / `heavy`) and from Cursor Cloud VMs. Named sandbox: `chefbar-cursor-emergency`.
+
+Every Cloud Agent **start** (when `DAYTONA_API_KEY` is set) runs `scripts/daytona-emergency.py --ensure --refresh`:
+
+1. Create the sandbox if it does not exist.
+2. Start it if it is stopped, paused, or archived.
+3. Arm idle **auto-stop after 15 minutes** and **auto-archive after 24 hours stopped**. The named box is never auto-deleted.
+4. Inside the sandbox: `apt-get update`, upgrade `ca-certificates`/`curl`, `pip install -U pip`, `bun upgrade`. The snapshot is 1 GB, so this is not a full dist-upgrade.
+
+Idle auto-stop is the shutdown path. Cursor Cloud has no stop-hook; when the agent is gone and nothing talks to Daytona, the sandbox stops itself. Start it again with:
 
 ```bash
-export DAYTONA_API_KEY=…   # Cursor secret; never commit
+python3 scripts/daytona-emergency.py --ensure --refresh
 python3 scripts/daytona-emergency.py --smoke
+python3 scripts/daytona-emergency.py --stop   # optional explicit stop
 ```
 
 Requirements:
@@ -49,4 +59,4 @@ Requirements:
 * Do not put the key in git, Dockerfiles, or chat.
 * This is **not** a GitHub Actions runner. Registering `chef-runner-01-*` labels here would steal jobs from the company hosts.
 
-Live sandbox (EU, default snapshot `daytonaio/sandbox:0.8.0`): reuse by name; `autoStopInterval` is 60 minutes.
+A Daytona outage is logged as a warning and does not fail Cloud Agent start.

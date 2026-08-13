@@ -11,5 +11,6 @@ chefbar_cloud_upgrade_apt_packages
 chefbar_cloud_install_chrome_wrapper
 chefbar_cloud_update_rust
 chefbar_cloud_upgrade_bun
+chefbar_cloud_ensure_daytona_sandbox
 
 echo "chefbar cloud start: rustc=$(rustc --version 2>/dev/null || echo missing) bun=$(bun --version 2>/dev/null || echo missing)"

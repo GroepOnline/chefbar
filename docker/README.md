@@ -24,7 +24,7 @@ docker build -f docker/cursor-cloud.Dockerfile -t chefbar-cursor-cloud:emergency
 Create or reuse the named sandbox (no API key in git — `DAYTONA_API_KEY` from the environment):
 
 ```bash
-python3 scripts/daytona-emergency.py --smoke
+python3 scripts/daytona-emergency.py --ensure --refresh
 ```
 
-That uses Daytona's default snapshot (`daytonaio/sandbox`) for a fast emergency code runner. Point a custom sandbox at this Dockerfile only when you need GTK/Rust inside Daytona; the default snapshot is enough for `process.code_run`.
+Cloud Agent `start.sh` already does that when `DAYTONA_API_KEY` is present. The sandbox auto-stops after 15 minutes idle and auto-archives after 24 hours stopped. Point a custom sandbox at this Dockerfile only when you need GTK/Rust inside Daytona; the default snapshot is enough for `process.code_run`.
