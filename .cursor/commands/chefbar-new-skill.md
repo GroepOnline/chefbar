@@ -22,7 +22,7 @@ description: What it does AND when to trigger (pushy). Include ChefBar filenames
 ---
 ```
 
-`name` matches the directory. Put `description` on **one physical line** — Cursor does not parse YAML `>-` / `|` folds. Keep `SKILL.md` well under 500 lines; put tables in `references/`. Point at invariants in `.cursor/rules/chefbar-invariants.mdc`. Add a row to `AGENTS.md` and `docs/agent-harness.md`.
+`name` matches the directory. Put `description` on **one physical line** — Cursor does not parse YAML `>-` / `|` folds. Keep `SKILL.md` well under 500 lines; put tables in `references/`. Do **not** set `disable-model-invocation: true` (that kills description triggers). Rules in `.cursor/rules/` stay trigger-only (`alwaysApply: false`, no `globs`); point at `chefbar-invariants.mdc` but do not make it always-on. Add a row to `AGENTS.md` and `docs/agent-harness.md`.
 
 Required next to `SKILL.md`:
 

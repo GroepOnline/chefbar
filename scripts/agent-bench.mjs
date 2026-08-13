@@ -136,6 +136,19 @@ function isFoldedDescription(raw) {
   return /^description:\s*[>|][+-]?\s*$/m.test(raw || "");
 }
 
+/** Stateless harness: rules must not auto-attach. */
+function isAlwaysApplyTrue(raw) {
+  return /^alwaysApply:\s*true\s*$/im.test(raw || "");
+}
+
+function hasGlobsKey(raw) {
+  return /^globs\s*:/m.test(raw || "");
+}
+
+function hasDisableModelInvocation(raw) {
+  return /^disable-model-invocation:\s*true\s*$/im.test(raw || "");
+}
+
 function hasHeading(body, names) {
   const heads = [...body.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) =>
     m[1].trim().toLowerCase(),
@@ -158,6 +171,7 @@ const report = {
   skills: [],
   agents: [],
   commands: [],
+  rules: [],
   routing: { cases: [], accuracy: 0, passed: 0, total: 0 },
   invariants: {},
   evals: { skills_with_evals: 0, skills_missing_evals: [] },
@@ -207,6 +221,40 @@ function readTextOrFail(p, label) {
     const got = isFoldedDescription(raw);
     if (got !== expect) {
       fail(`isFoldedDescription(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
+    }
+  }
+  const alwaysCases = [
+    ["alwaysApply: true\n", true],
+    ["alwaysApply: false\n", false],
+    ["alwaysApply: True\n", true],
+    ["description: x\n", false],
+  ];
+  for (const [raw, expect] of alwaysCases) {
+    const got = isAlwaysApplyTrue(raw);
+    if (got !== expect) {
+      fail(`isAlwaysApplyTrue(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
+    }
+  }
+  const globCases = [
+    ['globs: "**/*.rs"\n', true],
+    ["globs:\n  - src/css.rs\n", true],
+    ["alwaysApply: false\n", false],
+  ];
+  for (const [raw, expect] of globCases) {
+    const got = hasGlobsKey(raw);
+    if (got !== expect) {
+      fail(`hasGlobsKey(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
+    }
+  }
+  const dmiCases = [
+    ["disable-model-invocation: true\n", true],
+    ["disable-model-invocation: false\n", false],
+    ["description: x\n", false],
+  ];
+  for (const [raw, expect] of dmiCases) {
+    const got = hasDisableModelInvocation(raw);
+    if (got !== expect) {
+      fail(`hasDisableModelInvocation(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
     }
   }
 }
@@ -259,6 +307,13 @@ for (const dir of skillDirs) {
     rec.issues.push("description uses YAML > / | fold");
     fail(
       `skill ${name}: description must be one physical line (Cursor does not parse >- folds)`,
+    );
+  }
+  if (hasDisableModelInvocation(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("disable-model-invocation: true");
+    fail(
+      `skill ${name}: disable-model-invocation kills description triggers; harness is stateless`,
     );
   }
   if (!desc) {
@@ -430,6 +485,53 @@ for (const file of walk(path.join(CURSOR, "commands"), (p) => p.endsWith(".md"))
     fail(`command ${stem}: invalid frontmatter`);
   }
   report.commands.push(rec);
+}
+
+// --- rules (stateless: description trigger only) ---
+const rulesRoot = path.join(CURSOR, "rules");
+report.rules = [];
+const ruleFiles = fs.existsSync(rulesRoot)
+  ? walk(rulesRoot, (p) => p.endsWith(".mdc"))
+  : (fail(".cursor/rules missing"), []);
+for (const file of ruleFiles) {
+  const stem = path.basename(file);
+  const text = fs.readFileSync(file, "utf8");
+  const fm = parseFrontmatter(text, rel(file));
+  const rec = { name: stem, path: rel(file), ok: true, issues: [] };
+  if (fm.error) {
+    rec.ok = false;
+    rec.issues.push(fm.error);
+    fail(fm.error);
+    report.rules.push(rec);
+    continue;
+  }
+  if (isFoldedDescription(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("description uses YAML > / | fold");
+    fail(
+      `rule ${stem}: description must be one physical line (Cursor does not parse >- folds)`,
+    );
+  }
+  if (!(fm.data.description || "").trim()) {
+    rec.ok = false;
+    rec.issues.push("empty description");
+    fail(`rule ${stem}: empty description`);
+  }
+  if (isAlwaysApplyTrue(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("alwaysApply: true");
+    fail(
+      `rule ${stem}: alwaysApply must not be true (stateless — load via description or chain)`,
+    );
+  }
+  if (hasGlobsKey(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("globs key");
+    fail(
+      `rule ${stem}: no globs (stateless — load via description or chain, not file attach)`,
+    );
+  }
+  report.rules.push(rec);
 }
 
 // --- graph ---
@@ -646,7 +748,7 @@ if (jsonOnly) {
     `  structure ${report.score.structure}  routing ${report.score.routing}% (${report.routing.passed}/${report.routing.total})  quality ${report.score.quality}`,
   );
   console.log(
-    `  skills ${report.skills.length}  agents ${report.agents.length}  commands ${report.commands.length}  evals ${report.evals.skills_with_evals}`,
+    `  skills ${report.skills.length}  agents ${report.agents.length}  commands ${report.commands.length}  rules ${report.rules.length}  evals ${report.evals.skills_with_evals}`,
   );
   if (report.blocking.length) {
     console.log("\nBLOCKING");

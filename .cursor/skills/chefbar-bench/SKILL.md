@@ -1,6 +1,6 @@
 ---
 name: chefbar-bench
-description: ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents, graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, and a stylesheet invariant scan. Writes .cursor/evals/last-report.json. Exit 1 if blocking failures or routing below --min-routing (default 0.75). Use when adding a skill, worker, or eval case, or when CI reports bench failure.
+description: ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents, graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, stylesheet invariant scan, and .cursor/rules stateless policy (alwaysApply false, no globs). Writes .cursor/evals/last-report.json. Exit 1 if blocking failures or routing below --min-routing (default 0.75). Use when adding a skill, worker, rule, or eval case, or when CI reports bench failure.
 ---
 
 # ChefBar agent-bench
@@ -15,6 +15,7 @@ Scoring notes: [references/scoring.md](references/scoring.md). Runner: `scripts/
 2. **Skills** (`.cursor/skills/*/SKILL.md`):
    - YAML frontmatter `name` == directory, kebab-case
    - `description` **one physical line** (no `>-` / `|` folds — Cursor ignores them), 120–1024 chars, **no `<>`**
+   - no `disable-model-invocation: true` (kills description triggers; harness is stateless)
    - Headings matching Instructions\|Playbook\|Workflow, Example, Performance, Troubleshooting
    - `evals/evals.json`: `skill_name` match, **≥3** cases, each with `prompt`, `expected_output`, **≥2** `expectations`
    - `evals/triggers.json`: `should_trigger[].must_match_description` terms **all appear in the description**; `should_not_trigger[].must_not_all_match` must **not** all appear
@@ -24,7 +25,7 @@ Scoring notes: [references/scoring.md](references/scoring.md). Runner: `scripts/
    - Body preferably **≥80 lines** (warning if thinner)
 4. **Graph pairing** (`graph.yaml`): each expected worker has a skill directory; `writes:` lists are file-disjoint (ignore `diff-nits` / `inline-tests-*`).
 5. **Routing**: token overlap of the query vs `name + description + first 4000 chars of body`. Filename-like tokens (`.rs`, `/`) get extra weight. `expect_skills` / `expect_agents` must appear in the **top-2** of that kind. `forbidden_skills`: top-1 skill must not be that name. Misses are warnings; **accuracy < --min-routing is blocking**.
-6. **Invariants**: `Cargo.toml` must not pull tokio, async-std, reqwest, hyper, actix, axum. `src/css.rs` must not emit `gap:`, `inset:`, or CSS custom properties `--foo:`.
+6. **Invariants**: `Cargo.toml` must not pull tokio, async-std, reqwest, hyper, actix, axum. `src/css.rs` must not emit `gap:`, `inset:`, or CSS custom properties `--foo:`. `.cursor/rules/*.mdc` must be **stateless**: `alwaysApply` not true, no `globs:` key, description one physical line.
 7. Report is written to `.cursor/evals/last-report.json` (gitignored). Do not commit it.
 
 ### Adding a routing case

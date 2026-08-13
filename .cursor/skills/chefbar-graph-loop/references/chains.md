@@ -2,6 +2,8 @@
 
 How the orchestrator sequences workers. File ownership: `AGENTS.md`. Graph YAML: `graph.yaml`.
 
+Chains are the load path for context. Rules and skills are not always-on; the orchestrator pastes invariants + the relevant playbook into each worker prompt when the chain runs.
+
 ## `feature`
 
 1. `chefbar-architect` — plan, file map, invariant check. No product diff.

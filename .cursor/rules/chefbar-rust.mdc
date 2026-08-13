@@ -1,6 +1,5 @@
 ---
-description: ChefBar Rust style — sync actor, inline tests, clippy -D warnings. Use when editing *.rs.
-globs: "**/*.rs"
+description: ChefBar Rust style — sync actor, inline tests, clippy -D warnings, no tokio. Trigger when editing src Rust files, Cargo.toml, or a rust-core / qa-converge chain. Not glob-attached.
 alwaysApply: false
 ---
 

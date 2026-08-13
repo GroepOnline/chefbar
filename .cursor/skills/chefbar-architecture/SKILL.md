@@ -5,9 +5,9 @@ description: ChefBar architecture skill for the one poll-actor, one Snapshot, on
 
 # ChefBar architecture
 
-Load this skill before changing data flow, adding a harness, or touching more than one of `{state, models, actions, panel, tray, ipc}`.
+Load this skill when the description matches, or when a graph-loop chain includes the architect. Do not assume it is already in context.
 
-Invariants in `.cursor/rules/chefbar-invariants.mdc` win over generic Rust skills.
+Invariants in `.cursor/rules/chefbar-invariants.mdc` are also description/chain-triggered (not always-on). When loaded, they win over generic Rust skills.
 
 ## Instructions
 

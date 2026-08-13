@@ -17,7 +17,7 @@ Run in this order (cheap → expensive):
 2. `cargo clippy --all-targets -- -D warnings`
 3. `cargo test --all-targets`
 4. `shellcheck install.sh scripts/*.sh` (if those files changed, still cheap — CI always runs it)
-5. `node scripts/agent-bench.mjs` — skills/agents structure, `graph.yaml` pairing, `.cursor/evals/routing.json`, Cargo/CSS invariants. No LLM, no network, Node stdlib only.
+5. `node scripts/agent-bench.mjs` — skills/agents structure, `graph.yaml` pairing, `.cursor/evals/routing.json`, Cargo/CSS invariants, **stateless rules** (`alwaysApply` not true, no `globs`). No LLM, no network, Node stdlib only.
 6. `bash scripts/visual-shot.sh` — PNG under `docs/` or the path the script documents. Fail if git sees a **new unignored PNG at repo root**. Dark panel accent `#5C97FF` when Xvfb exists. Exit **2** = no X-stack → skip, **not** a product bug. CI visual job is `continue-on-error` / warning-only.
 7. Optional: `bash scripts/doctor.sh` — exit 0/1/2; fingerprints `sha256[:12]` only.
 

@@ -5,7 +5,7 @@ description: Run the ChefBar worker graph — file-disjoint subagents, Kater cha
 
 # /chefbar-graph
 
-Load skill `chefbar-graph-loop` and act as `chefbar-orchestrator`.
+Load skill `chefbar-graph-loop` and act as `chefbar-orchestrator`. This chain is the load path: paste invariants + worker playbooks into spawned prompts. Rules/skills are not already in context.
 
 Arguments (optional): `feature` | `bugfix` | `review` | `ci-red` | `kater-ops` | `docs-only`. Default `feature`.
 

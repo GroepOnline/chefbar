@@ -1,14 +1,14 @@
 # ChefBar agent harness
 
-Skills, Cursor-subagents, Kater-koppelingen, named chains en graph-loops voor deze repo. Kort: [`AGENTS.md`](../AGENTS.md). Invariants: `.cursor/rules/chefbar-invariants.mdc`.
+Skills, Cursor-subagents, Kater-koppelingen, named chains en graph-loops voor deze repo. Kort: [`AGENTS.md`](../AGENTS.md) (catalogus, niet always-on). Invariants: `.cursor/rules/chefbar-invariants.mdc` — description-trigger of chain, niet `alwaysApply`.
 
 ## Lay-out
 
 ```
-AGENTS.md                          # ingang
-.cursor/rules/                     # always/glob rules
-.cursor/skills/                    # ChefBar-eigen skills
-.cursor/agents/                    # file-disjoint workers
+AGENTS.md                          # thin catalog + stateless policy
+.cursor/rules/                     # description trigger only (alwaysApply: false, no globs)
+.cursor/skills/                    # ChefBar-eigen skills (description trigger)
+.cursor/agents/                    # file-disjoint workers (chain-loaded)
 .cursor/commands/                  # slash: find-skills, chefbar-graph, …
 .agents/skills/                    # ecosysteem (npx skills, skills-lock.json)
 .cursor/skills/chefbar-graph-loop/references/graph.yaml
@@ -87,9 +87,20 @@ Deterministisch, geen LLM, geen netwerk:
 node scripts/agent-bench.mjs
 ```
 
-Scoort structure (frontmatter/secties/evals), graph-pairing, routing-corpus (`.cursor/evals/routing.json`, drempel 0.75), Cargo-verboden crates, GTK3-CSS-bans in `src/css.rs`. Rapport: `.cursor/evals/last-report.json` (gitignored). CI draait dezelfde stap.
+Scoort structure (frontmatter/secties/evals), graph-pairing, routing-corpus (`.cursor/evals/routing.json`, drempel 0.75), Cargo-verboden crates, GTK3-CSS-bans in `src/css.rs`, stateless rules (geen `alwaysApply: true`, geen `globs`). Rapport: `.cursor/evals/last-report.json` (gitignored). CI draait dezelfde stap.
 
 Nieuwe skill of worker: `description` op **één regel** (Cursor parseert geen YAML `>-` / `|`), 120–1024 tekens met unieke bestandsnamen/constanten, evals ≥3, triggers-termen in de **description**, daarna de bench groen.
+
+## Cursor-gedrag (stateless)
+
+Niets automatisch in context. Laden alleen via:
+
+- **Triggers** — YAML-`description` op skills en `.cursor/rules/*.mdc` (`alwaysApply: false`, geen `globs`).
+- **Chains** — `graph.yaml` / `/chefbar-graph` / Kater `pr_health`. Orchestrator injecteert invariants in worker-prompts op chain-tijd, niet always-on.
+
+Skills: `disable-model-invocation` blijft **uit** (anders geen description-triggers). Handmatig: `/chefbar-*`.
+
+Vendored `.agents/skills/*` niet herschrijven; product-skills winnen bij conflict als ze getriggerd zijn. De bench faalt als een rule `alwaysApply: true` of een `globs:`-key heeft.
 
 ## Kater-koppeling
 

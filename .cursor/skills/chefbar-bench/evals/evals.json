@@ -38,6 +38,15 @@
       ]
     },
     {
+      "id": "stateless-rules",
+      "prompt": "Mag een .cursor/rules mdc alwaysApply true of globs hebben?",
+      "expected_output": "Nee. Stateless: alwaysApply false, geen globs, laden via description of chain.",
+      "expectations": [
+        {"name": "always", "text": "alwaysApply"},
+        {"name": "globs", "text": "globs"}
+      ]
+    },
+    {
       "id": "pairing",
       "prompt": "Welke skill hoort bij chefbar-actor in de bench?",
       "expected_output": "chefbar-actor (niet architecture).",

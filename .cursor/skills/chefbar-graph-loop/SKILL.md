@@ -9,6 +9,8 @@ This skill is the **SSOT** for multi-worker runs. Ecosysteem `continuous-agent-l
 
 Load [references/graph.yaml](references/graph.yaml) and [references/chains.md](references/chains.md). Parent agent: `chefbar-orchestrator`.
 
+ChefBar is **stateless** in Cursor: rules/skills are not auto-injected. A named chain is how invariants and worker playbooks enter context (orchestrator pastes them into worker prompts).
+
 ## Instructions
 
 1. Start as `chefbar-orchestrator`. It does **not** write product files under `src/`.

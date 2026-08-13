@@ -54,4 +54,4 @@ release-artifact heet `chefbar-release`.
 
 ## Agent skills
 
-Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a cursor --copy -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync.
+Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). Harness is **stateless**: rules/skills niet always-on, alleen via YAML-`description` of een named chain. File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a cursor --copy -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync.

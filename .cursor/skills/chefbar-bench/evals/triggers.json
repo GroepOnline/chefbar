@@ -4,6 +4,11 @@
       "id": "bench-cmd",
       "prompt": "agent-bench.mjs routing.json faalt",
       "must_match_description": ["agent-bench.mjs", "routing.json"]
+    },
+    {
+      "id": "stateless-rules",
+      "prompt": "rule alwaysApply globs faalt in de bench",
+      "must_match_description": ["alwaysApply", "globs"]
     }
   ],
   "should_not_trigger": [

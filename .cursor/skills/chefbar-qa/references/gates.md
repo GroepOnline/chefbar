@@ -10,6 +10,8 @@ shellcheck install.sh scripts/*.sh
 node scripts/agent-bench.mjs
 ```
 
+The bench also fails if `.cursor/rules/*.mdc` has `alwaysApply: true` or a `globs:` key (stateless harness).
+
 Visual job `visual` is warning-only (`continue-on-error`). `scripts/visual-shot.sh` exit 2 = no Xvfb.
 
 Doctor (not always in CI): exit 0 ok, 1 warn, 2 error. Fingerprints `sha256[:12]` only.

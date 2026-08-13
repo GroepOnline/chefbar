@@ -1,11 +1,11 @@
 ---
-description: ChefBar non-negotiable architecture — one actor, one snapshot, one socket. Wins over generic Rust/async skills.
-alwaysApply: true
+description: ChefBar non-negotiable architecture — one poll-actor, one Snapshot, one chefbar.sock. Trigger when adding a loop, timer, tray, socket, tokio, async runtime, reqwest, GTK HTTP, Electron, or a second daemon. Wins over generic Rust/async skills. Not always-on; load via this description or a chefbar-graph-loop chain.
+alwaysApply: false
 ---
 
 # ChefBar invariants
 
-These rules beat generic Rust skills (`rust-patterns`, `rust-testing`, `rust-best-practices`, `continuous-agent-loop`).
+Not always-on. Loaded when the YAML description matches or a graph-loop chain pastes this file into a worker prompt. When loaded, these rules beat generic Rust skills (`rust-patterns`, `rust-testing`, `rust-best-practices`, `continuous-agent-loop`).
 
 1. **One poll-actor.** `src/state.rs` owns the rhythm (vault 5s, ops 15s, vault-extra 30s, linear 60s, kater 30s, fetch budget 8s). UI surfaces read `Shared` under a short `RwLock`. Do not add a second loop, ticker, or per-widget HTTP poll.
 2. **One snapshot.** New domains are new sections on `Snapshot` / `OpsSnapshot` plus builders in `src/models.rs`. Failed polls keep last-good data and mark stale — never blank the UI, never panic on JSON.

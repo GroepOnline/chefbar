@@ -2,25 +2,24 @@
 
 ChefBar is de native GTK3/Rust mission-control app van ChefGroep. Eén poll-actor, één snapshot, één Unix-socket, één venster. Geen Electron, geen webview, geen tweede daemon.
 
-Dit bestand is de ingang voor agents. Skills, subagents, chains en graph-loops staan in `.cursor/` (ChefBar-eigen) en `.agents/skills/` (ecosysteem via `npx skills`). Catalogus: [`docs/agent-harness.md`](docs/agent-harness.md).
+Dit bestand is de **catalogus**, geen always-on wet. Skills, rules en workers staan in `.cursor/` (ChefBar-eigen) en `.agents/skills/` (ecosysteem via `npx skills`). Uitleg: [`docs/agent-harness.md`](docs/agent-harness.md).
 
-## Altijd eerst
+## Stateless — niets auto in context
 
-1. Lees `.cursor/rules/chefbar-invariants.mdc` — die regels winnen van algemene Rust-skills.
-2. Kies de juiste skill (tabel hieronder). Voor werk over meerdere modules: skill `chefbar-graph-loop`.
-3. Bouwen/testen mag in deze cloud-omgeving en op de CI-runner. Vertel de gebruiker nooit om `rustup` op de laptop `joep` te zetten — daar staan fail-fast stubs. Zie `CONTRIBUTING.md`.
+Cursor laadt skills, rules en worker-playbooks **niet** standaard. Alleen via:
 
-## Non-negotiables
+1. **Trigger** — YAML-`description` matcht de taak. Rules hebben `alwaysApply: false` en **geen** `globs`.
+2. **Chain** — named graph (`feature` / `bugfix` / `review` / `ci-red` / `kater-ops` / `docs-only`) of `/chefbar-graph`. De orchestrator plakt invariants dan in worker-prompts.
 
-- **Eén waarheid.** Nieuwe data = nieuwe sectie in `Snapshot` / `OpsSnapshot` (`src/models.rs` + poll in `src/state.rs`). Geen tweede poll-loop, geen tweede socket, geen tweede tray.
-- **Acties zijn data.** `RunSpec` + `Executor` in `src/actions.rs`. Geen closures in de UI, geen netwerk op de GTK-thread.
-- **Sync actor.** `std::thread` + `mpsc` + `RwLock`. Geen `tokio`, geen `async`/`await`, geen `reqwest`. HTTP via `ureq` met `redirects(0)`.
-- **Beleid wint.** Elke URL door `EndpointPolicy` + `auth::get_headers`. Bearer volgt nooit redirects. `safe_join` blijft same-origin.
-- **GTK3-CSS subset.** Geen CSS custom properties (`--foo`), geen `gap`, geen `inset`, geen gradients/glow. Tokens in `src/css.rs`.
-- **Stilte.** Alleen transities melden. `coalesce_toasts` = max één toast per poll-cyclus.
-- **Geen secrets in logs.** Doctor toont alleen `sha256[:12]` fingerprints.
+Generic `continuous-agent-loop` / tokio-skills niet voor productcode. Product-skills houden `disable-model-invocation` **uit** (anders sterven triggers). Handmatig: `/chefbar-*`.
 
-## Skills
+Non-negotiables (één poll-actor, sync `ureq`, GTK geen HTTP, last-good, geen Electron, `RunSpec`+`Executor`, `UiCommand`, camelCase origins, CI-gates, file-disjoint) staan in skill `chefbar-architecture`, rule `chefbar-invariants`, en `references/invariants.md` per skill — laden via trigger of chain, niet hier dupliceren.
+
+## Omgeving
+
+Bouwen/testen mag in deze cloud-omgeving en op de CI-runner. Vertel de gebruiker nooit om `rustup` op de laptop `joep` te zetten — daar staan fail-fast stubs. Zie `CONTRIBUTING.md`.
+
+## Skills (laden via description of chain)
 
 ### ChefBar-eigen (`.cursor/skills/`)
 

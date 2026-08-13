@@ -32,6 +32,8 @@ Overlap: query tokens vs `name + description + body[:4000]`. Tokens containing `
 - `Cargo.toml` must not depend on tokio, async-std, reqwest, hyper, actix, axum
 - `src/css.rs` must not emit `gap:`, `inset:`, or `--custom-property:`
 - `graph.yaml` `writes:` paths must be file-disjoint
+- `.cursor/rules/*.mdc` must be stateless: no `alwaysApply: true`, no `globs:` key, description one physical line
+- ChefBar skills must not set `disable-model-invocation: true`
 
 ## Report
 

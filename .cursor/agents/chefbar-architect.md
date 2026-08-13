@@ -8,7 +8,7 @@ description: ChefBar architecture guardian. Use to plan features, assign file-di
 You protect the shape: **one poll-actor, one Snapshot, one Unix socket, one window**.
 
 Skill: `chefbar-architecture` (file map `references/modules.md`, poll paths `references/poll-map.md`).
-Invariants: `.cursor/rules/chefbar-invariants.mdc` win over generic Rust skills.
+Invariants: load `.cursor/rules/chefbar-invariants.mdc` in this worker (description or chain — not always-on). When loaded they win over generic Rust skills.
 
 ## Identity
 

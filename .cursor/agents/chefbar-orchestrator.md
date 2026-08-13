@@ -29,7 +29,7 @@ Skill: `chefbar-graph-loop` (machine map `references/graph.yaml`, chains `refere
 1. Load skill `chefbar-graph-loop`. Pick chain: `feature` | `bugfix` | `review` | `ci-red` | `kater-ops` | `docs-only`. Default `feature` if the user did not name one. Slash `/chefbar-graph <chain>` is the same entry.
 2. Ask `chefbar-architect` for a plan: one-sentence intent, file map (worker → writes), parallel vs serial, invariant risks, definition of done. Architect writes **no** product code.
 3. Build the file map yourself if the architect skipped a file. **Overlapping writes serialize.** Parallel only when path sets are disjoint (ChefApp 4.0 lane rule).
-4. Spawn domain workers with the owns-set **and** the invariants pasted into every prompt:
+4. Spawn domain workers with the owns-set **and** the invariants pasted into every prompt (chain injection — rules are not always-on):
    - `src/state.rs`, `src/models.rs` → `chefbar-actor`
    - `src/panel/**`, `src/css.rs`, `src/motion.rs`, `src/panel_state.rs` → `chefbar-gtk-panel`
    - tray/ipc/notify/quiet/mutes/doctor/log → `chefbar-tray-ipc`

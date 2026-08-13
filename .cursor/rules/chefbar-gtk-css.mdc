@@ -1,6 +1,5 @@
 ---
-description: GTK3 panel and Signaal v2 CSS constraints for ChefBar UI files.
-globs: "src/css.rs,src/panel/**/*.rs,src/motion.rs,src/panel_state.rs"
+description: GTK3 panel and Signaal v2 CSS constraints — no gap, inset, or custom properties. Trigger when editing src/css.rs, src/panel, src/motion.rs, src/panel_state.rs, or when CSS gap, inset, or custom properties appear. Not glob-attached.
 alwaysApply: false
 ---
 
