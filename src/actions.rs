@@ -996,6 +996,8 @@ pub struct Executor {
     pub profile: EndpointProfile,
     /// Laatste bekende vault-revision (expectedRevision bij accountswitch).
     pub revision: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// Zelfde snapshot/pin als het Control-canvas (palette "Vraag control").
+    pub shared: crate::state::Shared,
 }
 
 impl Executor {
@@ -1238,41 +1240,37 @@ impl Executor {
                 });
             }
             RunSpec::FocusDomain(domain) => {
-                // IPC/palette focus — no network, UI-thread safe via notify + refresh.
+                let _ = crate::tray::send_ui(crate::tray::UiCommand::FocusDomain(domain.clone()));
                 crate::notify::notify("Focus domein", domain, "ok");
             }
             RunSpec::TogglePalette => {
-                crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {
+                    crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                }
             }
             RunSpec::SendControlChat => {
-                let text = query.to_string();
-                if text.trim().is_empty() {
+                let text = query.trim();
+                if text.is_empty() {
                     crate::notify::notify("Control", "typ eerst een vraag", "hulp");
                     return;
                 }
-                let target = std::env::var("CHEFBAR_CONTROL_AGENT")
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-                    .or_else(|| {
-                        std::env::var("CHEFBAR_CONTROL_PANE")
-                            .ok()
-                            .filter(|s| !s.trim().is_empty())
-                    });
-                match target {
-                    Some(target) => {
-                        self.spawn_bg(move || {
-                            if crate::ops_cli::send_control_prompt(&target, &text) {
-                                crate::notify::notify("Control", "vraag verstuurd", "ok");
-                            } else {
-                                crate::notify::notify("Control", "sturen lukte niet", "error");
-                            }
-                        });
+                match crate::chat::submit(&self.shared, text) {
+                    crate::chat::SubmitStatus::Sent => {
+                        crate::notify::notify("Control", "vraag verstuurd", "ok");
                     }
-                    None => crate::notify::notify(
-                        "Control",
-                        "zet CHEFBAR_CONTROL_AGENT of open het Control-domein",
-                        "hulp",
-                    ),
+                    crate::chat::SubmitStatus::Busy => {
+                        crate::notify::notify("Control", "vorige vraag loopt nog", "hulp");
+                    }
+                    crate::chat::SubmitStatus::NoTarget => {
+                        crate::notify::notify(
+                            "Control",
+                            "geen Pi — zet CHEFBAR_CONTROL_AGENT of kies een harnas",
+                            "hulp",
+                        );
+                    }
+                    crate::chat::SubmitStatus::Empty => {
+                        crate::notify::notify("Control", "typ eerst een vraag", "hulp");
+                    }
                 }
             }
         }
@@ -1466,6 +1464,9 @@ mod tests {
             a.run,
             RunSpec::FocusDomain(ref d) if d == "control"
         )));
+        assert!(actions
+            .iter()
+            .any(|a| a.needs_text && matches!(a.run, RunSpec::SendControlChat)));
     }
 
     #[test]

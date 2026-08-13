@@ -15,6 +15,31 @@ fn run_herdr(args: &[String]) -> bool {
     }
 }
 
+/// Resultaat van `herdr agent prompt --wait`. Onderscheidt "binary startte niet"
+/// van "herdr draaide, wait eindigde zonder success" — anders wordt een
+/// al-geaccepteerde devops-prompt een tweede keer ingestuurd.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaitPrompt {
+    Success,
+    RanUnsuccessfully,
+    SpawnFailed,
+}
+
+fn classify_herdr_wait(result: Result<std::process::Output, std::io::Error>) -> WaitPrompt {
+    match result {
+        Ok(out) if out.status.success() => WaitPrompt::Success,
+        Ok(_) => WaitPrompt::RanUnsuccessfully,
+        Err(_) => WaitPrompt::SpawnFailed,
+    }
+}
+
+fn allow_prompt_fallback(wait: WaitPrompt) -> bool {
+    match wait {
+        WaitPrompt::SpawnFailed => true,
+        WaitPrompt::Success | WaitPrompt::RanUnsuccessfully => false,
+    }
+}
+
 pub fn herdr_focus_args(target: &str) -> Vec<String> {
     vec!["agent".into(), "focus".into(), target.into()]
 }
@@ -80,15 +105,25 @@ pub fn read_agent(target: &str) -> Option<String> {
     run_herdr_output(&herdr_read_args(target))
 }
 
-/// Control-chat send: prompt + wait for idle/done/blocked, then Enter as fallback.
+/// Control-chat send: `herdr agent prompt --wait`. Alleen zonder herdr
+/// (spawn-fout) vallen we terug op een kale prompt; een timeout na acceptatie
+/// mag dezelfde side-effecting vraag niet opnieuw insturen.
 pub fn send_control_prompt(target: &str, text: &str) -> bool {
     if target.trim().is_empty() || text.trim().is_empty() {
         return false;
     }
-    if run_herdr(&herdr_prompt_wait_args(target, text)) {
+    let wait = classify_herdr_wait(
+        Command::new("herdr")
+            .args(herdr_prompt_wait_args(target, text))
+            .output(),
+    );
+    if matches!(wait, WaitPrompt::Success) {
         return true;
     }
-    send_prompt(target, None, text)
+    if allow_prompt_fallback(wait) {
+        return send_prompt(target, None, text);
+    }
+    false
 }
 
 /// Fleet-health plugin scan for one node. Untargeted scan is not a success.
@@ -275,5 +310,18 @@ mod tests {
         assert_eq!(args[1], "prompt");
         assert!(args.contains(&"--wait".into()));
         assert!(!args.iter().any(|a| a == "send"));
+    }
+
+    #[test]
+    fn wait_timeout_does_not_resend_prompt() {
+        assert!(!allow_prompt_fallback(WaitPrompt::Success));
+        assert!(!allow_prompt_fallback(WaitPrompt::RanUnsuccessfully));
+        assert!(allow_prompt_fallback(WaitPrompt::SpawnFailed));
+    }
+
+    #[test]
+    fn classify_wait_treats_spawn_error_as_fallback() {
+        let err = std::io::Error::new(std::io::ErrorKind::NotFound, "herdr");
+        assert_eq!(classify_herdr_wait(Err(err)), WaitPrompt::SpawnFailed);
     }
 }
