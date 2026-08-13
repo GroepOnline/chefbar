@@ -370,6 +370,7 @@ impl Panel {
         let overlay = self.overlay.clone();
         let shared = self.shared.clone();
         let executor = self.executor.clone();
+        let window = self.window.clone();
         self.overlay.entry.connect_changed(move |entry| {
             let query = entry.text().to_string();
             let snap = shared.snapshot.read().unwrap().clone();
@@ -381,8 +382,15 @@ impl Panel {
             let ranked = rank_actions_with(&actions, &query, 8, Some(&rank_ctx));
             let overlay_for_action = overlay.clone();
             let executor_for_action = executor.clone();
+            let window_for_action = window.clone();
             overlay.render_actions(&ranked, move |action| {
                 let frecency_id = action.frecency_id();
+                crate::frecency::record(&frecency_id);
+                overlay_for_action.hide();
+                if action.needs_text {
+                    prompt_for(&executor_for_action, &window_for_action, &action);
+                    return;
+                }
                 let spec = action.run.clone();
                 if let crate::actions::RunSpec::CopyText(text) = &spec {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
@@ -391,8 +399,6 @@ impl Panel {
                 } else {
                     executor_for_action.run_for_ui(&spec);
                 }
-                crate::frecency::record(&frecency_id);
-                overlay_for_action.hide();
             });
         });
     }
@@ -461,25 +467,16 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
-            let persisted = crate::panel_state::load();
-            let mut state = crate::panel_state::PanelState {
-                active_group: Some(current.clone()),
-                harness: None,
-                query: Some(self.search.text().to_string())
-                    .filter(|q: &String| !q.trim().is_empty()),
-                drawer_open: self.drawer.is_open(),
-                density: self.density.borrow().clone(),
-                recent_domains: persisted.recent_domains.clone(),
-                control_target: persisted.control_target.clone(),
-                control_pinned: persisted.control_pinned,
-                control_alias: persisted.control_alias.clone(),
-            };
-            // push huidige group naar recent_domains MRU
+            let mut state = crate::panel_state::load();
+            state.active_group = Some(current.clone());
+            state.harness = None;
+            state.query =
+                Some(self.search.text().to_string()).filter(|q: &String| !q.trim().is_empty());
+            state.drawer_open = self.drawer.is_open();
+            state.density = self.density.borrow().clone();
             state.push_recent_domain(&current);
             if crate::panel_state::save(&state) {
                 self.persist_dirty.set(false);
-                // active_* fields in Panel zelf syncen
-                // (we kunnen niet &mut self, dus via try)
             }
         }
     }
@@ -564,13 +561,16 @@ fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
 
 fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harness: &str) {
     let control = harness == "control";
+    let entering = control && !chat.root.is_visible();
     scroller.set_visible(!control);
     chat.root.set_visible(control);
     chat.root.set_no_show_all(!control);
     if control {
         chat.root.show_all();
         chat.refresh();
-        chat.focus_composer();
+        if entering {
+            chat.focus_composer();
+        }
     }
 }
 

@@ -9,6 +9,25 @@ use ksni::menu::StandardItem;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, RwLock};
 
+static UI_TX: Mutex<Option<Sender<UiCommand>>> = Mutex::new(None);
+
+/// Register the in-process UI command sender (tray / ipc / palette).
+pub fn register_command_tx(tx: Sender<UiCommand>) {
+    *UI_TX.lock().unwrap() = Some(tx);
+}
+
+/// Queue a UI command on the GTK dispatcher. False when no sender is registered
+/// yet (tests, early startup).
+pub fn send_ui(cmd: UiCommand) -> bool {
+    let Ok(guard) = UI_TX.lock() else {
+        return false;
+    };
+    let Some(tx) = guard.as_ref() else {
+        return false;
+    };
+    tx.send(cmd).is_ok()
+}
+
 /// UI-commando's van tray/ipc naar de GTK-thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
@@ -296,7 +315,7 @@ impl ksni::Tray for ChefTray {
         "chefbar".into()
     }
     fn title(&self) -> String {
-        "ChefBar".into()
+        "ChefApp".into()
     }
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         vec![self.icon.clone()]
@@ -309,7 +328,7 @@ impl ksni::Tray for ChefTray {
             .unwrap_or_default();
         let _ = state;
         ksni::ToolTip {
-            title: "ChefBar".into(),
+            title: "ChefApp".into(),
             description: line,
             icon_name: "chefbar".into(),
             icon_pixmap: vec![self.icon.clone()],

@@ -1240,11 +1240,13 @@ impl Executor {
                 });
             }
             RunSpec::FocusDomain(domain) => {
-                // IPC/palette focus — no network, UI-thread safe via notify + refresh.
+                let _ = crate::tray::send_ui(crate::tray::UiCommand::FocusDomain(domain.clone()));
                 crate::notify::notify("Focus domein", domain, "ok");
             }
             RunSpec::TogglePalette => {
-                crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {
+                    crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                }
             }
             RunSpec::SendControlChat => {
                 let text = query.trim();
@@ -1252,7 +1254,24 @@ impl Executor {
                     crate::notify::notify("Control", "typ eerst een vraag", "hulp");
                     return;
                 }
-                crate::chat::submit(&self.shared, text);
+                match crate::chat::submit(&self.shared, text) {
+                    crate::chat::SubmitStatus::Sent => {
+                        crate::notify::notify("Control", "vraag verstuurd", "ok");
+                    }
+                    crate::chat::SubmitStatus::Busy => {
+                        crate::notify::notify("Control", "vorige vraag loopt nog", "hulp");
+                    }
+                    crate::chat::SubmitStatus::NoTarget => {
+                        crate::notify::notify(
+                            "Control",
+                            "geen Pi — zet CHEFBAR_CONTROL_AGENT of kies een harnas",
+                            "hulp",
+                        );
+                    }
+                    crate::chat::SubmitStatus::Empty => {
+                        crate::notify::notify("Control", "typ eerst een vraag", "hulp");
+                    }
+                }
             }
         }
     }
@@ -1455,6 +1474,9 @@ mod tests {
             a.run,
             RunSpec::FocusDomain(ref d) if d == "control"
         )));
+        assert!(actions
+            .iter()
+            .any(|a| a.needs_text && matches!(a.run, RunSpec::SendControlChat)));
     }
 
     #[test]
