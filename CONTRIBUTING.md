@@ -34,7 +34,7 @@ release-artifact heet `chefbar-release`.
 - `cargo fmt --check` en `cargo clippy --all-targets -- -D warnings` draaien in
   CI als harde checks — lokaal voorlopen kan alleen op de runner.
 - PR's naar `main` worden squash-gemerged; geen force-push naar `main`.
-- Wijzigingen aan `install.sh` of systemd-units: `shellcheck` + dry-run in CI.
+- Wijzigingen aan `install.sh`, `.cursor/*.sh` of systemd-units: `shellcheck` + dry-run in CI.
 
 ## ChefApp 4.0 lanes — file-disjoint
 

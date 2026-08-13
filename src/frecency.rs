@@ -107,8 +107,7 @@ fn save(entries: &[FrecencyEntry]) {
     }
     let json = serde_json::to_string_pretty(entries).unwrap_or_else(|_| "[]".into());
     let tmp = path.with_extension("json.tmp");
-    if fs::write(&tmp, json).is_ok() {
-        let _ = fs::rename(&tmp, &path);
+    if fs::write(&tmp, json).is_ok() && fs::rename(&tmp, &path).is_ok() {
         if let Ok(mut guard) = cache().write() {
             *guard = Some(Cache {
                 path,

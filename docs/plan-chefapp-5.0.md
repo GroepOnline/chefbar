@@ -25,7 +25,7 @@ cargo test --all-targets
 shellcheck install.sh scripts/*.sh
 ```
 
-Fmt, clippy en tests zijn harde gates. Visual shots zijn warning-only in CI, met upload van screenshots en app-stderr voor diagnose.
+Fmt, clippy en tests zijn harde gates. Visual shots zijn warning-only in CI, met upload van screenshots en per-shot `*-stderr.log` naast de PNG (niet alleen de workflow-log).
 
 ## §7 acceptatie
 
