@@ -587,7 +587,7 @@ for (const [agent, skill] of Object.entries(expectedPairing)) {
 const cargo = readTextOrFail(path.join(ROOT, "Cargo.toml"), "Cargo.toml");
 report.invariants.forbidden_crates = [];
 for (const crate of ["tokio", "async-std", "reqwest", "hyper", "actix", "axum"]) {
-  if (new RegExp(`^${crate}\\s*=`, "m").test(cargo) || cargo.includes(`"${crate}"`)) {
+  if (new RegExp(`^${crate}(\\.[\\w-]+)?\\s*=`, "m").test(cargo) || cargo.includes(`"${crate}"`)) {
     report.invariants.forbidden_crates.push(crate);
     fail(`Cargo.toml pulls forbidden crate ${crate}`);
   }

@@ -1,6 +1,6 @@
 ---
 name: chefbar-bench
-description: ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents, graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, stylesheet invariant scan, and .cursor/rules stateless policy (alwaysApply false, no globs). Writes .cursor/evals/last-report.json. Exit 1 if blocking failures or routing below --min-routing (default 0.75). Use when adding a skill, worker, rule, or eval case, or when CI reports bench failure.
+description: "ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents, graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, stylesheet invariant scan, and .cursor/rules stateless policy (alwaysApply false, no globs). Writes .cursor/evals/last-report.json. Exit 1 if blocking failures or routing below --min-routing (default 0.75). Use when adding a skill, worker, rule, or eval case, or when CI reports bench failure."
 ---
 
 # ChefBar agent-bench
