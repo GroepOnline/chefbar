@@ -3,8 +3,8 @@
 //! Een enkele thread draait het ritme (vault 5s, ops 15s, vault-extra 30s,
 //! linear 60s, kater 30s), fan-out per endpoint met een kort afnamebudget,
 //! en publiceert één gedeelde Snapshot. UI leest onder een korte read-lock;
-//! mislukte secties behouden hun laatste goede waarde en markeren
-//! last_poll_at als stale.
+//! mislukte secties behouden hun laatste goede `last_poll_at` en zetten
+//! `last_poll_ok` op false. Sync toont fout, niet een verse attempt-tijd.
 
 use crate::http::{ApiError, Client};
 use crate::models::{
@@ -38,6 +38,20 @@ fn suggestion_allowed(suggestion: &crate::models::Suggestion, mutes: &HashSet<St
 
 fn toast_allowed_during_quiet(quiet: bool, status: &str) -> bool {
     !quiet || status == "error"
+}
+
+/// Success: verse timestamp + ok. Failure: behoud laatste goede tijd, ok=false.
+/// Eerste fail zonder prior success zet de attempt-tijd zodat Sync een rij toont.
+fn mark_poll(snap: &mut Snapshot, source: &str, ok: bool) {
+    if ok {
+        snap.last_poll_at.insert(source.into(), iso_now());
+        snap.last_poll_ok.insert(source.into(), true);
+    } else {
+        snap.last_poll_ok.insert(source.into(), false);
+        snap.last_poll_at
+            .entry(source.into())
+            .or_insert_with(iso_now);
+    }
 }
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
@@ -330,18 +344,13 @@ impl Poller {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        snap.last_poll_at.insert("vault".into(), iso_now());
-
         let mut errors: Vec<String> = Vec::new();
         for (key, value) in &results {
             if value.is_none() {
                 errors.push(key.clone());
             }
         }
-        // Bij geheel falen: markeer stale
-        if errors.len() == results.len() && !results.is_empty() {
-            snap.last_poll_at.insert("vault".into(), iso_now());
-        }
+        mark_poll(&mut snap, "vault", any_ok);
         snap.error = if errors.is_empty() {
             None
         } else if errors.len() == results.len() {
@@ -385,9 +394,6 @@ impl Poller {
         if let Some(val) = results.get("vault_accounts").cloned().flatten() {
             snap.vault_accounts = build_vault_accounts(Some(&val));
             any_ok = true;
-        } else if results.contains_key("vault_accounts") {
-            snap.last_poll_at
-                .insert("vault_extra:accounts".into(), iso_now());
         }
         if let Some(val) = results.get("crm_deals").cloned().flatten() {
             snap.crm_deals = build_crm_deals(Some(&val));
@@ -436,18 +442,7 @@ impl Poller {
             }
         }
 
-        // freshness
-        if any_ok {
-            snap.last_poll_at.insert("vault_extra".into(), iso_now());
-        } else {
-            // alles mislukt → stale marker, behoud vorige waarden
-            let stale = iso_now();
-            for k in ["vault_extra", "vault_extra:accounts"] {
-                snap.last_poll_at.entry(k.into()).or_insert(stale.clone());
-            }
-            // ensure at least vault_extra stale
-            snap.last_poll_at.insert("vault_extra".into(), stale);
-        }
+        mark_poll(&mut snap, "vault_extra", any_ok);
     }
 
     fn poll_linear(&self) {
@@ -455,9 +450,8 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("linear").cloned().flatten() {
             snap.linear_issues = build_linear_issues(Some(&val));
-            snap.last_poll_at.insert("linear".into(), iso_now());
+            mark_poll(&mut snap, "linear", true);
         } else {
-            // niet geconfigureerd → geen stale, gewoon behoud; wel markeren als stale als wel geconfigureerd maar faalde
             let linear_api = std::env::var("LINEAR_API")
                 .or_else(|_| std::env::var("CHEFBAR_LINEAR_API"))
                 .ok();
@@ -466,7 +460,7 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false)
             {
-                snap.last_poll_at.insert("linear".into(), iso_now());
+                mark_poll(&mut snap, "linear", false);
             }
         }
     }
@@ -476,7 +470,7 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("kater").cloned().flatten() {
             snap.kater_status = build_kater_status(Some(&val));
-            snap.last_poll_at.insert("kater".into(), iso_now());
+            mark_poll(&mut snap, "kater", true);
         } else {
             let has_kater = crate::config::global_profile()
                 .kater_workspace
@@ -484,7 +478,7 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
             if has_kater {
-                snap.last_poll_at.insert("kater".into(), iso_now());
+                mark_poll(&mut snap, "kater", false);
             }
         }
     }
@@ -523,7 +517,7 @@ impl Poller {
                     "offline".into()
                 },
             };
-            snap.last_poll_at.insert("jcode_memory".into(), iso_now());
+            mark_poll(&mut snap, "jcode_memory", online);
         });
     }
 
@@ -687,7 +681,7 @@ impl Poller {
             Ok(payload) => payload,
             Err(_) => {
                 let mut snap = self.shared.snapshot.write().unwrap();
-                snap.last_poll_at.insert("ops".into(), iso_now());
+                mark_poll(&mut snap, "ops", false);
                 return;
             }
         };
@@ -698,7 +692,7 @@ impl Poller {
         }
         {
             let mut snap = self.shared.snapshot.write().unwrap();
-            snap.last_poll_at.insert("ops".into(), iso_now());
+            mark_poll(&mut snap, "ops", true);
         }
     }
 }
@@ -735,5 +729,24 @@ mod tests {
         assert!(toast_allowed_during_quiet(true, "error"));
         assert!(!toast_allowed_during_quiet(true, "warn"));
         assert!(!toast_allowed_during_quiet(true, "ok"));
+    }
+
+    #[test]
+    fn mark_poll_keeps_last_good_time_on_failure() {
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "linear", true);
+        let good = snap.last_poll_at.get("linear").cloned().unwrap();
+        assert_eq!(snap.last_poll_ok.get("linear"), Some(&true));
+        mark_poll(&mut snap, "linear", false);
+        assert_eq!(snap.last_poll_at.get("linear"), Some(&good));
+        assert_eq!(snap.last_poll_ok.get("linear"), Some(&false));
+    }
+
+    #[test]
+    fn mark_poll_first_failure_still_records_a_row() {
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "ops", false);
+        assert!(snap.last_poll_at.contains_key("ops"));
+        assert_eq!(snap.last_poll_ok.get("ops"), Some(&false));
     }
 }

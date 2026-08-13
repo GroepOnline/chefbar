@@ -692,6 +692,16 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Sync — laatste poll per bron, niet dezelfde share-lijst
 // ---------------------------------------------------------------------------
 
+/// Sync-stamp: verse tijd alleen bij ok. Fail toont fout + laatste goede tijd.
+pub(crate) fn sync_stamp(ok: bool, last_good_iso: &str) -> (String, &'static str) {
+    let ts = short_ts(last_good_iso);
+    if ok {
+        (ts, "ok")
+    } else {
+        (format!("fout · {ts}"), "down")
+    }
+}
+
 fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
     let mut entries: Vec<_> = snap
@@ -707,12 +717,12 @@ fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
         })
         .collect();
     let total = all.len();
-    section_title(content, "Sync", "laatste poll per bron");
+    section_title(content, "Sync", "ok of fout per bron");
     if total == 0 {
         content.pack_start(
             &empty_state(
                 "Nog geen poll-tijden",
-                "Zodra de actor bronnen polt, staat hier per bron hoe vers de data is.",
+                "Zodra de actor bronnen polt, staat hier per bron of de laatste poll slaagde.",
             ),
             false,
             false,
@@ -722,8 +732,14 @@ fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ts = short_ts(v);
-        group.pack_start(&info_row(k, Some(&ts)), false, false, 0);
+        let ok = snap.last_poll_ok.get(k.as_str()).copied().unwrap_or(false);
+        let (meta, cls) = sync_stamp(ok, v);
+        group.pack_start(
+            &domain_row(cls, k, Some(meta.as_str()), None),
+            false,
+            false,
+            0,
+        );
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -1218,7 +1234,7 @@ fn render_eval(content: &gtk::Box, snap: &Snapshot, q: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{inbox_bucket, status_bucket};
+    use super::{inbox_bucket, status_bucket, sync_stamp};
 
     #[test]
     fn status_bucket_groups_linear_states() {
@@ -1235,5 +1251,16 @@ mod tests {
         assert_eq!(inbox_bucket("hulp"), "Wacht op jou");
         assert_eq!(inbox_bucket("running"), "Bezig");
         assert_eq!(inbox_bucket("stil"), "Overig");
+    }
+
+    #[test]
+    fn sync_stamp_does_not_look_fresh_on_failure() {
+        let (ok_meta, ok_cls) = sync_stamp(true, "2026-08-14T01:50:00Z");
+        assert_eq!(ok_cls, "ok");
+        assert_eq!(ok_meta, "2026-08-14");
+        let (fail_meta, fail_cls) = sync_stamp(false, "2026-08-14T01:50:00Z");
+        assert_eq!(fail_cls, "down");
+        assert!(fail_meta.starts_with("fout · "), "{fail_meta}");
+        assert!(fail_meta.contains("2026-08-14"));
     }
 }
