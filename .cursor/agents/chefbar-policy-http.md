@@ -1,11 +1,6 @@
 ---
 name: chefbar-policy-http
-description: >-
-  ChefBar policy, ureq client, auth headers, and endpoint profile worker. Use
-  for src/policy.rs, src/http.rs, src/auth.rs, src/config.rs, endpoints JSON,
-  CHEFBAR_* env, Cloudflare Access CF_ACCESS_CLIENT_ID, vault bearer
-  CHEFBAR_VAULT_TOKEN, allowlists, EndpointPolicy, and safe_join. ureq
-  redirects(0) so a bearer never follows a 302. Skill chefbar-policy-http.
+description: ChefBar policy, ureq client, auth headers, and endpoint profile worker. Use for src/policy.rs, src/http.rs, src/auth.rs, src/config.rs, endpoints JSON, CHEFBAR_* env, Cloudflare Access CF_ACCESS_CLIENT_ID, vault bearer CHEFBAR_VAULT_TOKEN, allowlists, EndpointPolicy, and safe_join. ureq redirects(0) so a bearer never follows a 302. Skill chefbar-policy-http.
 ---
 
 # ChefBar policy / HTTP

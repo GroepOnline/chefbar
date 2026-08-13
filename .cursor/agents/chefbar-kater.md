@@ -1,12 +1,6 @@
 ---
 name: chefbar-kater
-description: >-
-  ChefBar Kater worker for MCP kater_chains, kater_adapters, kater_doctor,
-  kater_profiles, pr_health on profile code and ops (GitHub PR, Linear, Sentry),
-  plus in-app session attach. Use when coupling ChefBar to Kater, debugging
-  katerWorkspace, katerSessionId in sessions.rs, or ops_cli.rs. Poll stays
-  KATER_POLL_MS in state.rs (owned by chefbar-actor). Never kater_pr_merge
-  unless the user asked. Skill chefbar-kater. MCP server id Kater.
+description: ChefBar Kater worker for MCP kater_chains, kater_adapters, kater_doctor, kater_profiles, pr_health on profile code and ops (GitHub PR, Linear, Sentry), plus in-app session attach. Use when coupling ChefBar to Kater, debugging katerWorkspace, katerSessionId in sessions.rs, or ops_cli.rs. Poll stays KATER_POLL_MS in state.rs (owned by chefbar-actor). Never kater_pr_merge unless the user asked. Skill chefbar-kater. MCP server id Kater.
 ---
 
 # ChefBar Kater worker

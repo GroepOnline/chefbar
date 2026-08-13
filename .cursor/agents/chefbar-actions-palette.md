@@ -1,12 +1,6 @@
 ---
 name: chefbar-actions-palette
-description: >-
-  ChefBar actions, RunSpec executor, palette ranking, aliases, frecency, and
-  harness worker. Use for src/actions.rs, src/palette.rs, src/aliases.rs,
-  src/frecency.rs, src/harness.rs — new user commands, keywords for a room,
-  contains 1000 / prefix 700 / gappy 500 scoring, RankContext boosts, pinned,
-  and exhaustive Executor match. Boosts must not jump a tier. Skill
-  chefbar-actions-palette.
+description: ChefBar actions, RunSpec executor, palette ranking, aliases, frecency, and harness worker. Use for src/actions.rs, src/palette.rs, src/aliases.rs, src/frecency.rs, src/harness.rs — new user commands, keywords for a room, contains 1000 / prefix 700 / gappy 500 scoring, RankContext boosts, pinned, and exhaustive Executor match. Boosts must not jump a tier. Skill chefbar-actions-palette.
 ---
 
 # ChefBar actions / palette

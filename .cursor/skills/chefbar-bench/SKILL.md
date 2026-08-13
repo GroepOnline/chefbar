@@ -1,11 +1,6 @@
 ---
 name: chefbar-bench
-description: >-
-  ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents,
-  graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, and a
-  stylesheet invariant scan. Writes .cursor/evals/last-report.json. Exit 1 if
-  blocking failures or routing below --min-routing (default 0.75). Use when
-  adding a skill, worker, or eval case, or when CI reports bench failure.
+description: ChefBar agent-bench: node scripts/agent-bench.mjs scores skills, agents, graph.yaml pairing, routing.json accuracy, Cargo.toml forbidden crates, and a stylesheet invariant scan. Writes .cursor/evals/last-report.json. Exit 1 if blocking failures or routing below --min-routing (default 0.75). Use when adding a skill, worker, or eval case, or when CI reports bench failure.
 ---
 
 # ChefBar agent-bench
@@ -19,12 +14,12 @@ Scoring notes: [references/scoring.md](references/scoring.md). Runner: `scripts/
 1. From repo root: `node scripts/agent-bench.mjs` (optional `--json`, `--min-routing 0.8`).
 2. **Skills** (`.cursor/skills/*/SKILL.md`):
    - YAML frontmatter `name` == directory, kebab-case
-   - `description` 120–1024 chars, **no `<>`**
+   - `description` **one physical line** (no `>-` / `|` folds — Cursor ignores them), 120–1024 chars, **no `<>`**
    - Headings matching Instructions\|Playbook\|Workflow, Example, Performance, Troubleshooting
    - `evals/evals.json`: `skill_name` match, **≥3** cases, each with `prompt`, `expected_output`, **≥2** `expectations`
    - `evals/triggers.json`: `should_trigger[].must_match_description` terms **all appear in the description**; `should_not_trigger[].must_not_all_match` must **not** all appear
 3. **Agents** (`.cursor/agents/*.md`):
-   - `name` == filename stem; description 120–1024
+   - `name` == filename stem; `description` one physical line, 120–1024 chars
    - Headings matching Owns\|Identity, Playbook\|Workflow\|Instructions, Output, Handoff\|Anti-pattern, Done\|Definition
    - Body preferably **≥80 lines** (warning if thinner)
 4. **Graph pairing** (`graph.yaml`): each expected worker has a skill directory; `writes:` lists are file-disjoint (ignore `diff-nits` / `inline-tests-*`).

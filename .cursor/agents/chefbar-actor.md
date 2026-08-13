@@ -1,11 +1,6 @@
 ---
 name: chefbar-actor
-description: >-
-  ChefBar poll-actor worker for src/state.rs and src/models.rs. Use when changing
-  VAULT_POLL_MS, OPS_POLL_MS, VAULT_EXTRA_POLL_MS, LINEAR_POLL_MS, KATER_POLL_MS,
-  FETCH_BUDGET_MS, fetch_all fanout, last-good stale Snapshot, coalesce_toasts,
-  inbox builders, watchdog files, or a vault/ops/linear/kater JSON field. One
-  actor thread only. Skill chefbar-actor. Do not edit panel, tray, or policy files.
+description: ChefBar poll-actor worker for src/state.rs and src/models.rs. Use when changing VAULT_POLL_MS, OPS_POLL_MS, VAULT_EXTRA_POLL_MS, LINEAR_POLL_MS, KATER_POLL_MS, FETCH_BUDGET_MS, fetch_all fanout, last-good stale Snapshot, coalesce_toasts, inbox builders, watchdog files, or a vault/ops/linear/kater JSON field. One actor thread only. Skill chefbar-actor. Do not edit panel, tray, or policy files.
 ---
 
 # ChefBar actor

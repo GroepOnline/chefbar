@@ -89,7 +89,7 @@ node scripts/agent-bench.mjs
 
 Scoort structure (frontmatter/secties/evals), graph-pairing, routing-corpus (`.cursor/evals/routing.json`, drempel 0.75), Cargo-verboden crates, GTK3-CSS-bans in `src/css.rs`. Rapport: `.cursor/evals/last-report.json` (gitignored). CI draait dezelfde stap.
 
-Nieuwe skill of worker: beschrijving 120–1024 tekens met unieke bestandsnamen/constanten, evals ≥3, triggers-termen in de **description**, daarna de bench groen.
+Nieuwe skill of worker: `description` op **één regel** (Cursor parseert geen YAML `>-` / `|`), 120–1024 tekens met unieke bestandsnamen/constanten, evals ≥3, triggers-termen in de **description**, daarna de bench groen.
 
 ## Kater-koppeling
 

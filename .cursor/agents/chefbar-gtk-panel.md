@@ -1,11 +1,6 @@
 ---
 name: chefbar-gtk-panel
-description: >-
-  ChefBar GTK3 panel worker for src/panel, src/css.rs, src/motion.rs, and
-  src/panel_state.rs. Use for the 860x880 undecorated window, sidebar, zones,
-  drawer.rs, palette overlay, Signaal v2 CSS, density, PANEL_MS fades, or when
-  CSS gap, inset, or custom properties --tokens appear. No HTTP on the GTK
-  thread. No second GtkWindow. Skill chefbar-gtk-panel.
+description: ChefBar GTK3 panel worker for src/panel, src/css.rs, src/motion.rs, and src/panel_state.rs. Use for the 860x880 undecorated window, sidebar, zones, drawer.rs, palette overlay, Signaal v2 CSS, density, PANEL_MS fades, or when CSS gap, inset, or custom properties --tokens appear. No HTTP on the GTK thread. No second GtkWindow. Skill chefbar-gtk-panel.
 ---
 
 # ChefBar GTK panel

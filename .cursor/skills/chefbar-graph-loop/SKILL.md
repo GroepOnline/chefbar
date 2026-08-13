@@ -1,11 +1,6 @@
 ---
 name: chefbar-graph-loop
-description: >-
-  ChefBar graph-loop: file-disjoint workers, orchestrator dispatch, architect plan,
-  parallel domain workers, chefbar-rust-core, chefbar-qa, then qa-converge max 3.
-  Machine graph at graph.yaml. Optional Kater MCP pr_health chain after local
-  converge. Use when the user asks for a graph loop, multi-agent run, sequential
-  workers, or how to dispatch without a second poll-actor.
+description: ChefBar graph-loop: file-disjoint workers, orchestrator dispatch, architect plan, parallel domain workers, chefbar-rust-core, chefbar-qa, then qa-converge max 3. Machine graph at graph.yaml. Optional Kater MCP pr_health chain after local converge. Use when the user asks for a graph loop, multi-agent run, sequential workers, or how to dispatch without a second poll-actor.
 ---
 
 # ChefBar graph-loop

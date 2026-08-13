@@ -131,6 +131,11 @@ function headingStartsWithName(heading, name) {
   return re.test(h);
 }
 
+/** Cursor skill/agent loaders ignore YAML `>` / `|` folds — description must be one line. */
+function isFoldedDescription(raw) {
+  return /^description:\s*[>|][+-]?\s*$/m.test(raw || "");
+}
+
 function hasHeading(body, names) {
   const heads = [...body.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) =>
     m[1].trim().toLowerCase(),
@@ -191,6 +196,19 @@ function readTextOrFail(p, label) {
       fail(`hasHeading('${name}', '${heading}') expected ${expect}, got ${got}`);
     }
   }
+  const foldCases = [
+    ["description: one line\n", false],
+    ["description: >-\n  folded\n", true],
+    ["description: >\n  folded\n", true],
+    ["description: |\n  literal\n", true],
+    ["name: x\ndescription: Use when editing src/state.rs.\n", false],
+  ];
+  for (const [raw, expect] of foldCases) {
+    const got = isFoldedDescription(raw);
+    if (got !== expect) {
+      fail(`isFoldedDescription(${JSON.stringify(raw)}) expected ${expect}, got ${got}`);
+    }
+  }
 }
 
 // --- skills ---
@@ -235,6 +253,13 @@ for (const dir of skillDirs) {
     rec.ok = false;
     rec.issues.push("name not kebab-case");
     fail(`skill ${name}: name not kebab-case`);
+  }
+  if (isFoldedDescription(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("description uses YAML > / | fold");
+    fail(
+      `skill ${name}: description must be one physical line (Cursor does not parse >- folds)`,
+    );
   }
   if (!desc) {
     rec.ok = false;
@@ -357,6 +382,13 @@ for (const file of agentFiles) {
   const desc = fm.data.description || "";
   rec.description = desc;
   rec.description_chars = desc.length;
+  if (isFoldedDescription(fm.raw)) {
+    rec.ok = false;
+    rec.issues.push("description uses YAML > / | fold");
+    fail(
+      `agent ${stem}: description must be one physical line (Cursor does not parse >- folds)`,
+    );
+  }
   if (desc.length < 120) {
     rec.issues.push("description short");
     warn(`agent ${stem}: description is thin`);

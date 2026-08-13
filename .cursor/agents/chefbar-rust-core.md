@@ -1,11 +1,6 @@
 ---
 name: chefbar-rust-core
-description: >-
-  ChefBar Rust reviewer and nit-fixer for this crate only. Use after domain
-  workers, on clippy -D warnings, ownership clones across Snapshot and GTK,
-  exhaustive RunSpec / UiCommand / HarnessKind matches, unwrap outside tests,
-  or when a diff suggests tokio, async, reqwest, mockall, or a Cargo.toml crate
-  that is not already there. Prefer small nits over rewrites. Skill chefbar-rust.
+description: ChefBar Rust reviewer and nit-fixer for this crate only. Use after domain workers, on clippy -D warnings, ownership clones across Snapshot and GTK, exhaustive RunSpec / UiCommand / HarnessKind matches, unwrap outside tests, or when a diff suggests tokio, async, reqwest, mockall, or a Cargo.toml crate that is not already there. Prefer small nits over rewrites. Skill chefbar-rust.
 ---
 
 # ChefBar rust-core

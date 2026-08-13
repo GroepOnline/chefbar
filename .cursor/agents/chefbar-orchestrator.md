@@ -1,11 +1,6 @@
 ---
 name: chefbar-orchestrator
-description: >-
-  ChefBar graph dispatcher and parent coordinator. Use for multi-module features,
-  file-disjoint worker fan-out, bugfix loops, review fan-in, CI-red, or qa-converge
-  (max 3). Loads chefbar-graph-loop and graph.yaml. Does not write product Rust
-  in src/. Never a second poll-actor. Optional readonly Kater MCP pr_health after
-  local converge. Slash command /chefbar-graph.
+description: ChefBar graph dispatcher and parent coordinator. Use for multi-module features, file-disjoint worker fan-out, bugfix loops, review fan-in, CI-red, or qa-converge (max 3). Loads chefbar-graph-loop and graph.yaml. Does not write product Rust in src/. Never a second poll-actor. Optional readonly Kater MCP pr_health after local converge. Slash command /chefbar-graph.
 ---
 
 # ChefBar orchestrator

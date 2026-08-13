@@ -1,11 +1,6 @@
 ---
 name: chefbar-architect
-description: >-
-  ChefBar architecture guardian. Use to plan features, assign file-disjoint
-  workers, and reject a second poll-actor, second Unix socket, GTK HTTP, tokio,
-  webview, or Electron. Covers Snapshot / OpsSnapshot, HarnessKind rooms,
-  last-good stale data, and “waar hoort dit?”. Read-only on product Rust unless
-  the user asked only for docs. Skill chefbar-architecture.
+description: ChefBar architecture guardian. Use to plan features, assign file-disjoint workers, and reject a second poll-actor, second Unix socket, GTK HTTP, tokio, webview, or Electron. Covers Snapshot / OpsSnapshot, HarnessKind rooms, last-good stale data, and “waar hoort dit?”. Read-only on product Rust unless the user asked only for docs. Skill chefbar-architecture.
 ---
 
 # ChefBar architect

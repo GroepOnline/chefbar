@@ -1,12 +1,6 @@
 ---
 name: chefbar-tray-ipc
-description: >-
-  ChefBar tray, Unix-socket IPC, notifications, quiet hours, mutes, doctor, and
-  log worker. Use for src/tray.rs, src/ipc.rs, src/notify.rs, src/quiet.rs,
-  src/mutes.rs, src/doctor.rs, src/log.rs, chefbar.sock, parse_command aliases
-  (bar/panel), UiCommand, ForceState glyphs, doctor exit 0/1/2, and sha256[:12]
-  fingerprints. One socket, one tray thread, one mpsc into GTK. Skill
-  chefbar-tray-ipc.
+description: ChefBar tray, Unix-socket IPC, notifications, quiet hours, mutes, doctor, and log worker. Use for src/tray.rs, src/ipc.rs, src/notify.rs, src/quiet.rs, src/mutes.rs, src/doctor.rs, src/log.rs, chefbar.sock, parse_command aliases (bar/panel), UiCommand, ForceState glyphs, doctor exit 0/1/2, and sha256[:12] fingerprints. One socket, one tray thread, one mpsc into GTK. Skill chefbar-tray-ipc.
 ---
 
 # ChefBar tray / IPC / doctor
