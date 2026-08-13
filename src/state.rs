@@ -17,6 +17,7 @@ use crate::models::{
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
@@ -497,23 +498,37 @@ impl Poller {
             .ok()
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "100.111.187.17:7643".into());
-        let addr = bind
-            .parse()
-            .unwrap_or_else(|_| "100.111.187.17:7643".parse().expect("static bind"));
-        let online =
-            std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok();
-        let mut snap = self.shared.snapshot.write().unwrap();
-        snap.jcode_memory = crate::models::JcodeMemoryStatus {
-            online,
-            host: "chef-runner-01".into(),
-            bind: bind.clone(),
-            status: if online {
-                "online".into()
-            } else {
-                "offline".into()
-            },
-        };
-        snap.last_poll_at.insert("jcode_memory".into(), iso_now());
+        let host = bind
+            .rsplit_once(':')
+            .map(|(h, _)| h.to_string())
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| bind.clone());
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            let addr = bind.parse::<SocketAddr>().ok().or_else(|| {
+                bind.to_socket_addrs()
+                    .ok()
+                    .and_then(|mut addrs| addrs.next())
+            });
+            let online = match addr {
+                Some(addr) => {
+                    std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
+                }
+                None => false,
+            };
+            let mut snap = shared.snapshot.write().unwrap();
+            snap.jcode_memory = crate::models::JcodeMemoryStatus {
+                online,
+                host,
+                bind,
+                status: if online {
+                    "online".into()
+                } else {
+                    "offline".into()
+                },
+            };
+            snap.last_poll_at.insert("jcode_memory".into(), iso_now());
+        });
     }
 
     fn fetch_all(&self) -> HashMap<String, Option<Value>> {

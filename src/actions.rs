@@ -8,6 +8,7 @@ use crate::http::Client;
 use crate::models::{OpsSnapshot, Snapshot};
 use crate::palette::Action;
 use serde_json::json;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunSpec {
@@ -50,6 +51,52 @@ pub enum RunSpec {
     FocusDomain(String),
     TogglePalette,
     SendControlChat,
+}
+
+impl RunSpec {
+    /// Stable suffix for local frecency keys. Clipboard payloads stay out of
+    /// `~/.local/share/chefbar/frecency.json`; secret ids stay as ids only.
+    pub fn frecency_key(&self) -> String {
+        match self {
+            RunSpec::Noop => "Noop".into(),
+            RunSpec::OpenUrl(url) => format!("OpenUrl:{url}"),
+            RunSpec::OpenOcx => "OpenOcx".into(),
+            RunSpec::FocusAgent(id) => format!("FocusAgent:{id}"),
+            RunSpec::SendPrompt {
+                terminal_id,
+                pane_id,
+            } => format!(
+                "SendPrompt:{terminal_id}:{}",
+                pane_id.as_deref().unwrap_or("")
+            ),
+            RunSpec::CreateTask { cwd } => format!("CreateTask:{cwd}"),
+            RunSpec::SwitchAccount {
+                account_id,
+                source,
+                driver,
+            } => format!(
+                "SwitchAccount:{account_id}:{source}:{}",
+                driver.as_deref().unwrap_or("")
+            ),
+            RunSpec::CancelTask(id) => format!("CancelTask:{id}"),
+            RunSpec::ClipboardAdd => "ClipboardAdd".into(),
+            RunSpec::ClipboardDelete(index) => format!("ClipboardDelete:{index}"),
+            RunSpec::CopyText(_) => "CopyText".into(),
+            RunSpec::DesktopAction(verb) => format!("DesktopAction:{verb}"),
+            RunSpec::ShareSync(id) => format!("ShareSync:{id}"),
+            RunSpec::Refresh => "Refresh".into(),
+            RunSpec::OpenLinearIssue(id) => format!("OpenLinearIssue:{id}"),
+            RunSpec::CopySecretMeta { id } => format!("CopySecretMeta:{id}"),
+            RunSpec::FleetDeploy { node } => format!("FleetDeploy:{node}"),
+            RunSpec::FleetExec { node, template } => {
+                format!("FleetExec:{node}:{template}")
+            }
+            RunSpec::PrunePreview => "PrunePreview".into(),
+            RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
+            RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::SendControlChat => "SendControlChat".into(),
+        }
+    }
 }
 
 fn action(
@@ -184,6 +231,9 @@ pub fn build_fleet_actions(
     }
     // Per agent een deploy/exec hint (read-only in 4.0 — template exec)
     for agent in ops.agents.iter().take(8) {
+        if agent.name.trim().is_empty() && agent.workspace.trim().is_empty() {
+            continue;
+        }
         let node = agent.workspace.clone();
         out.push(action(
             format!("Deploy naar {} · {}", agent.name, node),
@@ -204,6 +254,9 @@ pub fn build_fleet_actions(
         ));
     }
     for node in snap.fleet_nodes.iter().take(8) {
+        if node.id.is_empty() && node.title.is_empty() {
+            continue;
+        }
         let label = if node.title.is_empty() {
             node.id.clone()
         } else {
@@ -230,7 +283,7 @@ pub fn build_vault_actions(
     for row in &snap.providers {
         for acc in &row.accounts {
             let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if Some(acc_id) == row.active_id.as_deref() {
+            if acc_id.is_empty() || Some(acc_id) == row.active_id.as_deref() {
                 continue;
             }
             let label = acc
@@ -252,6 +305,9 @@ pub fn build_vault_actions(
         }
     }
     for account in snap.vault_accounts.iter().take(8) {
+        if account.id.is_empty() && account.title.is_empty() {
+            continue;
+        }
         out.push(action(
             format!("Account · {}", account.title),
             format!("{} · {}", account.provider, account.meta),
@@ -261,6 +317,9 @@ pub fn build_vault_actions(
         ));
     }
     for deal in snap.crm_deals.iter().take(8) {
+        if deal.id.is_empty() && deal.title.is_empty() {
+            continue;
+        }
         let amount = deal.amount.clone().unwrap_or_default();
         out.push(action(
             format!("Deal · {}", deal.title),
@@ -288,10 +347,13 @@ pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
     if let Some(containers) = snap.raw.get("containers") {
         if let Some(items) = containers.get("observed").and_then(|v| v.as_array()) {
             for item in items.iter().take(6) {
-                let name = item
+                let Some(name) = item
                     .get("name")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("container");
+                    .filter(|name| !name.is_empty())
+                else {
+                    continue;
+                };
                 let host = item
                     .get("host")
                     .and_then(|v| v.as_str())
@@ -307,6 +369,9 @@ pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
         }
     }
     for name in snap.containers.drift.iter().take(6) {
+        if name.trim().is_empty() {
+            continue;
+        }
         out.push(action(
             format!("Drift · {name}"),
             "observed vs desired",
@@ -335,10 +400,17 @@ pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
             },
         ));
     }
+    let mut seen: HashSet<String> = out
+        .iter()
+        .filter_map(|a| match &a.run {
+            RunSpec::CopySecretMeta { id } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
     if let Some(secrets) = snap.raw.get("secrets_meta").and_then(|v| v.as_array()) {
         for item in secrets.iter().take(8) {
             let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() || out.iter().any(|a| a.keywords.contains(id)) {
+            if id.is_empty() || !seen.insert(id.to_string()) {
                 continue;
             }
             let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
@@ -380,6 +452,9 @@ pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        if full.trim().is_empty() {
+            continue;
+        }
         out.push(action(
             format!("Kopieer · {text}"),
             format!("clipboard-rij {index}"),
@@ -420,10 +495,17 @@ pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<A
             RunSpec::OpenLinearIssue(issue.id.clone()),
         ));
     }
+    let mut seen: HashSet<String> = out
+        .iter()
+        .filter_map(|a| match &a.run {
+            RunSpec::OpenLinearIssue(id) => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
     if let Some(issues) = snap.raw.get("linear_issues").and_then(|v| v.as_array()) {
         for issue in issues.iter().take(10) {
             let id = issue.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() || out.iter().any(|a| a.keywords.contains(id)) {
+            if id.is_empty() || !seen.insert(id.to_string()) {
                 continue;
             }
             let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
@@ -602,7 +684,7 @@ pub fn build_actions(
             if snap.jcode_memory.online {
                 "BEZIG"
             } else {
-                "STIL"
+                "FOUT"
             },
             "jcode memory session gateway runner",
             RunSpec::FocusDomain("kater".into()),
@@ -611,6 +693,9 @@ pub fn build_actions(
 
     // Bestaand: herdr focus/send
     for agent in &ops.agents {
+        if agent.terminal_id.trim().is_empty() {
+            continue;
+        }
         let stamp = agent_stamp(&agent.status);
         let cwd_label = agent.cwd.replace(&home_str, "~");
         actions.push(action(
@@ -1101,16 +1186,16 @@ impl Executor {
             RunSpec::CopySecretMeta { id } => {
                 let id = id.clone();
                 let vault = self.vault.clone();
-                self.spawn_bg(move || {
-                    match vault.post_json("/api/secrets/copy", &json!({"id": id})) {
+                self.spawn_bg(
+                    move || match vault.post_json("/secrets/copy", &json!({"id": id})) {
                         Ok(_) => crate::notify::notify(
                             "Secret gekopieerd",
                             "via vault — zichtbaar in audit-log, auto-clear",
                             "ok",
                         ),
                         Err(_) => crate::notify::notify("Kopiëren lukte niet", "", "error"),
-                    }
-                });
+                    },
+                );
             }
             RunSpec::FleetDeploy { node } => {
                 let node = node.clone();
@@ -1327,6 +1412,14 @@ mod tests {
             template: "status".into(),
         };
         assert_eq!(f, g);
+
+        let copy = RunSpec::CopyText("super-secret-token".into());
+        assert_eq!(copy.frecency_key(), "CopyText");
+        assert!(!copy.frecency_key().contains("super-secret"));
+        assert_eq!(
+            RunSpec::CopySecretMeta { id: "sec-1".into() }.frecency_key(),
+            "CopySecretMeta:sec-1"
+        );
     }
 
     #[test]

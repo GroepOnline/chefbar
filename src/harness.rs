@@ -93,6 +93,31 @@ impl HarnessKind {
         }
     }
 
+    /// Canonicaliseer tray/IPC-aliassen (`taken`, `accounts`) naar een harness-id.
+    pub fn from_alias(raw: &str) -> Option<Self> {
+        match raw.trim().to_lowercase().as_str() {
+            "inbox" => Some(Self::Inbox),
+            "fleet" => Some(Self::Fleet),
+            "herdr" => Some(Self::Herdr),
+            "vault" => Some(Self::Vault),
+            "commerce" | "accounts" | "providers" => Some(Self::Commerce),
+            "crm" => Some(Self::Crm),
+            "share" => Some(Self::Share),
+            "clipboard" => Some(Self::Clipboard),
+            "desktop" => Some(Self::Desktop),
+            "tasks" | "taken" => Some(Self::Tasks),
+            "linear" => Some(Self::Linear),
+            "containers" => Some(Self::Containers),
+            "secrets" => Some(Self::Secrets),
+            "kater" => Some(Self::Kater),
+            "health" | "instellingen" | "settings" => Some(Self::Health),
+            "eval" => Some(Self::Eval),
+            "sync" => Some(Self::Sync),
+            "control" | "chat" => Some(Self::Control),
+            _ => None,
+        }
+    }
+
     /// Menselijk label voor de UI.
     pub fn label(&self) -> &'static str {
         match self {
@@ -720,6 +745,36 @@ mod tests {
 
     fn empty_snapshot() -> Snapshot {
         Snapshot::default()
+    }
+
+    #[test]
+    fn alias_canonicaliseert_taken_en_accounts() {
+        assert_eq!(
+            HarnessKind::from_alias("taken").map(|k| k.id()),
+            Some("tasks")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("TASKS").map(|k| k.id()),
+            Some("tasks")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("accounts").map(|k| k.id()),
+            Some("commerce")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("providers").map(|k| k.id()),
+            Some("commerce")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("instellingen").map(|k| k.id()),
+            Some("health")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("control").map(|k| k.id()),
+            Some("control")
+        );
+        assert_eq!(HarnessKind::from_alias("chat").map(|k| k.id()), Some("control"));
+        assert!(HarnessKind::from_alias("pane-99").is_none());
     }
 
     #[test]
