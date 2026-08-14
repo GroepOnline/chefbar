@@ -258,14 +258,19 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
+    let mut remaining = MAX_ROWS;
     for (bucket, pred) in [("Online", true), ("Offline", false)] {
+        if remaining == 0 {
+            break;
+        }
         let rows: Vec<_> = all.iter().filter(|n| n.online == pred).collect();
         if rows.is_empty() {
             continue;
         }
         bucket_title(content, bucket);
         let group = group_box();
-        for node in rows.iter().take(MAX_ROWS) {
+        let take_n = remaining.min(rows.len());
+        for node in rows.iter().take(take_n) {
             group.pack_start(
                 &domain_row(
                     if node.online { "ok" } else { "down" },
@@ -278,6 +283,7 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
                 0,
             );
         }
+        remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
 }
