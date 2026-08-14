@@ -357,8 +357,8 @@ mod tests {
             Some(UiCommand::FocusDomain("tasks".into()))
         );
         assert_eq!(
-            parse_command("focus control"),
-            Some(UiCommand::FocusDomain("control".into()))
+            parse_command("focus fleet"),
+            Some(UiCommand::FocusDomain("fleet".into()))
         );
         assert_eq!(parse_command("palette"), Some(UiCommand::TogglePalette));
         assert_eq!(parse_command("inbox"), Some(UiCommand::OpenInbox));

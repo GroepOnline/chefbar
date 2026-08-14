@@ -740,6 +740,7 @@ fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
 fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harness: &str) {
     let control = harness == "control";
     let entering = control && !chat.root.is_visible();
+    scroller.set_no_show_all(control);
     scroller.set_visible(!control);
     chat.root.set_visible(control);
     chat.root.set_no_show_all(!control);

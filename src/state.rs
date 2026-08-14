@@ -46,18 +46,25 @@ fn all_results_ok(results: &HashMap<String, Option<Value>>) -> bool {
     !results.is_empty() && results.values().all(Option::is_some)
 }
 
-/// Vault statuslijn chip. Decode beats offline/partial so JSON failures are not "offline".
-fn vault_poll_chip(results: &HashMap<String, Option<Value>>, errors: &[ApiError]) -> &'static str {
+/// Vault statuslijn chip. Decode beats HTTP/blocked/offline so JSON failures
+/// are not "offline". All-failed HTTP fan-out keeps the HTTP/blocked chip.
+fn vault_poll_chip(results: &HashMap<String, Option<Value>>, errors: &[ApiError]) -> String {
     if all_results_ok(results) {
-        return "ok";
+        return "ok".into();
     }
     if errors.iter().any(|err| matches!(err, ApiError::Decode(_))) {
-        return "decode";
+        return "decode".into();
+    }
+    if let Some(err) = errors
+        .iter()
+        .find(|err| matches!(err, ApiError::Http(_, _) | ApiError::Blocked(_)))
+    {
+        return err.statuslijn_chip();
     }
     if !results.is_empty() && results.values().all(Option::is_none) {
-        return "offline";
+        return "offline".into();
     }
-    "gedeeltelijk"
+    "gedeeltelijk".into()
 }
 
 /// Success: verse timestamp + ok. Failure: behoud laatste goede tijd, ok=false.
@@ -392,13 +399,14 @@ impl Poller {
         // requires every expected vault response — partial is fout, not verse.
         let vault_ok = all_results_ok(&results);
         let vault_chip = vault_poll_chip(&results, &fetch_errors);
-        snap.error = match vault_chip {
+        snap.error = match vault_chip.as_str() {
             "ok" => None,
             "offline" => Some("vault offline".to_string()),
             "decode" => Some("vault decode".to_string()),
+            "geblokkeerd" => Some("vault geblokkeerd".to_string()),
             _ => Some(format!("gedeeltelijk: {}", errors.join(", "))),
         };
-        mark_poll(&mut snap, "vault", vault_ok, vault_chip);
+        mark_poll(&mut snap, "vault", vault_ok, &vault_chip);
 
         {
             let mut vault_online = self.shared.vault_online.write().unwrap();
@@ -850,6 +858,10 @@ mod tests {
             "offline"
         );
         assert_eq!(vault_poll_chip(&mixed, &[]), "gedeeltelijk");
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Http(302, "access".into())]),
+            "302"
+        );
     }
 
     #[test]

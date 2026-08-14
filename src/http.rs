@@ -133,9 +133,13 @@ impl std::fmt::Display for ApiError {
 
 fn run(response: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Value, ApiError> {
     match response {
-        Ok(resp) => resp
-            .into_json()
-            .map_err(|err| ApiError::Decode(format!("JSON-parse faalde: {err}"))),
+        Ok(resp) => resp.into_json().map_err(|err| {
+            if err.kind() == std::io::ErrorKind::TimedOut {
+                ApiError::Transport(format!("body-read timeout: {err}"))
+            } else {
+                ApiError::Decode(format!("JSON-parse faalde: {err}"))
+            }
+        }),
         Err(ureq::Error::Status(code, resp)) => {
             let body = resp.into_string().unwrap_or_default();
             let detail = body.chars().take(200).collect::<String>();

@@ -1274,6 +1274,7 @@ impl Snapshot {
             return match self.error.as_deref() {
                 None if self.fetched_at_unix > 0 => "vault ok".to_string(),
                 Some("vault offline") => "vault offline".to_string(),
+                Some("vault decode") => "vault decode".to_string(),
                 Some(_) => "vault gedeeltelijk".to_string(),
                 None => "vault —".to_string(),
             };
