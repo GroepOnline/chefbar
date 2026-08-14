@@ -45,6 +45,20 @@ fn all_results_ok(results: &HashMap<String, Option<Value>>) -> bool {
     !results.is_empty() && results.values().all(Option::is_some)
 }
 
+/// Vault statuslijn chip. Decode beats offline/partial so JSON failures are not "offline".
+fn vault_poll_chip(results: &HashMap<String, Option<Value>>, errors: &[ApiError]) -> &'static str {
+    if all_results_ok(results) {
+        return "ok";
+    }
+    if errors.iter().any(|err| matches!(err, ApiError::Decode(_))) {
+        return "decode";
+    }
+    if !results.is_empty() && results.values().all(Option::is_none) {
+        return "offline";
+    }
+    "gedeeltelijk"
+}
+
 /// Success: verse timestamp + ok. Failure: behoud laatste goede tijd, ok=false.
 /// Eerste fail zonder prior success zet de attempt-tijd zodat Sync een rij toont.
 fn mark_poll(snap: &mut Snapshot, source: &str, ok: bool, chip: &str) {
@@ -226,7 +240,7 @@ impl Poller {
     }
 
     fn poll_vault(&self) {
-        let results = self.fetch_all();
+        let (results, fetch_errors) = self.fetch_all();
         let prev_snapshot = self.shared.snapshot.read().unwrap().clone();
         let (mut snap, mut any_ok) = (prev_snapshot.clone(), false);
 
@@ -364,17 +378,12 @@ impl Poller {
         // Availability stays any_ok (at least one endpoint). Sync freshness
         // requires every expected vault response — partial is fout, not verse.
         let vault_ok = all_results_ok(&results);
-        snap.error = if errors.is_empty() {
-            None
-        } else if errors.len() == results.len() {
-            Some("vault offline".to_string())
-        } else {
-            Some(format!("gedeeltelijk: {}", errors.join(", ")))
-        };
-        let vault_chip = match snap.error.as_deref() {
-            None => "ok",
-            Some("vault offline") => "offline",
-            Some(_) => "gedeeltelijk",
+        let vault_chip = vault_poll_chip(&results, &fetch_errors);
+        snap.error = match vault_chip {
+            "ok" => None,
+            "offline" => Some("vault offline".to_string()),
+            "decode" => Some("vault decode".to_string()),
+            _ => Some(format!("gedeeltelijk: {}", errors.join(", "))),
         };
         mark_poll(&mut snap, "vault", vault_ok, vault_chip);
 
@@ -542,7 +551,7 @@ impl Poller {
         });
     }
 
-    fn fetch_all(&self) -> HashMap<String, Option<Value>> {
+    fn fetch_all(&self) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let paths: &[(&str, &str)] = &[
             ("status", "/status"),
             ("accounts/overview", "/accounts/overview"),
@@ -578,6 +587,7 @@ impl Poller {
             .iter()
             .map(|(key, _)| (key.to_string(), None))
             .collect();
+        let mut errors: Vec<ApiError> = Vec::new();
         loop {
             if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
                 break;
@@ -586,12 +596,14 @@ impl Poller {
                 Ok((key, Ok(value))) => {
                     results.insert(key, Some(value));
                 }
-                Ok((_, Err(_))) => {}
+                Ok((_, Err(err))) => {
+                    errors.push(err);
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-        results
+        (results, errors)
     }
 
     fn fetch_vault_extra(&self) -> HashMap<String, Option<Value>> {
@@ -789,6 +801,25 @@ mod tests {
             snap.last_poll.get("vault"),
             Some(&PollHealth::fail("gedeeltelijk"))
         );
+    }
+
+    #[test]
+    fn vault_poll_chip_decode_beats_offline_and_partial() {
+        let mut mixed = HashMap::new();
+        mixed.insert("status".into(), Some(Value::Null));
+        mixed.insert("agents".into(), None);
+        let decode = vec![ApiError::Decode("JSON-parse faalde".into())];
+        assert_eq!(vault_poll_chip(&mixed, &decode), "decode");
+
+        let mut all_failed = HashMap::new();
+        all_failed.insert("status".into(), None);
+        all_failed.insert("agents".into(), None);
+        assert_eq!(vault_poll_chip(&all_failed, &decode), "decode");
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Transport("down".into())]),
+            "offline"
+        );
+        assert_eq!(vault_poll_chip(&mixed, &[]), "gedeeltelijk");
     }
 
     #[test]
