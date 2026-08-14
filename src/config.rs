@@ -27,6 +27,7 @@ pub struct RawProfile {
     pub kater_workspace: Option<String>,
     pub linear_api: Option<String>,
     pub vaultwarden_url: Option<String>,
+    pub brain_api: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +41,7 @@ pub struct EndpointProfile {
     pub kater_workspace: Option<String>,
     pub linear_api: Option<String>,
     pub vaultwarden_url: Option<String>,
+    pub brain_api: Option<String>,
 }
 
 impl Default for EndpointProfile {
@@ -54,6 +56,7 @@ impl Default for EndpointProfile {
             kater_workspace: None,
             linear_api: None,
             vaultwarden_url: None,
+            brain_api: None,
         }
     }
 }
@@ -69,6 +72,7 @@ impl EndpointProfile {
             "katerWorkspace" => self.kater_workspace.as_deref(),
             "linearApi" => self.linear_api.as_deref(),
             "vaultwardenUrl" => self.vaultwarden_url.as_deref(),
+            "brainApi" => self.brain_api.as_deref(),
             _ => None,
         }
     }
@@ -107,6 +111,9 @@ impl EndpointProfile {
             urls.push(url);
         }
         if let Some(url) = &self.vaultwarden_url {
+            urls.push(url);
+        }
+        if let Some(url) = &self.brain_api {
             urls.push(url);
         }
         urls
@@ -175,6 +182,7 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
             kater_workspace: None,
             linear_api: None,
             vaultwarden_url: None,
+            brain_api: None,
         });
 
     let env_or = |env_name: &str, raw: Option<String>, fallback: &str| -> String {
@@ -209,6 +217,7 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
                 .ok()
                 .or(raw.vaultwarden_url),
         ),
+        brain_api: clean_optional(env::var("CHEFBAR_BRAIN_API").ok().or(raw.brain_api)),
     }
 }
 
@@ -242,6 +251,7 @@ mod tests {
             profile.vaultwarden_url.as_deref(),
             Some("https://vault.bitwarden.example")
         );
+        assert_eq!(profile.brain_api, None);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -250,5 +260,7 @@ mod tests {
         let profile = EndpointProfile::default();
         assert_eq!(profile.vault_api, DEFAULT_VAULT_API);
         assert_eq!(profile.label("vaultApi"), "127.0.0.1:8321");
+        assert_eq!(profile.brain_api, None);
+        assert_eq!(profile.endpoint("brainApi"), None);
     }
 }

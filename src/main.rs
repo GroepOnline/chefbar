@@ -8,8 +8,6 @@ use chefbar::config::{global_profile, load_profile, set_global_profile};
 use chefbar::css;
 use chefbar::policy::EndpointPolicy;
 use clap::Parser;
-use gtk::prelude::*;
-
 #[derive(Parser, Debug)]
 #[command(
     name = "chefbar",
@@ -175,14 +173,16 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
     let (vault, ops, shared) = build_runtime(cli);
     let profile = global_profile().clone();
 
-    // Signaal CSS op het hele proces (strak-skin, dark default).
-    let settings = gtk::Settings::default().expect("GTK-settings");
-    let theme = css::detect_theme(&settings);
+    // Signaal CSS op het hele proces (v2 devin-skin, dark default).
+    // CHEFBAR_THEME env wint; anders de persisted keuze uit panel-state
+    // (footer-toggle), anders dark.
+    let theme = match std::env::var("CHEFBAR_THEME") {
+        Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_LIGHT) => css::THEME_LIGHT.to_string(),
+        Ok(t) if t.trim().eq_ignore_ascii_case(css::THEME_DARK) => css::THEME_DARK.to_string(),
+        _ => chefbar::panel_state::load().theme,
+    };
     chefbar::tray::set_theme(&theme);
-    let provider = gtk::CssProvider::new();
-    if let Err(err) = provider.load_from_data(css::styles_css(&theme).as_bytes()) {
-        eprintln!("[chefbar] CSS-load mislukt (fallback naar systeemthema): {err}");
-    }
+    let provider = css::theme_provider(&theme);
     gtk::StyleContext::add_provider_for_screen(
         &gdk::Screen::default().expect("geen scherm"),
         &provider,
@@ -255,17 +255,17 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
             chefbar::tray::UiCommand::ForceState(state) => {
                 chefbar::tray::force_state(&state);
             }
-            chefbar::tray::UiCommand::FocusDomain(_domain) => {
-                // Lane E: focus domein in panel (sidebar-nav). Panel API
-                // voor FocusDomain komt in Lane C; tot die tijd: toon panel.
-                panel.show();
+            chefbar::tray::UiCommand::FocusDomain(domain) => {
+                panel.focus_domain(&domain);
             }
             chefbar::tray::UiCommand::TogglePalette => {
-                // Lane E/C: palette-overlay toggle. Voor nu: panel.show().
-                panel.show();
+                panel.toggle_palette();
             }
             chefbar::tray::UiCommand::OpenInbox => {
-                panel.show();
+                panel.open_inbox();
+            }
+            chefbar::tray::UiCommand::DrawerPreview => {
+                panel.preview_drawer();
             }
         });
 

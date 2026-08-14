@@ -3,6 +3,7 @@
 //! Parsing blijft tolerant: losse API-payloads worden genormaliseerd naar deze
 //! structs; elke misser degradeert naar een lege/neutrale waarde, nooit panic.
 
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -754,6 +755,14 @@ pub struct ObsSummary {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JcodeMemoryStatus {
+    pub online: bool,
+    pub host: String,
+    pub bind: String,
+    pub status: String,
+}
+
 // --- tolerant builders (Value -> structs, misser = Default) ---
 
 fn str_field(v: &Value, key: &str) -> String {
@@ -1109,6 +1118,34 @@ pub fn iso_now() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Brain digest (D10) — read-only Joep Brain; NIET UDO Project Brain
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainChunk {
+    pub id: Option<String>,
+    pub title: String,
+    pub path: Option<String>,
+    pub url: Option<String>,
+    pub excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainDigest {
+    pub source: Option<String>,
+    pub generated_at: Option<String>,
+    pub chunks: Vec<BrainChunk>,
+}
+
+/// Tolerant: ontbrekende sectie / foute velden → lege digest, geen error.
+/// Leeg = de zone blijft verborgen in de UI.
+pub fn parse_brain_digest(value: &Value) -> BrainDigest {
+    serde_json::from_value::<BrainDigest>(value.clone()).unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot (één consistent beeld voor de hele app)
 // ---------------------------------------------------------------------------
 
@@ -1142,6 +1179,11 @@ pub struct Snapshot {
     pub kater_status: KaterStatus,
     pub observability: ObsSummary,
     pub last_poll_at: HashMap<String, String>,
+    /// Per bron: laatste poll slaagde. Ontbreekt = nog nooit gepold.
+    pub last_poll_ok: HashMap<String, bool>,
+    pub brain: crate::vault_bridge::BrainResponse,
+    pub jcode_memory: JcodeMemoryStatus,
+    pub brain_digest: BrainDigest,
 }
 
 impl Snapshot {
@@ -1579,6 +1621,31 @@ mod chefapp_tolerant_tests {
     }
 
     #[test]
+    fn brain_digest_tolerant_en_leeg_is_verborgen() {
+        // ontbrekende sectie / null / onbekende velden → lege digest (zone verborgen)
+        assert!(parse_brain_digest(&json!(null)).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({})).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({"onbekend": true}))
+            .chunks
+            .is_empty());
+        // typed, Default: velden mogen ontbreken per chunk
+        let v = json!({
+            "chunks": [
+                {"title": "hard constraints", "path": "/brain/hard.md"},
+                {"title": "compute", "url": "https://x/b"}
+            ]
+        });
+        let digest = parse_brain_digest(&v);
+        assert_eq!(digest.chunks.len(), 2);
+        assert_eq!(digest.chunks[0].title, "hard constraints");
+        assert_eq!(digest.chunks[0].path.as_deref(), Some("/brain/hard.md"));
+        assert_eq!(digest.chunks[1].url.as_deref(), Some("https://x/b"));
+        // snapshot-veld bestaat en is Default
+        let snap = Snapshot::default();
+        assert!(snap.brain_digest.chunks.is_empty());
+    }
+
+    #[test]
     fn obs_summary_default_ok_when_no_errors() {
         let s = build_obs_summary(Some(&json!({})));
         assert!(s.ok);
@@ -1603,6 +1670,7 @@ mod chefapp_tolerant_tests {
         assert!(snap.vault_accounts.is_empty());
         assert!(snap.linear_issues.is_empty());
         assert!(snap.last_poll_at.is_empty());
+        assert!(snap.last_poll_ok.is_empty());
         // tolerant builders should not panic on garbage
         let _ = build_secrets_meta(Some(&json!("garbage")));
         let _ = build_crm_deals(Some(&json!(123)));

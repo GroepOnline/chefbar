@@ -103,42 +103,51 @@ jobs:
 
       - name: Visual assert — panel (dark, harde accent-check)
         run: |
-          scripts/visual-shot.sh panel dark /tmp/chefbar-dark-panel.png
-          rc=$?
+          rc=0
+          scripts/visual-shot.sh panel dark /tmp/chefbar-dark-panel.png || rc=$?
           if [ "$rc" -eq 2 ]; then echo "visual-shot panel: X-stack niet beschikbaar — zachte skip"; exit 0; fi
           exit "$rc"
 
       - name: Visual assert — palette overlay (warning-only)
         continue-on-error: true
         run: |
-          scripts/visual-shot.sh palette dark /tmp/chefbar-dark-palette.png
-          rc=$?
+          rc=0
+          scripts/visual-shot.sh palette dark /tmp/chefbar-dark-palette.png || rc=$?
           if [ "$rc" -eq 2 ]; then echo "visual-shot palette: X-stack niet beschikbaar — zachte skip"; exit 0; fi
           exit "$rc"
 
       - name: Visual assert — drawer (warning-only)
         continue-on-error: true
         run: |
-          scripts/visual-shot.sh drawer dark /tmp/chefbar-dark-drawer.png
-          rc=$?
+          rc=0
+          scripts/visual-shot.sh drawer dark /tmp/chefbar-dark-drawer.png || rc=$?
           if [ "$rc" -eq 2 ]; then echo "visual-shot drawer: X-stack niet beschikbaar — zachte skip"; exit 0; fi
           exit "$rc"
 
       - name: Visual assert — density toggle (warning-only)
         continue-on-error: true
         run: |
-          scripts/visual-shot.sh density-compact dark /tmp/chefbar-dark-density-compact.png
-          rc1=$?
-          scripts/visual-shot.sh density-comfortable dark /tmp/chefbar-dark-density-comfortable.png
-          rc2=$?
-          # zachte skip als X-stack ontbreekt; anders warning-only
+          rc1=0
+          rc2=0
+          scripts/visual-shot.sh density-compact dark /tmp/chefbar-dark-density-compact.png || rc1=$?
+          scripts/visual-shot.sh density-comfortable dark /tmp/chefbar-dark-density-comfortable.png || rc2=$?
           if [ "$rc1" -eq 2 ] || [ "$rc2" -eq 2 ]; then echo "density: X-stack niet beschikbaar — zachte skip"; exit 0; fi
           [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ] || echo "density: warning-only (rc1=$rc1 rc2=$rc2)"
+
+      - name: Visual assert — 15 domain shots (warning-only)
+        continue-on-error: true
+        run: |
+          rc=0
+          scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain || rc=$?
+          if [ "$rc" -eq 2 ]; then echo "domain shots: X-stack niet beschikbaar — zachte skip"; exit 0; fi
+          exit "$rc"
 
       - name: Upload screenshot artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: chefbar-visual-shots
-          path: /tmp/chefbar-*.png
+          path: |
+            /tmp/chefbar-*.png
+            /tmp/chefbar-*-stderr.log
           if-no-files-found: ignore

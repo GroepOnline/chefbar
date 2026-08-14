@@ -5,10 +5,23 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{OnceLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CAP: usize = 64;
 const TTL_SECS: i64 = 30 * 24 * 3600;
+
+#[derive(Debug, Clone)]
+struct Cache {
+    path: PathBuf,
+    entries: Vec<FrecencyEntry>,
+}
+
+static CACHE: OnceLock<RwLock<Option<Cache>>> = OnceLock::new();
+
+fn cache() -> &'static RwLock<Option<Cache>> {
+    CACHE.get_or_init(|| RwLock::new(None))
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FrecencyEntry {
@@ -54,9 +67,22 @@ fn is_expired(entry: &FrecencyEntry, now: i64) -> bool {
 
 pub fn load() -> Vec<FrecencyEntry> {
     let path = frecency_path();
+    if let Ok(guard) = cache().read() {
+        if let Some(cached) = guard.as_ref().filter(|cached| cached.path == path) {
+            return cached.entries.clone();
+        }
+    }
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,
-        Err(_) => return Vec::new(),
+        Err(_) => {
+            if let Ok(mut guard) = cache().write() {
+                *guard = Some(Cache {
+                    path,
+                    entries: Vec::new(),
+                });
+            }
+            return Vec::new();
+        }
     };
     let entries: Vec<FrecencyEntry> = serde_json::from_str(&text).unwrap_or_default();
     let now = now_secs();
@@ -65,6 +91,12 @@ pub fn load() -> Vec<FrecencyEntry> {
         .filter(|e| !is_expired(e, now))
         .collect();
     filtered.truncate(CAP);
+    if let Ok(mut guard) = cache().write() {
+        *guard = Some(Cache {
+            path,
+            entries: filtered.clone(),
+        });
+    }
     filtered
 }
 
@@ -75,8 +107,13 @@ fn save(entries: &[FrecencyEntry]) {
     }
     let json = serde_json::to_string_pretty(entries).unwrap_or_else(|_| "[]".into());
     let tmp = path.with_extension("json.tmp");
-    if fs::write(&tmp, json).is_ok() {
-        let _ = fs::rename(&tmp, &path);
+    if fs::write(&tmp, json).is_ok() && fs::rename(&tmp, &path).is_ok() {
+        if let Ok(mut guard) = cache().write() {
+            *guard = Some(Cache {
+                path,
+                entries: entries.to_vec(),
+            });
+        }
     }
 }
 

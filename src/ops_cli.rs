@@ -1,18 +1,65 @@
 //! joep-ops / herdr CLI-seams voor acties (focus, prompt sturen).
 //!
-//! Eerst joep-ops REST, dan herdr CLI als fallback — dezelfde volgorde als de
-//! Python-implementatie, maar met één gedocumenteerde contract-per-actie.
+//! Eerst joep-ops REST, dan live `herdr` 0.8 CLI. Nooit verzonnen
+//! subcommands (`agent send`, `fleet deploy`) — die bestaan niet.
 
 use crate::http::{ApiError, Client};
 use serde_json::json;
 use std::process::Command;
 
-fn run_herdr(args: &[&str]) -> bool {
+fn run_herdr(args: &[String]) -> bool {
     let output = Command::new("herdr").args(args).output().ok();
     match output {
         Some(output) => output.status.success(),
         None => false,
     }
+}
+
+pub fn herdr_focus_args(target: &str) -> Vec<String> {
+    vec!["agent".into(), "focus".into(), target.into()]
+}
+
+pub fn herdr_prompt_args(target: &str, text: &str) -> Vec<String> {
+    vec!["agent".into(), "prompt".into(), target.into(), text.into()]
+}
+
+pub fn herdr_enter_args(pane: &str) -> Vec<String> {
+    vec![
+        "pane".into(),
+        "send-keys".into(),
+        pane.into(),
+        "Enter".into(),
+    ]
+}
+
+/// Fleet-health plugin scan for one node. Untargeted scan is not a success.
+pub fn herdr_scan_node_args(node: &str) -> Vec<String> {
+    vec![
+        "plugin".into(),
+        "action".into(),
+        "invoke".into(),
+        "--plugin".into(),
+        "com.chefgroep.fleet-health".into(),
+        "scan-node".into(),
+        "--arg".into(),
+        format!("node={node}"),
+    ]
+}
+
+pub fn herdr_scan_fleet_args() -> Vec<String> {
+    vec![
+        "plugin".into(),
+        "action".into(),
+        "invoke".into(),
+        "--plugin".into(),
+        "com.chefgroep.fleet-health".into(),
+        "scan-fleet".into(),
+    ]
+}
+
+fn fleet_template_is_scan(template: &str) -> bool {
+    let t = template.to_ascii_lowercase();
+    t.contains("scan") || t.contains("health") || t.contains("status") || t == "exec"
 }
 
 /// Focus een herdr agent/terminal; eerst joep-ops, dan CLI.
@@ -22,10 +69,10 @@ pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            run_herdr(&["agent", "focus", target])
+            run_herdr(&herdr_focus_args(target))
         }
         Err(ApiError::Blocked(_)) | Err(ApiError::Http(_, _)) | Err(ApiError::Transport(_)) => {
-            run_herdr(&["agent", "focus", target])
+            run_herdr(&herdr_focus_args(target))
         }
     }
 }
@@ -40,30 +87,36 @@ pub fn send_prompt(terminal_id: &str, pane_id: Option<&str>, text: &str) -> bool
     if id.is_empty() {
         return false;
     }
-    if !run_herdr(&["agent", "send", id, text]) {
+    if !run_herdr(&herdr_prompt_args(id, text)) {
         return false;
     }
     if let Some(pane) = pane_id {
-        let _ = run_herdr(&["pane", "send-keys", pane, "Enter"]);
+        let _ = run_herdr(&herdr_enter_args(pane));
     }
     true
 }
 
-/// Fleet deploy — eerst via ops API, dan CLI fallback.
+/// Fleet deploy — ops API, then a node-targeted fleet-health scan.
 pub fn fleet_deploy(ops_client: &Client, node: &str) -> bool {
+    if node.trim().is_empty() {
+        return false;
+    }
     match ops_client.post_json("/api/fleet/deploy", &json!({"node": node})) {
         Ok(payload) => {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            run_herdr(&["fleet", "deploy", node])
+            run_herdr(&herdr_scan_node_args(node))
         }
-        Err(_) => run_herdr(&["fleet", "deploy", node]),
+        Err(_) => run_herdr(&herdr_scan_node_args(node)),
     }
 }
 
-/// Fleet exec — template-commando op node.
+/// Fleet exec — template via ops API; herdr fallback is a node-targeted plugin scan.
 pub fn fleet_exec(ops_client: &Client, node: &str, template: &str) -> bool {
+    if node.trim().is_empty() {
+        return false;
+    }
     match ops_client.post_json(
         "/api/fleet/exec",
         &json!({"node": node, "template": template}),
@@ -72,9 +125,18 @@ pub fn fleet_exec(ops_client: &Client, node: &str, template: &str) -> bool {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            run_herdr(&["fleet", "exec", node, template])
+            if fleet_template_is_scan(template) {
+                return run_herdr(&herdr_scan_node_args(node));
+            }
+            false
         }
-        Err(_) => run_herdr(&["fleet", "exec", node, template]),
+        Err(_) => {
+            if fleet_template_is_scan(template) {
+                run_herdr(&herdr_scan_node_args(node))
+            } else {
+                false
+            }
+        }
     }
 }
 
@@ -87,5 +149,54 @@ pub fn prune_preview(vault_client: &Client) -> Result<String, String> {
             .unwrap_or("prune preview klaar")
             .to_string()),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompt_args_use_agent_prompt_not_send() {
+        let args = herdr_prompt_args("w2M:p1", "hello");
+        assert_eq!(args, ["agent", "prompt", "w2M:p1", "hello"]);
+        assert!(!args.iter().any(|a| a == "send"));
+    }
+
+    #[test]
+    fn focus_args_are_agent_focus() {
+        assert_eq!(
+            herdr_focus_args("chefapp-herdr"),
+            ["agent", "focus", "chefapp-herdr"]
+        );
+    }
+
+    #[test]
+    fn enter_args_send_return_to_pane() {
+        assert_eq!(
+            herdr_enter_args("w2M:p1"),
+            ["pane", "send-keys", "w2M:p1", "Enter"]
+        );
+    }
+
+    #[test]
+    fn fleet_fallback_is_plugin_not_herdr_fleet() {
+        let node = herdr_scan_node_args("sofie");
+        let fleet = herdr_scan_fleet_args();
+        assert_eq!(node[0], "plugin");
+        assert!(node.contains(&"com.chefgroep.fleet-health".into()));
+        assert!(node.contains(&"scan-node".into()));
+        assert!(node.contains(&"node=sofie".into()));
+        assert!(fleet.contains(&"scan-fleet".into()));
+        assert!(!node.iter().any(|a| a == "fleet"));
+        assert!(!fleet.iter().any(|a| a == "deploy"));
+    }
+
+    #[test]
+    fn scan_templates_are_recognized() {
+        assert!(fleet_template_is_scan("scan-node"));
+        assert!(fleet_template_is_scan("health"));
+        assert!(fleet_template_is_scan("status"));
+        assert!(!fleet_template_is_scan("deploy-prod"));
     }
 }
