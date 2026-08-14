@@ -1,0 +1,52 @@
+{
+  "skill_name": "chefbar-architecture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Voeg een veld 'owner' toe aan CRM-deals in de app.",
+      "expected_output": "Plan that extends CrmDeal and reuses fetch_vault_extra /crm/deals; no new poll thread.",
+      "expectations": [
+        "Mentions src/models.rs and existing /crm/deals poll",
+        "Rejects a second timer or daemon",
+        "Names chefbar-actor and chefbar-gtk-panel as writers"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Maak een apart rust-binairtje chefbar-linear-poller.",
+      "expected_output": "Refusal: linear already lives on the actor at LINEAR_POLL_MS.",
+      "expectations": [
+        "Cites LINEAR_POLL_MS or fetch_linear",
+        "Keeps one socket / one actor",
+        "Does not add a second package binary"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Waar hoort Super+I voor inbox?",
+      "expected_output": "UiCommand/IPC path, not a new window loop.",
+      "expectations": [
+        "Mentions ipc parse_command inbox or OpenInbox",
+        "Does not put HTTP on the GTK thread"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "GTK timeout that ureq's vault every 5s.",
+      "expected_output": "Refuse; HTTP belongs on the existing poll-actor.",
+      "expectations": [
+        "Forbids GTK HTTP",
+        "Keeps one poll-actor / state.rs"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "New HarnessKind without keywords.",
+      "expected_output": "Add prefixes on Action.keywords; ranking stays in palette.rs.",
+      "expectations": [
+        "Names HarnessKind prefixes",
+        "Does not fork ranking into GTK"
+      ]
+    }
+  ]
+}

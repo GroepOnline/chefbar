@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    {
+      "id": "qa-gates",
+      "prompt": "Draai visual-shot en clippy -D warnings",
+      "must_match_description": ["visual-shot", "clippy", "-D warnings", "agent-bench.mjs"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "not-snapshot",
+      "prompt": "Nieuw Snapshot-veld in models.rs",
+      "must_not_all_match": ["Snapshot", "models.rs", "poll-actor"]
+    }
+  ]
+}

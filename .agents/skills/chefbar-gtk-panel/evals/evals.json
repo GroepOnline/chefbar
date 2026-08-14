@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-gtk-panel",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add CSS gap and a --accent custom property for the panel grid.",
+      "expected_output": "Refuse gap and custom properties; use padding/margin and Rust Tokens.",
+      "expectations": [
+        "Forbids gap and --custom-properties",
+        "Points at src/css.rs Tokens"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Open deal detail in a new window.",
+      "expected_output": "Use drawer.rs, keep one 860x880 window.",
+      "expectations": [
+        "Names drawer.rs",
+        "Keeps single gtk::Window / 860x880"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Fetch vault JSON from the search changed handler.",
+      "expected_output": "Refuse HTTP on GTK; rank local actions / request Refresh.",
+      "expectations": [
+        "Forbids ureq on GTK thread",
+        "Mentions executor.run or actor refresh"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Animate cards on every poll so it feels alive.",
+      "expected_output": "Refuse; PANEL_MS fades only on open/close/drawer.",
+      "expectations": [
+        "Forbids poll animations",
+        "Names PANEL_MS or instant rebuild"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Make the window resizable for small laptops.",
+      "expected_output": "Keep 860x880 set_resizable(false) unless product decision.",
+      "expectations": [
+        "Keeps 860x880",
+        "Mentions set_resizable(false)"
+      ]
+    }
+  ]
+}

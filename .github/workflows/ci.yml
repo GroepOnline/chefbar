@@ -44,6 +44,9 @@ jobs:
       - name: Shellcheck
         run: shellcheck install.sh .cursor/*.sh scripts/*.sh
 
+      - name: Agent harness benchmark
+        run: node scripts/agent-bench.mjs
+
       - name: Test
         run: cargo test --all-targets
 

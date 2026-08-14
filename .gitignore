@@ -4,3 +4,4 @@ __pycache__/
 *.log
 /.idea/
 /qodana.yaml
+.cursor/evals/last-report.json

@@ -1,0 +1,35 @@
+---
+name: chefbar-new-skill
+description: Create a new ChefBar Agent Skill under .agents/skills using skill-creator conventions, with a Cursor discovery symlink.
+---
+
+# /chefbar-new-skill
+
+Read `.agents/skills/skill-creator/SKILL.md`, then create a ChefBar skill.
+
+## Placement
+
+- ChefBar-specific (SSOT, alle agents): `.agents/skills/<kebab-name>/SKILL.md`
+- Cursor discovery: symlink `.cursor/skills/<kebab-name>` → `../../.agents/skills/<kebab-name>`
+- Subagent that executes it: `.cursor/agents/<kebab-name>.md` (Cursor Task-formaat)
+- Ecosysteem-install: `/find-skills` + `npx skills add` → `.agents/skills/` + `skills-lock.json` (`-a '*'`, geen `--copy`)
+
+## Required frontmatter
+
+```yaml
+---
+name: kebab-name
+description: What it does AND when to trigger (pushy). Include ChefBar filenames and synonyms.
+---
+```
+
+`name` matches the directory. Put `description` on **one physical line** — Cursor does not parse YAML `>-` / `|` folds. Keep `SKILL.md` well under 500 lines; put tables in `references/`. Do **not** set `disable-model-invocation: true` (that kills description triggers). Rules in `.cursor/rules/` stay trigger-only (`alwaysApply: false`, no `globs`); point at `chefbar-invariants.mdc` but do not make it always-on. Add a row to `AGENTS.md` and `docs/agent-harness.md`.
+
+Required next to `SKILL.md`:
+
+- `evals/evals.json` — `skill_name`, ≥3 cases (`prompt`, `expected_output`, ≥2 `expectations`)
+- `evals/triggers.json` — `should_trigger[].must_match_description` terms must appear in the YAML **description**
+
+If the skill has a worker, add `.cursor/agents/<name>.md` (owns, playbook, output, handoff, anti-patterns, definition of done) and a `skill:` + `writes:` row in `.agents/skills/chefbar-graph-loop/references/graph.yaml`. Distinctive filenames in the **description** so `node scripts/agent-bench.mjs` routing stays ≥ 0.75.
+
+Do not duplicate `chefbar-architecture` or invent a second poll-loop as a “helper daemon.”

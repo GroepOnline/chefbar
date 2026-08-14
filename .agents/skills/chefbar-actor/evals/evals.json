@@ -1,0 +1,51 @@
+{
+  "skill_name": "chefbar-actor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Poll /crm/deals every 2 seconds from the panel timeout.",
+      "expected_output": "Reject panel HTTP. Use fetch_vault_extra (already has /crm/deals) or change VAULT_EXTRA_POLL_MS, not 2s GTK.",
+      "expectations": [
+        "Forbids GTK/panel ureq",
+        "Names fetch_vault_extra or poll-actor",
+        "Keeps last-good Snapshot"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Five blocked agents should each toast.",
+      "expected_output": "Use coalesce_toasts; one toast per cycle.",
+      "expectations": [
+        "Names coalesce_toasts",
+        "Mentions transition-only / no ticker"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add FETCH_BUDGET_MS logging per path.",
+      "expected_output": "Instrument fanout without printing secrets or adding a second loop.",
+      "expectations": [
+        "Touches state.rs fanout/fetch_all",
+        "No Authorization headers in logs"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "On 401, reset Snapshot to Default so the UI is honest.",
+      "expected_output": "Keep last-good; mark stale / vault_online=false.",
+      "expectations": [
+        "Keeps previous Snapshot",
+        "Does not Default the UI empty"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Hold the write lock while ureq runs so the UI never sees a half snapshot.",
+      "expected_output": "HTTP off-lock; swap the struct after merge.",
+      "expectations": [
+        "No write-lock during HTTP",
+        "Mentions fetch_all or fanout"
+      ]
+    }
+  ]
+}

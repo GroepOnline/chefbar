@@ -173,7 +173,11 @@ fn acquire_at(path: &std::path::Path) -> Acquire {
     }
     match UnixListener::bind(path) {
         Ok(listener) => {
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            if std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).is_err() {
+                drop(listener);
+                let _ = std::fs::remove_file(path);
+                return Acquire::Occupied;
+            }
             Acquire::Owner(listener)
         }
         Err(_) => Acquire::Occupied,
