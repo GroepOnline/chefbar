@@ -13,6 +13,7 @@
 //! Lane C: 1504 r monoliet gesplitst in 5 modules. Dit bestand blijft de
 //! lifecycle (Panel struct, new(), show/toggle, refresh-loop).
 
+pub mod chat;
 pub mod domains;
 pub mod drawer;
 pub mod header;
@@ -39,6 +40,8 @@ use zones::{
 pub struct Panel {
     pub window: gtk::Window,
     content: gtk::Box,
+    scroller: gtk::ScrolledWindow,
+    chat: Rc<chat::ChatPane>,
     search: gtk::SearchEntry,
     shared: Shared,
     executor: Executor,
@@ -156,6 +159,11 @@ impl Panel {
         content.set_hexpand(true);
         content.set_margin_bottom(8);
         scroller.add(&content);
+
+        let chat = Rc::new(chat::ChatPane::new(shared.clone()));
+        chat.root.set_no_show_all(true);
+        chat.root.set_visible(false);
+        main.pack_start(&chat.root, true, true, 0);
 
         root.pack_start(&main, true, true, 0);
 
@@ -354,6 +362,8 @@ impl Panel {
                 let drawer_clone = drawer.clone();
                 let footer_label_clone = footer_label.clone();
                 let header_title_clone = header_title.clone();
+                let scroller_clone = scroller.clone();
+                let chat_clone = chat.clone();
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
                     // Ctx binnen de closure: de clones leven in de closure zelf.
@@ -368,13 +378,16 @@ impl Panel {
                     dirty_clone.set(true);
                     // recent_domains wordt bij persist meegeschreven (push hier is impliciet via dirty)
                     let q = search_clone.text().to_string();
-                    render_into(
-                        &content_clone,
-                        &shared_clone,
-                        &q,
-                        &harness_state_clone,
-                        &render_ctx,
-                    );
+                    apply_canvas_mode(&scroller_clone, &chat_clone, &id);
+                    if id != "control" {
+                        render_into(
+                            &content_clone,
+                            &shared_clone,
+                            &q,
+                            &harness_state_clone,
+                            &render_ctx,
+                        );
+                    }
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
                 });
@@ -383,6 +396,8 @@ impl Panel {
         let panel = Self {
             window,
             content,
+            scroller,
+            chat,
             search,
             shared,
             executor,
@@ -547,18 +562,24 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let scroller = self.scroller.clone();
+        let chat = self.chat.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                let render_ctx = RenderCtx {
-                    executor: &executor,
-                    window: &window,
-                    drawer: &drawer,
-                    footer_label: &footer_label,
-                    header_title: &header_title,
-                };
-                render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                let active = harness_state.borrow().clone();
+                apply_canvas_mode(&scroller, &chat, &active);
+                if active != "control" {
+                    let render_ctx = RenderCtx {
+                        executor: &executor,
+                        window: &window,
+                        drawer: &drawer,
+                        footer_label: &footer_label,
+                        header_title: &header_title,
+                    };
+                    render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                }
             }
         });
     }
@@ -580,20 +601,24 @@ impl Panel {
             }
         }
         self.sync_sidebar_nav();
-        let render_ctx = RenderCtx {
-            executor: &self.executor,
-            window: &self.window,
-            drawer: &self.drawer,
-            footer_label: &self.footer_label,
-            header_title: &self.header_title,
-        };
-        render_into(
-            &self.content,
-            &self.shared,
-            query,
-            &self.harness_state,
-            &render_ctx,
-        );
+        let current = self.harness_state.borrow().clone();
+        apply_canvas_mode(&self.scroller, &self.chat, &current);
+        if current != "control" {
+            let render_ctx = RenderCtx {
+                executor: &self.executor,
+                window: &self.window,
+                drawer: &self.drawer,
+                footer_label: &self.footer_label,
+                header_title: &self.header_title,
+            };
+            render_into(
+                &self.content,
+                &self.shared,
+                query,
+                &self.harness_state,
+                &render_ctx,
+            );
+        }
     }
 
     fn sync_sidebar_nav(&self) {
@@ -605,16 +630,14 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
-            let mut state = crate::panel_state::PanelState {
-                active_group: Some(current.clone()),
-                harness: None,
-                query: Some(self.search.text().to_string())
-                    .filter(|q: &String| !q.trim().is_empty()),
-                drawer_open: self.drawer.is_open(),
-                density: self.density.borrow().clone(),
-                theme: self.theme.borrow().clone(),
-                recent_domains: crate::panel_state::load().recent_domains.clone(),
-            };
+            let mut state = crate::panel_state::load();
+            state.active_group = Some(current.clone());
+            state.harness = None;
+            state.query = Some(self.search.text().to_string())
+                .filter(|q: &String| !q.trim().is_empty());
+            state.drawer_open = self.drawer.is_open();
+            state.density = self.density.borrow().clone();
+            state.theme = self.theme.borrow().clone();
             // push huidige group naar recent_domains MRU
             state.push_recent_domain(&current);
             if crate::panel_state::save(&state) {
@@ -639,18 +662,23 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let scroller = self.scroller.clone();
+        let chat = self.chat.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
-                let render_ctx = RenderCtx {
-                    executor: &executor,
-                    window: &window,
-                    drawer: &drawer,
-                    footer_label: &footer_label,
-                    header_title: &header_title,
-                };
                 let query = search.text().to_string();
-                render_into(&content, &shared, &query, &harness_state, &render_ctx);
                 let active = harness_state.borrow().clone();
+                apply_canvas_mode(&scroller, &chat, &active);
+                if active != "control" {
+                    let render_ctx = RenderCtx {
+                        executor: &executor,
+                        window: &window,
+                        drawer: &drawer,
+                        footer_label: &footer_label,
+                        header_title: &header_title,
+                    };
+                    render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                }
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
             ControlFlow::Continue
@@ -699,6 +727,21 @@ fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
         }
     }
     false
+}
+
+fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harness: &str) {
+    let control = harness == "control";
+    let entering = control && !chat.root.is_visible();
+    scroller.set_visible(!control);
+    chat.root.set_visible(control);
+    chat.root.set_no_show_all(!control);
+    if control {
+        chat.root.show_all();
+        chat.refresh();
+        if entering {
+            chat.focus_composer();
+        }
+    }
 }
 
 fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -> Vec<Action> {

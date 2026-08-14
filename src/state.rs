@@ -83,6 +83,8 @@ pub struct Shared {
     pub revision: Arc<AtomicI64>,
     pub vault_online: Arc<RwLock<bool>>,
     pub last_error: Arc<RwLock<Option<String>>>,
+    pub chat: Arc<RwLock<crate::chat::ChatLog>>,
+    pub chat_revision: Arc<AtomicI64>,
 }
 
 impl Default for Shared {
@@ -99,6 +101,10 @@ impl Shared {
             revision: Arc::new(AtomicI64::new(0)),
             vault_online: Arc::new(RwLock::new(false)),
             last_error: Arc::new(RwLock::new(None)),
+            chat: Arc::new(RwLock::new(crate::chat::chat_log_from_panel(
+                &crate::panel_state::load(),
+            ))),
+            chat_revision: Arc::new(AtomicI64::new(0)),
         }
     }
 }
@@ -685,6 +691,7 @@ impl Poller {
             let mut current = self.shared.ops.write().unwrap();
             *current = ops;
         }
+        crate::chat::refresh_persisted_pin(&self.shared);
         {
             let mut snap = self.shared.snapshot.write().unwrap();
             mark_poll(&mut snap, "ops", true);
