@@ -334,11 +334,7 @@ pub fn refresh_persisted_pin(shared: &crate::state::Shared) {
 pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std::path::Path) {
     let ops = read_ops(shared);
     let (target, busy, pinned) = with_chat_read(shared, |log| {
-        (
-            log.target.clone().unwrap_or_default(),
-            log.busy,
-            log.pinned,
-        )
+        (log.target.clone().unwrap_or_default(), log.busy, log.pinned)
     });
     if !pinned || busy {
         return;
@@ -518,13 +514,16 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     }
     let ops = read_ops(shared);
     let snap = read_snapshot(shared);
-    let pinned = with_chat_read(shared, |log| {
-        if log.pinned {
-            log.target.clone()
-        } else {
-            None
-        }
-    });
+    let pinned = with_chat_read(
+        shared,
+        |log| {
+            if log.pinned {
+                log.target.clone()
+            } else {
+                None
+            }
+        },
+    );
     let target = resolve_target(&ops, pinned.as_deref());
     let pin_kept = pinned.is_some() && target.as_deref() == pinned.as_deref();
     let kind = target
