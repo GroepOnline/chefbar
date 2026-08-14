@@ -20,7 +20,7 @@ pub mod overlay;
 pub mod sidebar;
 pub mod zones;
 
-use crate::actions::{build_actions, Executor};
+use crate::actions::{build_actions, build_brain_search_actions, Executor};
 use crate::harness::{build_harnesses, Harness, HarnessKind};
 use crate::motion::{fade_in, fade_out, PANEL_MS};
 use crate::palette::{rank_actions_with, Action, RankContext};
@@ -516,9 +516,14 @@ impl Panel {
             let ops = shared.ops.read().unwrap().clone();
             let profile = crate::config::global_profile().clone();
             let sessions = crate::sessions::load_ranked_sessions(&snap.events);
-            let actions = build_actions(&ops, &snap, &profile, sessions);
-            let rank_ctx = RankContext::local();
-            let ranked = rank_actions_with(&actions, &query, 8, Some(&rank_ctx));
+            let ranked = if query.starts_with('?') {
+                // `?term` is lexical brain-search; fuzzy ranking zou de `?` opeten.
+                build_brain_search_actions(&snap, &query)
+            } else {
+                let actions = build_actions(&ops, &snap, &profile, sessions);
+                let rank_ctx = RankContext::local();
+                rank_actions_with(&actions, &query, 8, Some(&rank_ctx))
+            };
             let overlay_for_action = overlay.clone();
             let executor_for_action = executor.clone();
             overlay.render_actions(&ranked, move |action| {
@@ -913,26 +918,30 @@ fn render_into(
         .map(|h| h.kind.clone())
         .or_else(|| HarnessKind::all().into_iter().find(|k| k.id() == active_id));
 
-    let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
-    let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
-    let mut boost_terms: Vec<String> = Vec::new();
-    for session in sessions.iter().filter(|s| s.needs_attention()).take(4) {
-        boost_terms.push(session.source.to_lowercase());
-        for word in session.title.split_whitespace() {
-            let word = word.to_lowercase();
-            if word.chars().count() >= 4 {
-                boost_terms.push(word);
+    let ranked = if query.starts_with('?') {
+        build_brain_search_actions(&snap, query)
+    } else {
+        let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
+        let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
+        let mut boost_terms: Vec<String> = Vec::new();
+        for session in sessions.iter().filter(|s| s.needs_attention()).take(4) {
+            boost_terms.push(session.source.to_lowercase());
+            for word in session.title.split_whitespace() {
+                let word = word.to_lowercase();
+                if word.chars().count() >= 4 {
+                    boost_terms.push(word);
+                }
             }
         }
-    }
-    for agent in snap.agents.iter().filter(|a| a.running).take(4) {
-        boost_terms.push(agent.agent.to_lowercase());
-    }
-    let mut seen = std::collections::HashSet::new();
-    boost_terms.retain(|term| seen.insert(term.clone()));
-    boost_terms.truncate(16);
-    let rank_ctx = RankContext::local_with_terms(boost_terms);
-    let ranked = rank_actions_with(&filtered, query, 40, Some(&rank_ctx));
+        for agent in snap.agents.iter().filter(|a| a.running).take(4) {
+            boost_terms.push(agent.agent.to_lowercase());
+        }
+        let mut seen = std::collections::HashSet::new();
+        boost_terms.retain(|term| seen.insert(term.clone()));
+        boost_terms.truncate(16);
+        let rank_ctx = RankContext::local_with_terms(boost_terms);
+        rank_actions_with(&filtered, query, 40, Some(&rank_ctx))
+    };
 
     // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
     // v2 worked-row: rust = line-strong, live = accent, hulp = amber,

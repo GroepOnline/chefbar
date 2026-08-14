@@ -3,6 +3,7 @@
 //! Parsing blijft tolerant: losse API-payloads worden genormaliseerd naar deze
 //! structs; elke misser degradeert naar een lege/neutrale waarde, nooit panic.
 
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -1117,6 +1118,34 @@ pub fn iso_now() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Brain digest (D10) — read-only Joep Brain; NIET UDO Project Brain
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainChunk {
+    pub id: Option<String>,
+    pub title: String,
+    pub path: Option<String>,
+    pub url: Option<String>,
+    pub excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainDigest {
+    pub source: Option<String>,
+    pub generated_at: Option<String>,
+    pub chunks: Vec<BrainChunk>,
+}
+
+/// Tolerant: ontbrekende sectie / foute velden → lege digest, geen error.
+/// Leeg = de zone blijft verborgen in de UI.
+pub fn parse_brain_digest(value: &Value) -> BrainDigest {
+    serde_json::from_value::<BrainDigest>(value.clone()).unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot (één consistent beeld voor de hele app)
 // ---------------------------------------------------------------------------
 
@@ -1154,6 +1183,7 @@ pub struct Snapshot {
     pub last_poll_ok: HashMap<String, bool>,
     pub brain: crate::vault_bridge::BrainResponse,
     pub jcode_memory: JcodeMemoryStatus,
+    pub brain_digest: BrainDigest,
 }
 
 impl Snapshot {
@@ -1588,6 +1618,31 @@ mod chefapp_tolerant_tests {
         assert!(!s.online);
         let s2 = build_kater_status(Some(&json!({"online":true,"status":"online"})));
         assert!(s2.online);
+    }
+
+    #[test]
+    fn brain_digest_tolerant_en_leeg_is_verborgen() {
+        // ontbrekende sectie / null / onbekende velden → lege digest (zone verborgen)
+        assert!(parse_brain_digest(&json!(null)).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({})).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({"onbekend": true}))
+            .chunks
+            .is_empty());
+        // typed, Default: velden mogen ontbreken per chunk
+        let v = json!({
+            "chunks": [
+                {"title": "hard constraints", "path": "/brain/hard.md"},
+                {"title": "compute", "url": "https://x/b"}
+            ]
+        });
+        let digest = parse_brain_digest(&v);
+        assert_eq!(digest.chunks.len(), 2);
+        assert_eq!(digest.chunks[0].title, "hard constraints");
+        assert_eq!(digest.chunks[0].path.as_deref(), Some("/brain/hard.md"));
+        assert_eq!(digest.chunks[1].url.as_deref(), Some("https://x/b"));
+        // snapshot-veld bestaat en is Default
+        let snap = Snapshot::default();
+        assert!(snap.brain_digest.chunks.is_empty());
     }
 
     #[test]

@@ -12,8 +12,8 @@ use crate::models::{
     build_crm_deals, build_fleet, build_fleet_nodes, build_herdr_workspaces, build_inbox,
     build_kater_status, build_linear_issues, build_obs_summary, build_ops_snapshot,
     build_providers, build_secrets_meta, build_vault_accounts, day_score_from_agent_summary,
-    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo,
-    OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
+    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, BrainDigest,
+    HealthInfo, OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -29,6 +29,7 @@ pub const VAULT_EXTRA_POLL_MS: u64 = 30_000;
 pub const LINEAR_POLL_MS: u64 = 60_000;
 pub const KATER_POLL_MS: u64 = 30_000;
 pub const JCODE_POLL_MS: u64 = 30_000;
+pub const BRAIN_POLL_MS: u64 = 120_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
 const PER_ENDPOINT_TIMEOUT_MS: u64 = 2_000;
 
@@ -148,6 +149,7 @@ impl Poller {
         let mut next_linear = Instant::now();
         let mut next_kater = Instant::now();
         let mut next_jcode = Instant::now();
+        let mut next_brain = Instant::now();
         let mut next_local = Instant::now();
         self.poll_watchdog_into_shared();
         loop {
@@ -180,12 +182,17 @@ impl Poller {
                 self.poll_jcode_memory();
                 next_jcode = Instant::now() + Duration::from_millis(JCODE_POLL_MS);
             }
+            if now >= next_brain {
+                self.poll_brain_digest();
+                next_brain = Instant::now() + Duration::from_millis(BRAIN_POLL_MS);
+            }
             let deadline = next_vault
                 .min(next_ops)
                 .min(next_vault_extra)
                 .min(next_linear)
                 .min(next_kater)
-                .min(next_jcode);
+                .min(next_jcode)
+                .min(next_brain);
             let timeout = deadline
                 .saturating_duration_since(Instant::now())
                 .min(Duration::from_secs(1));
@@ -514,6 +521,22 @@ impl Poller {
             };
             mark_poll(&mut snap, "jcode_memory", online);
         });
+    }
+
+    /// Read-only brain-digest ophalen (HTTP of lokaal vault-pad). Geen
+    /// endpoint ingesteld → niets doen, geen error-spam. Fail-closed in brain.rs.
+    fn poll_brain_digest(&self) {
+        let profile = crate::config::global_profile();
+        if profile.brain_api.is_none() && crate::brain::no_local_digest() {
+            let mut snap = self.shared.snapshot.write().unwrap();
+            snap.brain_digest = BrainDigest::default();
+            snap.last_poll_at.insert("brain_digest".into(), iso_now());
+            return;
+        }
+        let digest = crate::brain::fetch_digest(profile);
+        let mut snap = self.shared.snapshot.write().unwrap();
+        snap.brain_digest = digest;
+        snap.last_poll_at.insert("brain_digest".into(), iso_now());
     }
 
     fn fetch_all(&self) -> HashMap<String, Option<Value>> {
