@@ -572,6 +572,8 @@ pub fn build_fleet(fleet_payload: Option<&Value>) -> FleetInfo {
 pub struct HerdrAgent {
     pub terminal_id: String,
     pub name: String,
+    /// herdr-pane "name" (bijv. chefapp-herdr) — apart van het agent-kind.
+    pub alias: String,
     pub status: String, // working | idle | blocked | unknown
     pub workspace: String,
     pub workspace_id: String,
@@ -609,6 +611,11 @@ pub fn build_ops_snapshot(data: Option<&Value>) -> OpsSnapshot {
                     .get("agent")
                     .and_then(|v| v.as_str())
                     .unwrap_or("agent")
+                    .to_string(),
+                alias: a
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
                     .to_string(),
                 status,
                 workspace: a

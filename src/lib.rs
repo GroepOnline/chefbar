@@ -8,6 +8,7 @@ pub mod actions;
 pub mod aliases;
 pub mod auth;
 pub mod brain;
+pub mod chat;
 pub mod config;
 pub mod css;
 pub mod doctor;
