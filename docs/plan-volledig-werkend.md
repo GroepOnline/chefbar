@@ -73,6 +73,8 @@ om alles werkend te maken. Geen redesign — Signaal v2 blijft de visuele autori
       systemd en scripts. (PR #18)
 - [x] Poll-gezondheid zichtbaar in de statuslijn zelf ("laatste poll 4s
       geleden · vault ok · ops 302") via `Snapshot::poll_statuslijn()`.
+      Ops `ApiError::Decode` → chip `decode`. Vault fan-out keeps Decode
+      errors from `fetch_all` so JSON failures are not `offline`.
 
 ### W5 — QA-harnas (zodat dit niet terugkomt)
 - [x] `/tmp/chefbar-shot3.sh` volwassen maken als `scripts/visual-shot.sh`
