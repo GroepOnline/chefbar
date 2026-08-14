@@ -396,8 +396,9 @@ mod tests {
 
     #[test]
     fn bounded_wait_keeps_stdout_from_a_fast_child() {
-        let output = command_output_bounded("echo", &["control-read".into()], Duration::from_secs(2))
-            .expect("echo");
+        let output =
+            command_output_bounded("echo", &["control-read".into()], Duration::from_secs(2))
+                .expect("echo");
         assert!(output.status.success());
         assert!(String::from_utf8_lossy(&output.stdout).contains("control-read"));
     }

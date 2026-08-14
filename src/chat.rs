@@ -1029,12 +1029,7 @@ mod tests {
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
-                agent(
-                    "pi",
-                    "w9:p1",
-                    "idle",
-                    "/var/lib/chef-jcode-memory/home",
-                ),
+                agent("pi", "w9:p1", "idle", "/var/lib/chef-jcode-memory/home"),
                 agent("pi", "w2S:p2", "idle", "/tmp/ops-lane"),
             ],
         };
