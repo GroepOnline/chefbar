@@ -1701,8 +1701,7 @@ mod chefapp_tolerant_tests {
             ..Default::default()
         };
         snap.last_poll.insert("vault".into(), PollHealth::ok());
-        snap.last_poll
-            .insert("ops".into(), PollHealth::fail("302"));
+        snap.last_poll.insert("ops".into(), PollHealth::fail("302"));
         let line = snap.poll_statuslijn();
         assert!(line.contains("vault ok"), "expected vault ok in {line}");
         assert!(line.contains("ops 302"), "expected ops 302 in {line}");
