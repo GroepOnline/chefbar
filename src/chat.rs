@@ -562,7 +562,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     if let Some(SubmitStatus::Busy) = early {
         return SubmitStatus::Busy;
     }
-    if early.is_none() {
+    let Some(dispatch_target) = target else {
         shared
             .chat_revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -570,7 +570,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
             persist_unpin_bg();
         }
         return SubmitStatus::NoTarget;
-    }
+    };
     if pinned.is_some() && !pin_kept {
         persist_unpin_bg();
     }
@@ -581,10 +581,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     let prompt = wrap_prompt(&snap, text, &kind);
     let reply_kind = kind;
     std::thread::spawn(move || {
-        let result = match with_chat_read(&shared, |log| log.target.clone()) {
-            Some(target) => send_and_read(&target, &prompt),
-            None => Err("Geen control-agent.".into()),
-        };
+        let result = send_and_read(&dispatch_target, &prompt);
         with_chat_write(&shared, |log| {
             log.busy = false;
             match result {
@@ -613,6 +610,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
 mod tests {
     use super::*;
     use crate::models::HerdrAgent;
+    use crate::test_env::EnvGuard;
 
     fn agent(name: &str, pane: &str, status: &str, cwd: &str) -> HerdrAgent {
         HerdrAgent {
@@ -630,43 +628,6 @@ mod tests {
         HerdrAgent {
             alias: alias.into(),
             ..agent("pi", pane, "idle", cwd)
-        }
-    }
-
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    struct EnvGuard {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        saved: Vec<(&'static str, Option<String>)>,
-    }
-
-    impl EnvGuard {
-        fn acquire() -> Self {
-            let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            const KEYS: &[&str] = &[
-                "CHEFBAR_CONTROL_AGENT",
-                "CHEFBAR_CONTROL_PANE",
-                "CHEFBAR_PANEL_STATE",
-            ];
-            let saved = KEYS
-                .iter()
-                .map(|k| (*k, std::env::var(k).ok()))
-                .collect::<Vec<_>>();
-            for k in KEYS {
-                std::env::remove_var(k);
-            }
-            Self { _lock: lock, saved }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (k, v) in &self.saved {
-                match v {
-                    Some(val) => std::env::set_var(k, val),
-                    None => std::env::remove_var(k),
-                }
-            }
         }
     }
 

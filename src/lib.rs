@@ -29,6 +29,8 @@ pub mod policy;
 pub mod quiet;
 pub mod sessions;
 pub mod state;
+#[cfg(test)]
+pub(crate) mod test_env;
 pub mod tray;
 pub mod vault_bridge;
 

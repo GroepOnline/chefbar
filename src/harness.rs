@@ -742,9 +742,15 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
 mod tests {
     use super::*;
     use crate::models::{FleetInfo, HealthInfo, HerdrAgent, OpsSnapshot, Snapshot};
+    use crate::test_env::EnvGuard;
 
     fn empty_snapshot() -> Snapshot {
         Snapshot::default()
+    }
+
+    fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
+        let _g = EnvGuard::acquire();
+        super::build_harnesses(snapshot, ops)
     }
 
     #[test]
