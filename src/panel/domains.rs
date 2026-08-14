@@ -1,19 +1,15 @@
-//! Per-domein views — het super-app-deel van ChefApp 5.0.
+//! Per-domein operate-views — ChefApp 5.0.
 //!
-//! Elke sidebar-domein rendert zijn eigen typed data uit de gedeelde
-//! Snapshot (lane H parsers): inbox-items, fleet-nodes, herdr-workspaces,
-//! vault-accounts, providers, crm-deals, share-sync, clipboard, desktop,
-//! commander-taken, linear-issues, containers-drift, secrets-meta, kater,
-//! observability en health. Geen netwerk, geen eigen poll-loop, geen
-//! plaintext secrets: alles komt uit de snapshot die de actor al ophaalt.
-//!
-//! De generieke Acties-zone (mod.rs) blijft boven elke domein-view staan:
-//! interactie eerst, data eronder.
+//! Elke sidebar-domein is een eigen operate-surface (KPI, buckets, typed
+//! rijen), geen gekopieerde Acties-lijst. Data komt uit de gedeelde Snapshot.
+//! Geen netwerk, geen eigen poll-loop, geen plaintext secrets.
+//! Compacte Doen-chips staan in `mod.rs` onder de domein-view.
 
 use gtk::prelude::*;
 
 use super::zones::{
-    domain_row, empty_state, group_box, section_title, short_ts, state_label, status_dot_cls,
+    bucket_title, domain_row, empty_state, group_box, info_row, kpi_strip, section_title, short_ts,
+    state_label, status_dot_cls,
 };
 use crate::actions::Executor;
 use crate::harness::HarnessKind;
@@ -51,15 +47,59 @@ pub fn render_domain(
         HarnessKind::Vault => render_vault(content, snap, q),
         HarnessKind::Commerce => render_providers(content, snap, q),
         HarnessKind::Crm => render_crm(content, snap, q),
-        HarnessKind::Share | HarnessKind::Sync => render_share(content, snap, q),
+        HarnessKind::Share => render_share(content, snap, q),
+        HarnessKind::Sync => render_sync(content, snap, q),
         HarnessKind::Clipboard => render_clipboard(content, snap, q),
         HarnessKind::Desktop => render_desktop(content, snap, q),
         HarnessKind::Tasks => render_taken(content, snap, q),
         HarnessKind::Linear => render_linear(content, snap, q, executor, window),
         HarnessKind::Secrets => render_secrets(content, snap, q),
         HarnessKind::Kater => render_kater(content, snap, q),
-        HarnessKind::Health => render_health(content, snap, q, "Gezondheid"),
-        HarnessKind::Eval => render_health(content, snap, q, "Evaluatie"),
+        HarnessKind::Health => render_health(content, snap, q),
+        HarnessKind::Eval => render_eval(content, snap, q),
+    }
+}
+
+/// Linear/taken-status → vaste bucket. Pure, GTK-vrij, getest.
+pub(crate) fn status_bucket(status: &str) -> &'static str {
+    let s = status.to_ascii_lowercase();
+    if s.contains("fail")
+        || s.contains("error")
+        || s.contains("fout")
+        || s.contains("block")
+        || s.contains("hold")
+        || s.contains("hulp")
+    {
+        "Vast"
+    } else if s.contains("progress") || s == "bezig" || s == "started" || s == "doing" {
+        "Bezig"
+    } else if s.contains("todo")
+        || s.contains("backlog")
+        || s == "open"
+        || s == "te doen"
+        || s.contains("triage")
+    {
+        "Te doen"
+    } else if s.contains("done")
+        || s.contains("complete")
+        || s.contains("merged")
+        || s == "klaar"
+        || s == "closed"
+    {
+        "Klaar"
+    } else {
+        "Overig"
+    }
+}
+
+const BUCKET_ORDER: [&str; 5] = ["Bezig", "Vast", "Te doen", "Klaar", "Overig"];
+
+fn inbox_bucket(status: &str) -> &'static str {
+    match status_dot_cls(status) {
+        "down" => "Fout",
+        "warn" => "Wacht op jou",
+        "live" => "Bezig",
+        _ => "Overig",
     }
 }
 
@@ -83,7 +123,7 @@ fn single_sub(extra: &str) -> String {
 
 fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
-    let all: Vec<_> = snap
+    let mut all: Vec<_> = snap
         .inbox
         .iter()
         .filter(|i| {
@@ -93,7 +133,7 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         })
         .collect();
     if all.is_empty() {
-        section_title(content, "Inbox", "");
+        section_title(content, "Inbox", "triage");
         content.pack_start(
             &empty_state(
                 "Inbox is leeg",
@@ -106,23 +146,68 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         return;
     }
     let total = all.len();
-    let shown = total.min(MAX_ROWS);
-    section_title(content, "Inbox", &count_sub(q, shown, total));
-    let group = group_box();
-    for item in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&item.status),
-                &item.title,
-                (!item.meta.is_empty()).then_some(item.meta.as_str()),
-                None,
-            ),
-            false,
-            false,
-            0,
-        );
+    let fout = all
+        .iter()
+        .filter(|i| inbox_bucket(&i.status) == "Fout")
+        .count();
+    let wacht = all
+        .iter()
+        .filter(|i| inbox_bucket(&i.status) == "Wacht op jou")
+        .count();
+    section_title(content, "Inbox", &count_sub(q, total.min(MAX_ROWS), total));
+    let fout_s = fout.to_string();
+    let wacht_s = wacht.to_string();
+    let total_s = total.to_string();
+    content.pack_start(
+        &kpi_strip(&[("fout", &fout_s), ("wacht", &wacht_s), ("totaal", &total_s)]),
+        false,
+        false,
+        0,
+    );
+    all.sort_by_key(|i| match inbox_bucket(&i.status) {
+        "Fout" => 0u8,
+        "Wacht op jou" => 1,
+        "Bezig" => 2,
+        _ => 3,
+    });
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
+    for bucket in ["Fout", "Wacht op jou", "Bezig", "Overig"] {
+        if remaining == 0 {
+            break;
+        }
+        let rows: Vec<_> = all
+            .iter()
+            .filter(|i| inbox_bucket(&i.status) == bucket)
+            .copied()
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        bucket_title(content, bucket);
+        let group = group_box();
+        let take_n = remaining.min(rows.len());
+        for item in rows.iter().take(take_n) {
+            let stamp = if item.status.is_empty() {
+                None
+            } else {
+                Some((item.status.as_str(), status_dot_cls(&item.status)))
+            };
+            group.pack_start(
+                &domain_row(
+                    status_dot_cls(&item.status),
+                    &item.title,
+                    (!item.meta.is_empty()).then_some(item.meta.as_str()),
+                    stamp,
+                ),
+                false,
+                false,
+                0,
+            );
+        }
+        remaining -= take_n;
+        content.pack_start(&group, false, false, 0);
     }
-    content.pack_start(&group, false, false, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -151,30 +236,11 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         single_sub("wacht op de eerste fleet-scan")
     };
     section_title(content, "Fleet", &sub);
-    let group = group_box();
     if snap.fleet.total > 0 {
-        let online = snap.fleet.online;
-        let total = snap.fleet.total;
-        group.pack_start(
-            &domain_row(
-                fleet_dot(online, total),
-                &format!("Fleet · {online}/{total} online"),
-                snap.fleet.host.as_deref(),
-                None,
-            ),
-            false,
-            false,
-            0,
-        );
-    }
-    for node in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                if node.online { "ok" } else { "down" },
-                &node.title,
-                node.host.as_deref(),
-                Some((&node.status, status_dot_cls(&node.status))),
-            ),
+        let online_s = snap.fleet.online.to_string();
+        let total_s = snap.fleet.total.to_string();
+        content.pack_start(
+            &kpi_strip(&[("online", &online_s), ("nodes", &total_s)]),
             false,
             false,
             0,
@@ -192,7 +258,34 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
-    content.pack_start(&group, false, false, 0);
+    let mut remaining = MAX_ROWS;
+    for (bucket, pred) in [("Online", true), ("Offline", false)] {
+        if remaining == 0 {
+            break;
+        }
+        let rows: Vec<_> = all.iter().filter(|n| n.online == pred).collect();
+        if rows.is_empty() {
+            continue;
+        }
+        bucket_title(content, bucket);
+        let group = group_box();
+        let take_n = remaining.min(rows.len());
+        for node in rows.iter().take(take_n) {
+            group.pack_start(
+                &domain_row(
+                    if node.online { "ok" } else { "down" },
+                    &node.title,
+                    node.host.as_deref(),
+                    Some((&node.status, status_dot_cls(&node.status))),
+                ),
+                false,
+                false,
+                0,
+            );
+        }
+        remaining -= take_n;
+        content.pack_start(&group, false, false, 0);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +315,16 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
         count_sub(q, shown, total)
     };
     section_title(content, "Herdr", &sub);
+    if running > 0 || total > 0 {
+        let run_s = running.to_string();
+        let ws_s = total.to_string();
+        content.pack_start(
+            &kpi_strip(&[("aan het werk", &run_s), ("workspaces", &ws_s)]),
+            false,
+            false,
+            0,
+        );
+    }
     if total == 0 {
         content.pack_start(
             &empty_state(
@@ -272,6 +375,17 @@ fn render_containers(content: &gtk::Box, snap: &Snapshot, q: &str) {
         single_sub("wacht op de eerste containers-scan")
     };
     section_title(content, "Containers", &sub);
+    if observed + desired > 0 {
+        let obs_s = observed.to_string();
+        let des_s = desired.to_string();
+        let drift_s = snap.containers.drift.len().to_string();
+        content.pack_start(
+            &kpi_strip(&[("draait", &obs_s), ("gewenst", &des_s), ("drift", &drift_s)]),
+            false,
+            false,
+            0,
+        );
+    }
     let group = group_box();
     if observed + desired == 0 {
         content.pack_start(
@@ -510,17 +624,27 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for deal in all.iter().take(MAX_ROWS) {
-        let meta = match (&deal.meta, &deal.amount) {
-            (m, Some(a)) if !m.is_empty() => format!("{m} · {a}"),
-            (_, Some(a)) => a.clone(),
-            (m, None) => m.clone(),
-        };
+        let amount = deal.amount.clone().unwrap_or_default();
+        // Keep human-readable status when amount is present (amount beside status).
+        let stamp_owned: Option<(String, &'static str)> =
+            match (!amount.is_empty(), !deal.status.is_empty()) {
+                (true, true) => Some((
+                    format!("{} · {}", deal.status, amount),
+                    status_dot_cls(&deal.status),
+                )),
+                (true, false) => Some((amount, "")),
+                (false, true) => Some((deal.status.clone(), status_dot_cls(&deal.status))),
+                (false, false) => None,
+            };
+        let stamp = stamp_owned
+            .as_ref()
+            .map(|(text, cls)| (text.as_str(), *cls));
         group.pack_start(
             &domain_row(
                 status_dot_cls(&deal.status),
                 &deal.title,
-                (!meta.is_empty()).then_some(meta.as_str()),
-                Some((&deal.status, status_dot_cls(&deal.status))),
+                (!deal.meta.is_empty()).then_some(deal.meta.as_str()),
+                stamp,
             ),
             false,
             false,
@@ -531,7 +655,7 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Share (+ Sync-compat)
+// Share
 // ---------------------------------------------------------------------------
 
 fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
@@ -565,10 +689,59 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ok =
-            v.to_lowercase().contains("ok") || v.to_lowercase().contains("synced") || v == "true";
+        group.pack_start(&info_row(k, Some(v)), false, false, 0);
+    }
+    content.pack_start(&group, false, false, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Sync — laatste poll per bron, niet dezelfde share-lijst
+// ---------------------------------------------------------------------------
+
+/// Sync-stamp: verse tijd alleen bij ok. Fail toont fout + laatste goede tijd.
+pub(crate) fn sync_stamp(ok: bool, last_good_iso: &str) -> (String, &'static str) {
+    let ts = short_ts(last_good_iso);
+    if ok {
+        (ts, "ok")
+    } else {
+        (format!("fout · {ts}"), "down")
+    }
+}
+
+fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
+    let ql = q.to_lowercase();
+    let mut entries: Vec<_> = snap
+        .last_poll_at
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let all: Vec<_> = entries
+        .iter()
+        .filter(|(k, v)| {
+            ql.is_empty() || k.to_lowercase().contains(&ql) || v.to_lowercase().contains(&ql)
+        })
+        .collect();
+    let total = all.len();
+    section_title(content, "Sync", "ok of fout per bron");
+    if total == 0 {
+        content.pack_start(
+            &empty_state(
+                "Nog geen poll-tijden",
+                "Zodra de actor bronnen polt, staat hier per bron of de laatste poll slaagde.",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    let group = group_box();
+    for (k, v) in all.iter().take(MAX_ROWS) {
+        let ok = snap.last_poll_ok.get(k.as_str()).copied().unwrap_or(false);
+        let (meta, cls) = sync_stamp(ok, v);
         group.pack_start(
-            &domain_row(if ok { "ok" } else { "" }, k, Some(v), None),
+            &domain_row(cls, k, Some(meta.as_str()), None),
             false,
             false,
             0,
@@ -717,21 +890,38 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
         );
         return;
     }
-    let group = group_box();
-    for task in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&task.status),
-                &task.title,
-                (!task.meta.is_empty()).then_some(task.meta.as_str()),
-                Some((&task.status, status_dot_cls(&task.status))),
-            ),
-            false,
-            false,
-            0,
-        );
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
+    for bucket in BUCKET_ORDER {
+        if remaining == 0 {
+            break;
+        }
+        let rows: Vec<_> = all
+            .iter()
+            .filter(|t| status_bucket(&t.status) == bucket)
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        bucket_title(content, bucket);
+        let group = group_box();
+        let take_n = remaining.min(rows.len());
+        for task in rows.iter().take(take_n) {
+            group.pack_start(
+                &domain_row(
+                    status_dot_cls(&task.status),
+                    &task.title,
+                    (!task.meta.is_empty()).then_some(task.meta.as_str()),
+                    Some((&task.status, status_dot_cls(&task.status))),
+                ),
+                false,
+                false,
+                0,
+            );
+        }
+        remaining -= take_n;
+        content.pack_start(&group, false, false, 0);
     }
-    content.pack_start(&group, false, false, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -774,42 +964,80 @@ fn render_linear(
         );
         return;
     }
-    let group = group_box();
-    for issue in all.iter().take(MAX_ROWS) {
-        let meta = match (&issue.project, issue.meta.is_empty()) {
-            (Some(p), false) => format!("{p} · {}", issue.meta),
-            (Some(p), true) => p.clone(),
-            (None, _) => issue.meta.clone(),
-        };
-        let row_btn = gtk::Button::new();
-        row_btn.set_relief(gtk::ReliefStyle::None);
-        row_btn.set_hexpand(true);
-        row_btn.set_halign(gtk::Align::Fill);
-        row_btn.style_context().add_class("chefbar-row-btn");
-        let inner = domain_row(
-            status_dot_cls(&issue.status),
-            &issue.title,
-            (!meta.is_empty()).then_some(meta.as_str()),
-            Some((&issue.status, status_dot_cls(&issue.status))),
-        );
-        row_btn.add(&inner);
-        if let Some(child) = row_btn.child() {
-            child.set_margin_start(10);
-            child.set_margin_end(10);
-            child.set_margin_top(6);
-            child.set_margin_bottom(6);
+    let bezig = all
+        .iter()
+        .filter(|i| status_bucket(&i.status) == "Bezig")
+        .count();
+    let todo = all
+        .iter()
+        .filter(|i| status_bucket(&i.status) == "Te doen")
+        .count();
+    let bezig_s = bezig.to_string();
+    let todo_s = todo.to_string();
+    let total_s = total.to_string();
+    content.pack_start(
+        &kpi_strip(&[
+            ("bezig", &bezig_s),
+            ("te doen", &todo_s),
+            ("totaal", &total_s),
+        ]),
+        false,
+        false,
+        0,
+    );
+    // One remaining-row budget for the whole domain (not per bucket).
+    let mut remaining = MAX_ROWS;
+    for bucket in BUCKET_ORDER {
+        if remaining == 0 {
+            break;
         }
-        if let Some(url) = issue.url.clone() {
-            let executor = executor.clone();
-            row_btn.connect_clicked(move |_| {
-                executor.run_for_ui(&crate::actions::RunSpec::OpenUrl(url.clone()));
-            });
-        } else {
-            row_btn.set_sensitive(false);
+        let rows: Vec<_> = all
+            .iter()
+            .filter(|i| status_bucket(&i.status) == bucket)
+            .collect();
+        if rows.is_empty() {
+            continue;
         }
-        group.pack_start(&row_btn, false, false, 0);
+        bucket_title(content, bucket);
+        let group = group_box();
+        let take_n = remaining.min(rows.len());
+        for issue in rows.iter().take(take_n) {
+            let meta = match (&issue.project, issue.meta.is_empty()) {
+                (Some(p), false) => format!("{p} · {}", issue.meta),
+                (Some(p), true) => p.clone(),
+                (None, _) => issue.meta.clone(),
+            };
+            let row_btn = gtk::Button::new();
+            row_btn.set_relief(gtk::ReliefStyle::None);
+            row_btn.set_hexpand(true);
+            row_btn.set_halign(gtk::Align::Fill);
+            row_btn.style_context().add_class("chefbar-row-btn");
+            let inner = domain_row(
+                status_dot_cls(&issue.status),
+                &issue.title,
+                (!meta.is_empty()).then_some(meta.as_str()),
+                Some((&issue.status, status_dot_cls(&issue.status))),
+            );
+            row_btn.add(&inner);
+            if let Some(child) = row_btn.child() {
+                child.set_margin_start(10);
+                child.set_margin_end(10);
+                child.set_margin_top(6);
+                child.set_margin_bottom(6);
+            }
+            if let Some(url) = issue.url.clone() {
+                let executor = executor.clone();
+                row_btn.connect_clicked(move |_| {
+                    executor.run_for_ui(&crate::actions::RunSpec::OpenUrl(url.clone()));
+                });
+            } else {
+                row_btn.set_sensitive(false);
+            }
+            group.pack_start(&row_btn, false, false, 0);
+        }
+        remaining -= take_n;
+        content.pack_start(&group, false, false, 0);
     }
-    content.pack_start(&group, false, false, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -871,52 +1099,32 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // ---------------------------------------------------------------------------
 
 fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
-    section_title(content, "Kater", "");
-    let group = group_box();
+    section_title(content, "Kater", "gateway · geen tweede poll");
     let k = &snap.kater_status;
     let online = k.online;
-    group.pack_start(
-        &domain_row(
-            if online { "ok" } else { "down" },
-            "Kater gateway",
-            Some(if k.status.is_empty() {
-                "onbekend"
-            } else {
-                &k.status
-            }),
-            Some((
-                if online { "ONLINE" } else { "OFFLINE" },
-                if online { "ok" } else { "down" },
-            )),
-        ),
+    content.pack_start(
+        &kpi_strip(&[("gateway", if online { "online" } else { "offline" })]),
         false,
         false,
         0,
     );
+    let group = group_box();
+    let status = if k.status.is_empty() {
+        "onbekend"
+    } else {
+        k.status.as_str()
+    };
+    group.pack_start(&info_row("Status", Some(status)), false, false, 0);
     if let Some(profile) = k.profile.as_deref() {
-        group.pack_start(
-            &domain_row("", "Profiel", Some(profile), None),
-            false,
-            false,
-            0,
-        );
+        group.pack_start(&info_row("Profiel", Some(profile)), false, false, 0);
     }
     let obs = &snap.observability;
-    group.pack_start(
-        &domain_row(
-            if obs.ok { "ok" } else { "warn" },
-            "Observability",
-            Some(if obs.status.is_empty() {
-                "onbekend"
-            } else {
-                &obs.status
-            }),
-            None,
-        ),
-        false,
-        false,
-        0,
-    );
+    let obs_st = if obs.status.is_empty() {
+        "onbekend"
+    } else {
+        obs.status.as_str()
+    };
+    group.pack_start(&info_row("Observability", Some(obs_st)), false, false, 0);
     for err in obs.errors.iter().take(3) {
         group.pack_start(
             &domain_row("down", err, None, Some(("FOUT", "error"))),
@@ -928,11 +1136,13 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let j = &snap.jcode_memory;
     if j.online || !j.host.is_empty() {
         group.pack_start(
-            &domain_row(
-                if j.online { "ok" } else { "" },
+            &info_row(
                 "jcode-geheugen",
-                Some(&j.host),
-                None,
+                Some(if j.host.is_empty() {
+                    "lokaal"
+                } else {
+                    j.host.as_str()
+                }),
             ),
             false,
             false,
@@ -944,58 +1154,40 @@ fn render_kater(content: &gtk::Box, snap: &Snapshot, q: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Health (+ Eval-compat)
+// Health — watchdog + services. Geen dagscore, geen fleet-kloon.
 // ---------------------------------------------------------------------------
 
-fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str, title: &str) {
-    section_title(content, title, "watchdog + dagscore + fleet");
+fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str) {
+    section_title(content, "Gezondheid", "watchdog + services");
+    let ok_s = snap.health.ok.to_string();
+    let warn_s = snap.health.warn.to_string();
+    let down_s = snap.health.down.to_string();
+    content.pack_start(
+        &kpi_strip(&[("ok", &ok_s), ("wacht", &warn_s), ("down", &down_s)]),
+        false,
+        false,
+        0,
+    );
     let group = group_box();
     let health_meta = match snap.health.updated_at.as_deref() {
         Some(at) => format!("{} · update {}", state_label(&snap.health), short_ts(at)),
         None => state_label(&snap.health),
     };
     group.pack_start(
-        &domain_row(
-            status_dot_cls(&snap.health.level),
-            &snap.health.line(),
-            Some(&health_meta),
-            None,
-        ),
+        &info_row(&snap.health.line(), Some(&health_meta)),
         false,
         false,
         0,
     );
-    let day_line = match (&snap.day_score.letter, snap.day_score.score) {
-        (Some(letter), Some(score)) => format!("Dagscore {letter} ({score}/100)"),
-        (None, Some(score)) => format!("Dagscore {score}/100"),
-        _ => "Dagscore · n.v.t.".to_string(),
-    };
-    group.pack_start(
-        &domain_row("", &day_line, snap.day_score.source.as_deref(), None),
-        false,
-        false,
-        0,
-    );
-    if snap.fleet.total > 0 {
-        group.pack_start(
-            &domain_row(
-                fleet_dot(snap.fleet.online, snap.fleet.total),
-                &format!("Fleet · {}/{} online", snap.fleet.online, snap.fleet.total),
-                snap.fleet.host.as_deref(),
-                None,
-            ),
-            false,
-            false,
-            0,
-        );
-    }
-    // Services uit de status-feed (alleen als er data is)
+    content.pack_start(&group, false, false, 0);
     if let Some(services) = snap
         .raw
         .get("status")
         .and_then(|s| s.get("services"))
         .and_then(|s| s.as_array())
     {
+        bucket_title(content, "Services");
+        let group = group_box();
         for svc in services.iter().take(MAX_ROWS) {
             let name = svc.get("name").and_then(|v| v.as_str()).unwrap_or("?");
             let st = svc.get("state").and_then(|v| v.as_str()).unwrap_or("");
@@ -1011,7 +1203,70 @@ fn render_health(content: &gtk::Box, snap: &Snapshot, q: &str, title: &str) {
                 0,
             );
         }
+        content.pack_start(&group, false, false, 0);
+    }
+    let _ = q;
+}
+
+// ---------------------------------------------------------------------------
+// Eval — dagscore. Geen service-lijst, geen Acties-kloon.
+// ---------------------------------------------------------------------------
+
+fn render_eval(content: &gtk::Box, snap: &Snapshot, q: &str) {
+    section_title(content, "Evaluatie", "dagscore");
+    let score = snap.day_score.line();
+    content.pack_start(&kpi_strip(&[("vandaag", &score)]), false, false, 0);
+    let group = group_box();
+    group.pack_start(
+        &info_row("Bron", snap.day_score.source.as_deref()),
+        false,
+        false,
+        0,
+    );
+    group.pack_start(
+        &info_row("OS health", Some(&snap.health.line())),
+        false,
+        false,
+        0,
+    );
+    if snap.fleet.total > 0 {
+        let fleet_line = format!("{}/{} online", snap.fleet.online, snap.fleet.total);
+        let _ = fleet_dot(snap.fleet.online, snap.fleet.total);
+        group.pack_start(&info_row("Fleet-peek", Some(&fleet_line)), false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
     let _ = q;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{inbox_bucket, status_bucket, sync_stamp};
+
+    #[test]
+    fn status_bucket_groups_linear_states() {
+        assert_eq!(status_bucket("In Progress"), "Bezig");
+        assert_eq!(status_bucket("Todo"), "Te doen");
+        assert_eq!(status_bucket("Done"), "Klaar");
+        assert_eq!(status_bucket("Blocked"), "Vast");
+        assert_eq!(status_bucket("mystery"), "Overig");
+    }
+
+    #[test]
+    fn inbox_bucket_uses_status_dots() {
+        assert_eq!(inbox_bucket("failed"), "Fout");
+        assert_eq!(inbox_bucket("hulp"), "Wacht op jou");
+        assert_eq!(inbox_bucket("running"), "Bezig");
+        assert_eq!(inbox_bucket("stil"), "Overig");
+    }
+
+    #[test]
+    fn sync_stamp_does_not_look_fresh_on_failure() {
+        let (ok_meta, ok_cls) = sync_stamp(true, "2026-08-14T01:50:00Z");
+        assert_eq!(ok_cls, "ok");
+        assert_eq!(ok_meta, "2026-08-14");
+        let (fail_meta, fail_cls) = sync_stamp(false, "2026-08-14T01:50:00Z");
+        assert_eq!(fail_cls, "down");
+        assert!(fail_meta.starts_with("fout · "), "{fail_meta}");
+        assert!(fail_meta.contains("2026-08-14"));
+    }
 }

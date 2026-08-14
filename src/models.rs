@@ -1150,6 +1150,8 @@ pub struct Snapshot {
     pub kater_status: KaterStatus,
     pub observability: ObsSummary,
     pub last_poll_at: HashMap<String, String>,
+    /// Per bron: laatste poll slaagde. Ontbreekt = nog nooit gepold.
+    pub last_poll_ok: HashMap<String, bool>,
     pub brain: crate::vault_bridge::BrainResponse,
     pub jcode_memory: JcodeMemoryStatus,
 }
@@ -1613,6 +1615,7 @@ mod chefapp_tolerant_tests {
         assert!(snap.vault_accounts.is_empty());
         assert!(snap.linear_issues.is_empty());
         assert!(snap.last_poll_at.is_empty());
+        assert!(snap.last_poll_ok.is_empty());
         // tolerant builders should not panic on garbage
         let _ = build_secrets_meta(Some(&json!("garbage")));
         let _ = build_crm_deals(Some(&json!(123)));
