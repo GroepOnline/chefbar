@@ -57,6 +57,8 @@ pub fn render_domain(
         HarnessKind::Kater => render_kater(content, snap, q),
         HarnessKind::Health => render_health(content, snap, q),
         HarnessKind::Eval => render_eval(content, snap, q),
+        // Control is the persistent chat canvas, not an operate-view rebuild.
+        HarnessKind::Control => {}
     }
 }
 
