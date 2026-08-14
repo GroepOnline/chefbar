@@ -552,7 +552,8 @@ impl Panel {
                     clipboard.set_text(text);
                     notify_copied();
                 } else {
-                    executor_for_action.run_for_ui(&spec);
+                    let query = overlay_for_action.entry.text().to_string();
+                    executor_for_action.run(&spec, &query);
                 }
                 crate::frecency::record(&frecency_id);
                 overlay_for_action.hide();
@@ -638,20 +639,21 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
-            let mut state = crate::panel_state::load();
-            state.active_group = Some(current.clone());
-            state.harness = None;
-            state.query =
+            let query =
                 Some(self.search.text().to_string()).filter(|q: &String| !q.trim().is_empty());
-            state.drawer_open = self.drawer.is_open();
-            state.density = self.density.borrow().clone();
-            state.theme = self.theme.borrow().clone();
-            // push huidige group naar recent_domains MRU
-            state.push_recent_domain(&current);
-            if crate::panel_state::save(&state) {
+            let drawer_open = self.drawer.is_open();
+            let density = self.density.borrow().clone();
+            let theme = self.theme.borrow().clone();
+            if crate::panel_state::mutate(|state| {
+                state.active_group = Some(current.clone());
+                state.harness = None;
+                state.query = query;
+                state.drawer_open = drawer_open;
+                state.density = density;
+                state.theme = theme;
+                state.push_recent_domain(&current);
+            }) {
                 self.persist_dirty.set(false);
-                // active_* fields in Panel zelf syncen
-                // (we kunnen niet &mut self, dus via try)
             }
         }
     }
@@ -700,16 +702,20 @@ impl Panel {
         gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             if dirty_persist.get() {
                 let current = harness_persist.borrow().clone();
-                let mut state = crate::panel_state::load();
-                state.active_group = Some(current.clone());
-                state.harness = None;
-                state.query = Some(search_persist.text().to_string())
+                let query = Some(search_persist.text().to_string())
                     .filter(|q: &String| !q.trim().is_empty());
-                state.drawer_open = drawer_persist.is_open();
-                state.density = density_persist.borrow().clone();
-                state.theme = theme_persist.borrow().clone();
-                state.push_recent_domain(&current);
-                if crate::panel_state::save(&state) {
+                let drawer_open = drawer_persist.is_open();
+                let density = density_persist.borrow().clone();
+                let theme = theme_persist.borrow().clone();
+                if crate::panel_state::mutate(|state| {
+                    state.active_group = Some(current.clone());
+                    state.harness = None;
+                    state.query = query;
+                    state.drawer_open = drawer_open;
+                    state.density = density;
+                    state.theme = theme;
+                    state.push_recent_domain(&current);
+                }) {
                     dirty_persist.set(false);
                 }
             }
@@ -742,14 +748,17 @@ fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harn
     let entering = control && !chat.root.is_visible();
     scroller.set_no_show_all(control);
     scroller.set_visible(!control);
-    chat.root.set_visible(control);
-    chat.root.set_no_show_all(!control);
     if control {
+        chat.root.set_no_show_all(false);
+        chat.root.set_visible(true);
         chat.root.show_all();
         chat.refresh();
         if entering {
             chat.focus_composer();
         }
+    } else {
+        chat.root.set_visible(false);
+        chat.root.set_no_show_all(true);
     }
 }
 

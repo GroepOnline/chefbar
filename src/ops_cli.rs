@@ -5,7 +5,15 @@
 
 use crate::http::{ApiError, Client};
 use serde_json::json;
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+/// `herdr agent read` is a snapshot, not `--wait`. Bound it so a hung binary
+/// cannot leave Control-chat `busy` forever.
+const HERDR_READ_TIMEOUT: Duration = Duration::from_secs(8);
+/// herdr `--timeout 45000` plus slack if the child ignores it.
+const HERDR_PROMPT_WAIT_TIMEOUT: Duration = Duration::from_secs(50);
 
 fn run_herdr(args: &[String]) -> bool {
     let output = Command::new("herdr").args(args).output().ok();
@@ -89,8 +97,59 @@ pub fn herdr_prompt_wait_args(target: &str, text: &str) -> Vec<String> {
     ]
 }
 
+fn command_output_bounded(
+    program: &str,
+    args: &[String],
+    deadline: Duration,
+) -> Result<std::process::Output, std::io::Error> {
+    let child = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    bounded_wait_output(child, deadline)
+}
+
+fn bounded_wait_output(
+    mut child: std::process::Child,
+    deadline: Duration,
+) -> Result<std::process::Output, std::io::Error> {
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+    let stdout_h = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stdout_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let stderr_h = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = stderr_pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None if started.elapsed() >= deadline => {
+                let _ = child.kill();
+                break child.wait()?;
+            }
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
+    };
+    Ok(std::process::Output {
+        status,
+        stdout: stdout_h.join().unwrap_or_default(),
+        stderr: stderr_h.join().unwrap_or_default(),
+    })
+}
+
 fn run_herdr_output(args: &[String]) -> Option<String> {
-    let output = Command::new("herdr").args(args).output().ok()?;
+    let output = command_output_bounded("herdr", args, HERDR_READ_TIMEOUT).ok()?;
     if output.stdout.is_empty() && !output.status.success() {
         return None;
     }
@@ -112,11 +171,11 @@ pub fn send_control_prompt(target: &str, text: &str) -> bool {
     if target.trim().is_empty() || text.trim().is_empty() {
         return false;
     }
-    let wait = classify_herdr_wait(
-        Command::new("herdr")
-            .args(herdr_prompt_wait_args(target, text))
-            .output(),
-    );
+    let wait = classify_herdr_wait(command_output_bounded(
+        "herdr",
+        &herdr_prompt_wait_args(target, text),
+        HERDR_PROMPT_WAIT_TIMEOUT,
+    ));
     if matches!(wait, WaitPrompt::Success) {
         return true;
     }
@@ -324,5 +383,22 @@ mod tests {
     fn classify_wait_treats_spawn_error_as_fallback() {
         let err = std::io::Error::new(std::io::ErrorKind::NotFound, "herdr");
         assert_eq!(classify_herdr_wait(Err(err)), WaitPrompt::SpawnFailed);
+    }
+
+    #[test]
+    fn bounded_wait_kills_a_hung_child() {
+        let started = Instant::now();
+        let output = command_output_bounded("sleep", &["2".into()], Duration::from_millis(80))
+            .expect("sleep");
+        assert!(!output.status.success());
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn bounded_wait_keeps_stdout_from_a_fast_child() {
+        let output = command_output_bounded("echo", &["control-read".into()], Duration::from_secs(2))
+            .expect("echo");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("control-read"));
     }
 }

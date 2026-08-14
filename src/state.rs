@@ -436,7 +436,7 @@ impl Poller {
     }
 
     fn poll_vault_extra(&self) {
-        let results = self.fetch_vault_extra();
+        let (results, errors) = self.fetch_vault_extra();
         let mut snap = self.shared.snapshot.write().unwrap();
 
         if let Some(val) = results.get("vault_accounts").cloned().flatten() {
@@ -483,11 +483,7 @@ impl Poller {
             &mut snap,
             "vault_extra",
             all_results_ok(&results),
-            if all_results_ok(&results) {
-                "ok"
-            } else {
-                "gedeeltelijk"
-            },
+            &vault_poll_chip(&results, &errors),
         );
     }
 
@@ -643,7 +639,7 @@ impl Poller {
         (results, errors)
     }
 
-    fn fetch_vault_extra(&self) -> HashMap<String, Option<Value>> {
+    fn fetch_vault_extra(&self) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let paths: &[(&str, &str)] = &[
             ("vault_accounts", "/accounts"),
             ("crm_deals", "/crm/deals"),
@@ -657,7 +653,7 @@ impl Poller {
             ("observability", "/observability/summary"),
             ("brain", "/brain"),
         ];
-        Self::fanout(&self.vault, paths)
+        Self::fanout_with_errors(&self.vault, paths)
     }
 
     fn fetch_linear(&self) -> HashMap<String, Option<Value>> {
@@ -703,6 +699,13 @@ impl Poller {
     }
 
     fn fanout(client: &Client, paths: &[(&str, &str)]) -> HashMap<String, Option<Value>> {
+        Self::fanout_with_errors(client, paths).0
+    }
+
+    fn fanout_with_errors(
+        client: &Client,
+        paths: &[(&str, &str)],
+    ) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let (tx, rx): (Sender<(String, Result<Value, ApiError>)>, _) = channel();
         let client = client
             .clone()
@@ -725,6 +728,7 @@ impl Poller {
             .iter()
             .map(|(key, _)| (key.to_string(), None))
             .collect();
+        let mut errors: Vec<ApiError> = Vec::new();
         loop {
             if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
                 break;
@@ -733,12 +737,14 @@ impl Poller {
                 Ok((key, Ok(value))) => {
                     results.insert(key, Some(value));
                 }
-                Ok((_, Err(_))) => {}
+                Ok((_, Err(err))) => {
+                    errors.push(err);
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-        results
+        (results, errors)
     }
 
     fn poll_ops(&self) {
@@ -871,16 +877,21 @@ mod tests {
         results.insert("fleet_nodes".into(), None);
         results.insert("brain".into(), Some(Value::Null));
         assert!(!all_results_ok(&results));
+        let chip = vault_poll_chip(&results, &[]);
+        assert_eq!(chip, "gedeeltelijk");
         let mut snap = Snapshot::default();
-        mark_poll(
-            &mut snap,
-            "vault_extra",
-            all_results_ok(&results),
-            "gedeeltelijk",
-        );
+        mark_poll(&mut snap, "vault_extra", all_results_ok(&results), &chip);
         assert_eq!(
             snap.last_poll.get("vault_extra"),
             Some(&PollHealth::fail("gedeeltelijk"))
+        );
+
+        let mut all_failed = HashMap::new();
+        all_failed.insert("inbox".into(), None);
+        all_failed.insert("brain".into(), None);
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Decode("kapot".into())]),
+            "decode"
         );
     }
 

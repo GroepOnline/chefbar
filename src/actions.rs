@@ -1290,8 +1290,11 @@ impl Executor {
                 });
             }
             RunSpec::FocusDomain(domain) => {
-                let _ = crate::tray::send_ui(crate::tray::UiCommand::FocusDomain(domain.clone()));
-                crate::notify::notify("Focus domein", domain, "ok");
+                if crate::tray::send_ui(crate::tray::UiCommand::FocusDomain(domain.clone())) {
+                    crate::notify::notify("Focus domein", domain, "ok");
+                } else {
+                    crate::notify::notify("Focus domein", "paneel nog niet klaar", "hulp");
+                }
             }
             RunSpec::TogglePalette => {
                 if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {

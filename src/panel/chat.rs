@@ -285,20 +285,12 @@ fn render_messages(transcript: &gtk::Box, log: &ChatLog) {
     for msg in &log.messages {
         let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
         row.style_context().add_class("chefbar-chat-msg");
-        let who = match msg.role {
-            ChatRole::Operator => {
-                row.style_context().add_class("operator");
-                "jij"
-            }
-            ChatRole::Agent => {
-                row.style_context().add_class("agent");
-                log.kind.as_deref().unwrap_or("agent")
-            }
-            ChatRole::System => {
-                row.style_context().add_class("system");
-                "app"
-            }
-        };
+        row.style_context().add_class(match msg.role {
+            ChatRole::Operator => "operator",
+            ChatRole::Agent => "agent",
+            ChatRole::System => "system",
+        });
+        let who = msg.who_label();
         let stamp = gtk::Label::new(Some(who));
         stamp.set_xalign(0.0);
         stamp.style_context().add_class("chefbar-chat-who");

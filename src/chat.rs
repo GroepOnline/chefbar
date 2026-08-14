@@ -25,6 +25,19 @@ pub struct ChatMessage {
     pub role: ChatRole,
     pub text: String,
     pub at_unix: i64,
+    /// Agent-kind at send time. Historical replies keep this label when the
+    /// live target later switches.
+    pub kind: Option<String>,
+}
+
+impl ChatMessage {
+    pub fn who_label(&self) -> &str {
+        match self.role {
+            ChatRole::Operator => "jij",
+            ChatRole::Agent => self.kind.as_deref().unwrap_or("agent"),
+            ChatRole::System => "app",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -158,7 +171,8 @@ fn auto_score(agent: &HerdrAgent) -> (u8, u8, u8) {
         } else {
             1
         };
-    (kind_rank, idle, hint)
+    // Idle/done first, then kind (Pi before Hermes), then control-hint.
+    (idle, kind_rank, hint)
 }
 
 pub fn list_targets(ops: &OpsSnapshot) -> Vec<ChatTarget> {
@@ -182,21 +196,33 @@ pub fn list_targets(ops: &OpsSnapshot) -> Vec<ChatTarget> {
     out
 }
 
+fn live_eligible(ops: &OpsSnapshot, id: &str) -> bool {
+    ops.agents
+        .iter()
+        .any(|a| agent_id(a) == id && is_picker_eligible(a))
+}
+
+fn configured_id_allowed(ops: &OpsSnapshot, id: &str) -> bool {
+    if live_eligible(ops, id) {
+        return true;
+    }
+    // Absent from this snapshot: honor the operator-configured id.
+    // Live but ineligible (jcode / reserved working lane): never.
+    !ops.agents.iter().any(|a| agent_id(a) == id)
+}
+
 /// Kies een Herdr-doel. Pinned > env > beste live Pi (dan Hermes).
 /// Nooit jcode, nooit stiekem de werkende visual ChefApp-lane, nooit auto-Cursor.
 pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String> {
     if let Some(pin) = pinned.map(str::trim).filter(|s| !s.is_empty()) {
-        if ops
-            .agents
-            .iter()
-            .any(|a| agent_id(a) == pin && is_picker_eligible(a))
-            || env_target().as_deref() == Some(pin)
-        {
+        if live_eligible(ops, pin) {
             return Some(pin.to_string());
         }
     }
     if let Some(env) = env_target() {
-        return Some(env);
+        if configured_id_allowed(ops, &env) {
+            return Some(env);
+        }
     }
     let mut auto: Vec<&HerdrAgent> = ops
         .agents
@@ -394,14 +420,18 @@ pub fn parse_read_output(raw: &str) -> String {
 }
 
 /// Nieuw terminalstuk na een prompt: suffix van `after` t.o.v. `before`.
+/// Geen overlap (buffer geroteerd) → leeg, nooit de hele recente dump.
 pub fn terminal_delta(before: &str, after: &str) -> String {
+    if before.is_empty() {
+        return String::new();
+    }
     if let Some(stripped) = after.strip_prefix(before) {
         return stripped.trim().to_string();
     }
     if let Some(idx) = after.find(before) {
         return after[idx + before.len()..].trim().to_string();
     }
-    after.trim().to_string()
+    String::new()
 }
 
 fn send_and_read(target: &str, prompt: &str) -> Result<String, String> {
@@ -462,6 +492,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
             role: ChatRole::Operator,
             text: text.to_string(),
             at_unix: now_unix(),
+            kind: None,
         });
         if target.is_none() {
             log.busy = false;
@@ -469,6 +500,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
                 role: ChatRole::System,
                 text: "Geen Pi. Zet CHEFBAR_CONTROL_AGENT of start een Herdr-pane met Pi voor control.".into(),
                 at_unix: now_unix(),
+                kind: None,
             });
             shared
                 .chat_revision
@@ -487,6 +519,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let shared = shared.clone();
     let prompt = wrap_prompt(&snap, text, &kind);
+    let reply_kind = kind;
     std::thread::spawn(move || {
         let result = match shared.chat.read().unwrap().target.clone() {
             Some(target) => send_and_read(&target, &prompt),
@@ -499,11 +532,13 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
                 role: ChatRole::Agent,
                 text: reply,
                 at_unix: now_unix(),
+                kind: Some(reply_kind),
             }),
             Err(err) => log.messages.push(ChatMessage {
                 role: ChatRole::System,
                 text: err,
                 at_unix: now_unix(),
+                kind: None,
             }),
         }
         drop(log);
@@ -538,10 +573,46 @@ mod tests {
         }
     }
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn acquire() -> Self {
+            let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            const KEYS: &[&str] = &[
+                "CHEFBAR_CONTROL_AGENT",
+                "CHEFBAR_CONTROL_PANE",
+                "CHEFBAR_PANEL_STATE",
+            ];
+            let saved = KEYS
+                .iter()
+                .map(|k| (*k, std::env::var(k).ok()))
+                .collect::<Vec<_>>();
+            for k in KEYS {
+                std::env::remove_var(k);
+            }
+            Self { _lock: lock, saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.saved {
+                match v {
+                    Some(val) => std::env::set_var(k, val),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
+
     #[test]
     fn resolve_prefers_control_hint_over_visual_lane() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
@@ -560,8 +631,7 @@ mod tests {
 
     #[test]
     fn werkende_visual_lane_gereserveerd_idle_pi_blijft_kiesbaar() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         // working visual-lane: niet kiesbaar
         let ops = OpsSnapshot {
             ok: true,
@@ -588,8 +658,7 @@ mod tests {
 
     #[test]
     fn alias_chefapp_herdr_wint_van_andere_idle_pi() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
@@ -606,8 +675,7 @@ mod tests {
 
     #[test]
     fn resolve_prefers_idle_pi_over_cursor() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
@@ -623,8 +691,7 @@ mod tests {
 
     #[test]
     fn jcode_is_never_a_chat_target() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![agent(
@@ -647,8 +714,7 @@ mod tests {
 
     #[test]
     fn pinned_target_wins_over_auto_pi() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
@@ -684,11 +750,14 @@ mod tests {
     #[test]
     fn terminal_delta_takes_suffix() {
         assert_eq!(terminal_delta("abc", "abcdef"), "def");
-        assert_eq!(terminal_delta("nope", "hello"), "hello");
+        assert_eq!(terminal_delta("nope", "hello"), "");
+        assert_eq!(terminal_delta("", "stale buffer"), "");
+        assert_eq!(terminal_delta("abc", "abc"), "");
     }
 
     #[test]
     fn submit_reports_empty_busy_and_no_target() {
+        let _g = EnvGuard::acquire();
         let shared = crate::state::Shared::new();
         assert_eq!(submit(&shared, "  "), SubmitStatus::Empty);
         assert_eq!(submit(&shared, "status jan"), SubmitStatus::NoTarget);
@@ -715,8 +784,6 @@ mod tests {
     }
 
     fn shared_met_pin(path: &std::path::Path) -> crate::state::Shared {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
         let shared = crate::state::Shared::new();
         let panel = crate::panel_state::load_from(path);
         *shared.chat.write().unwrap() = chat_log_from_panel(&panel);
@@ -735,6 +802,7 @@ mod tests {
 
     #[test]
     fn alias_remap_naar_nieuw_pane_id() {
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("alias-remap");
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
@@ -768,6 +836,7 @@ mod tests {
 
     #[test]
     fn stale_pane_zonder_alias_unpint_en_auto_pickt() {
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("stale-no-alias");
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
@@ -795,6 +864,7 @@ mod tests {
 
     #[test]
     fn jcode_pin_van_disk_wordt_gedropt() {
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("jcode-pin");
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
@@ -827,6 +897,7 @@ mod tests {
 
     #[test]
     fn working_visual_pin_wordt_gedropt() {
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("visual-pin");
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
@@ -860,8 +931,7 @@ mod tests {
 
     #[test]
     fn ineligible_pin_valt_door_naar_auto() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let ops = OpsSnapshot {
             ok: true,
             agents: vec![
@@ -883,6 +953,7 @@ mod tests {
 
     #[test]
     fn refresh_laat_busy_target_met_rust() {
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("busy-refresh");
         assert!(crate::panel_state::persist_control_pin_to(
             &path,
@@ -915,8 +986,7 @@ mod tests {
 
     #[test]
     fn submit_stale_pin_unpint_voor_auto_pick() {
-        std::env::remove_var("CHEFBAR_CONTROL_AGENT");
-        std::env::remove_var("CHEFBAR_CONTROL_PANE");
+        let _g = EnvGuard::acquire();
         let path = temp_state_path("submit-stale");
         std::env::set_var("CHEFBAR_PANEL_STATE", &path);
         let shared = crate::state::Shared::new();
@@ -936,8 +1006,68 @@ mod tests {
         let log = shared.chat.read().unwrap().clone();
         assert!(!log.pinned);
         assert_eq!(log.target.as_deref(), Some("w2S:p2"));
-        std::env::remove_var("CHEFBAR_PANEL_STATE");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn idle_hermes_beats_working_pi() {
+        let _g = EnvGuard::acquire();
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent("pi", "w2S:p2", "working", "/tmp/pi-busy"),
+                agent("hermes", "w2S:p3", "idle", "/tmp/hermes-idle"),
+            ],
+        };
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2S:p3"));
+    }
+
+    #[test]
+    fn env_jcode_is_skipped_for_auto() {
+        let _g = EnvGuard::acquire();
+        std::env::set_var("CHEFBAR_CONTROL_AGENT", "w9:p1");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![
+                agent(
+                    "pi",
+                    "w9:p1",
+                    "idle",
+                    "/var/lib/chef-jcode-memory/home",
+                ),
+                agent("pi", "w2S:p2", "idle", "/tmp/ops-lane"),
+            ],
+        };
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w2S:p2"));
+    }
+
+    #[test]
+    fn env_unknown_id_is_honored() {
+        let _g = EnvGuard::acquire();
+        std::env::set_var("CHEFBAR_CONTROL_AGENT", "w8:p8");
+        let ops = OpsSnapshot {
+            ok: true,
+            agents: vec![agent("pi", "w2S:p2", "idle", "/tmp/ops-lane")],
+        };
+        assert_eq!(resolve_target(&ops, None).as_deref(), Some("w8:p8"));
+    }
+
+    #[test]
+    fn agent_who_label_stays_on_the_message() {
+        let msg = ChatMessage {
+            role: ChatRole::Agent,
+            text: "fleet ok".into(),
+            at_unix: 1,
+            kind: Some("pi".into()),
+        };
+        assert_eq!(msg.who_label(), "pi");
+        let sys = ChatMessage {
+            role: ChatRole::System,
+            text: "fout".into(),
+            at_unix: 1,
+            kind: Some("hermes".into()),
+        };
+        assert_eq!(sys.who_label(), "app");
     }
 
     #[test]
