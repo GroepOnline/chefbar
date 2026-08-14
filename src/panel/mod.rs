@@ -633,8 +633,8 @@ impl Panel {
             let mut state = crate::panel_state::load();
             state.active_group = Some(current.clone());
             state.harness = None;
-            state.query = Some(self.search.text().to_string())
-                .filter(|q: &String| !q.trim().is_empty());
+            state.query =
+                Some(self.search.text().to_string()).filter(|q: &String| !q.trim().is_empty());
             state.drawer_open = self.drawer.is_open();
             state.density = self.density.borrow().clone();
             state.theme = self.theme.borrow().clone();
