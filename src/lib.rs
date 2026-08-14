@@ -7,6 +7,7 @@
 pub mod actions;
 pub mod aliases;
 pub mod auth;
+pub mod brain;
 pub mod config;
 pub mod css;
 pub mod doctor;
@@ -28,6 +29,7 @@ pub mod quiet;
 pub mod sessions;
 pub mod state;
 pub mod tray;
+pub mod vault_bridge;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

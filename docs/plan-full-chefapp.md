@@ -1,6 +1,7 @@
 # ChefApp — van hulpje naar volwaardige app (plan 2026-08-12)
 
 > Status: **afgerond — Fase 0+lanes A-G merged (2026-08-12, cbd1b1d)**. Dit document is de SSOT voor de sprong van ChefBar 3.1 (dun, stabiel) naar **ChefApp 4.0** — de native mission-control app voor alles ChefGroep.
+> ChefApp 5.0 lane G: tooling/documentatie bijgewerkt; zie `docs/plan-chefapp-5.0.md` en `docs/chefapp-qa.md`.
 > Branch: `main` ← `feat/chefapp-4.0` stack (merge-train A→F,G→B→C,D,E + palette/panel_state fixes). Uitvoer: 7 file-disjointe lanes parallel, één merge-train.
 > Merge: `main` @ `cbd1b1d` — alle harde gates groen (115 tests, clippy, fmt, shellcheck).
 

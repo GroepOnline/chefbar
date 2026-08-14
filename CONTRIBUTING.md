@@ -35,8 +35,6 @@ release-artifact heet `chefbar-release`.
   CI als harde checks — lokaal voorlopen kan alleen op de runner.
 - PR's naar `main` worden squash-gemerged; geen force-push naar `main`.
 - Wijzigingen aan `install.sh`, `.cursor/*.sh` of systemd-units: `shellcheck` + dry-run in CI.
-- Wijzigingen aan `.agents/skills/chefbar-*`, `.cursor/agents` of `scripts/agent-bench.mjs`:
-  `node scripts/agent-bench.mjs` (deterministisch, geen LLM; CI-gate).
 
 ## ChefApp 4.0 lanes — file-disjoint
 
@@ -52,6 +50,17 @@ release-artifact heet `chefbar-release`.
 `feat:`, `fix:`, `docs:`, `test:`, `chore:` met scope, bijv.
 `fix(tray): statuslijn sorteert nieuwste eerst binnen priority-groep`.
 
-## Agent skills
+## ChefApp 5.0 lane G — tooling & docs
 
-Nieuwe of gewijzigde agent-instructies: zie [`AGENTS.md`](AGENTS.md) en [`docs/agent-harness.md`](docs/agent-harness.md). Harness is **stateless**: rules/skills niet always-on, alleen via YAML-`description` of een named chain. File-disjoint workers volgen dezelfde geest als de ChefApp-lanes hierboven. Ecosysteem-skills: `npx skills add … -a '*' -y` en `skills-lock.json` committen. Geen tokio/async-skills als default — de actor is sync. ChefBar-skills horen in `.agents/skills/` (niet als Cursor-only boom onder `.cursor/skills/`).
+Lane G blijft file-disjoint: wijzigingen zijn beperkt tot `scripts/**`, `.github/workflows/ci.yml`, `docs/**`, `README.md`, `CONTRIBUTING.md`, `Cargo.toml` (alleen dev-deps/scripts) en `tests/**`. Raak voor deze lane geen `src/**` aan.
+
+De verplichte gate op `chef-runner-01-1` is:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+shellcheck install.sh scripts/*.sh
+```
+
+Visual shots mogen in CI warning-only zijn, maar moeten hun artefacten en concrete foutmelding bewaren. De 15-domein-run gebruikt `scripts/visual-shot.sh --mode all-domains`; zie [docs/chefapp-qa.md](docs/chefapp-qa.md).

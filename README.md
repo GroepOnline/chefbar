@@ -1,3 +1,26 @@
+
+## ChefApp 5.0 — mission control
+
+ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
+**Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
+Data blijft offline-tolerant en freshness-first; writes lopen uitsluitend via policy- en audit-gecontroleerde acties.
+
+Elk domein is een eigen operate-surface (KPI, buckets, typed rijen) uit de gedeelde snapshot — geen gekopieerde Acties-lijst. Idle toont het domein eerst, met compacte Doen-chips eronder; zoeken toont treffers. De gepinde footer draagt live counts plus toggles voor **dichtheid** (Rustig/Compact) en **thema** (Donker/Licht, live skin-wissel). Alle UI volgt de Devin v2-taal (`GroepOnline/design-system`): warm basalt, hairlines, één accent, 2px-statusstreak, geen spinners/emoji/gradients.
+
+Detail: [plan-superapp-ui.md](docs/plan-superapp-ui.md) (lane-contract), [plan-chefapp-5.0.md](docs/plan-chefapp-5.0.md) (campagne) en [chefapp-qa.md](docs/chefapp-qa.md) (acceptatie).
+
+### Lane-G tooling
+
+Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:
+
+```bash
+# op chef-runner-01-1, nadat target/release/chefbar bestaat
+scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain
+scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
+```
+
+De CI houdt `cargo fmt` en `cargo clippy --all-targets -- -D warnings` als harde gates; visual shots en screenshot-diffs zijn warning-only. Zie [het 5.0-plan](docs/plan-chefapp-5.0.md) en de [QA-checklist](docs/chefapp-qa.md).
+
 # ChefBar 3.1
 
 Mission control aan je menubalk. Eén venster, één actor, alle harnassen.

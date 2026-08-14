@@ -8,6 +8,14 @@ use std::collections::{HashMap, HashSet};
 /// Canoniek: elke key → lijst synoniemen (lager-case, zonder duplicaten).
 /// Minstens 20 synoniem-regels; beide richtingen expliciet waar gewenst.
 const ALIAS_ENTRIES: &[(&str, &[&str])] = &[
+    ("cfg", &["config"]),
+    ("config", &["cfg", "configuration", "settings"]),
+    ("dash", &["dashboard"]),
+    ("dashboard", &["dash", "overview"]),
+    ("ops", &["operations"]),
+    ("operations", &["ops"]),
+    ("k8s", &["kubernetes"]),
+    ("kubernetes", &["k8s"]),
     ("fleet", &["herdr", "nodes"]),
     ("herdr", &["fleet", "nodes"]),
     ("nodes", &["fleet", "herdr"]),

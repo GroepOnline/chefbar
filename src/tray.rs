@@ -44,6 +44,8 @@ pub enum UiCommand {
     TogglePalette,
     /// Open de inbox-zone in het panel.
     OpenInbox,
+    /// Preview de detail-drawer met de eerste actie (visual-shot/CI path).
+    DrawerPreview,
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.
@@ -138,7 +140,7 @@ fn tray_domains() -> Vec<(&'static str, &'static str)> {
         ("herdr", "Herdr"),
         ("vault", "Vault"),
         ("share", "Share"),
-        ("taken", "Taken"),
+        ("tasks", "Taken"),
         ("containers", "Containers"),
         ("secrets", "Secrets"),
         ("kater", "Kater"),
@@ -154,7 +156,8 @@ fn domain_label(id: &str) -> &'static str {
         "herdr" => "Herdr",
         "vault" => "Vault",
         "share" => "Share",
-        "taken" => "Taken",
+        "tasks" | "taken" => "Taken",
+        "commerce" | "accounts" | "providers" => "Accounts",
         "containers" => "Containers",
         "secrets" => "Secrets",
         "kater" => "Kater",
@@ -293,7 +296,7 @@ impl ksni::Tray for ChefTray {
         "chefbar".into()
     }
     fn title(&self) -> String {
-        "ChefBar".into()
+        "ChefApp".into()
     }
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         vec![self.icon.clone()]
@@ -306,7 +309,7 @@ impl ksni::Tray for ChefTray {
             .unwrap_or_default();
         let _ = state;
         ksni::ToolTip {
-            title: "ChefBar".into(),
+            title: "ChefApp".into(),
             description: line,
             icon_name: "chefbar".into(),
             icon_pixmap: vec![self.icon.clone()],

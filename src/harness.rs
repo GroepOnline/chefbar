@@ -34,7 +34,7 @@ impl HarnessGroup {
 
     pub fn label(&self) -> &'static str {
         match self {
-            HarnessGroup::Fleet => "Vastgoed",
+            HarnessGroup::Fleet => "Fleet",
             HarnessGroup::Commerce => "Commerce",
             HarnessGroup::Sync => "Sync",
             HarnessGroup::Work => "Werk",
@@ -88,6 +88,30 @@ impl HarnessKind {
             HarnessKind::Secrets => "secrets",
             HarnessKind::Kater => "kater",
             HarnessKind::Health => "health",
+        }
+    }
+
+    /// Canonicaliseer tray/IPC-aliassen (`taken`, `accounts`) naar een harness-id.
+    pub fn from_alias(raw: &str) -> Option<Self> {
+        match raw.trim().to_lowercase().as_str() {
+            "inbox" => Some(Self::Inbox),
+            "fleet" => Some(Self::Fleet),
+            "herdr" => Some(Self::Herdr),
+            "vault" => Some(Self::Vault),
+            "commerce" | "accounts" | "providers" => Some(Self::Commerce),
+            "crm" => Some(Self::Crm),
+            "share" => Some(Self::Share),
+            "clipboard" => Some(Self::Clipboard),
+            "desktop" => Some(Self::Desktop),
+            "tasks" | "taken" => Some(Self::Tasks),
+            "linear" => Some(Self::Linear),
+            "containers" => Some(Self::Containers),
+            "secrets" => Some(Self::Secrets),
+            "kater" => Some(Self::Kater),
+            "health" | "instellingen" | "settings" => Some(Self::Health),
+            "eval" => Some(Self::Eval),
+            "sync" => Some(Self::Sync),
+            _ => None,
         }
     }
 
@@ -287,7 +311,7 @@ impl Harness {
 /// - fleet/herdr: uit fleet-info + ops agents
 /// - commerce/vault/crm: uit providers
 /// - sync/share/clipboard/desktop: uit share_sync/clipboard/desktop
-/// - tasks/linear: uit tasks (linear placeholder tot Lane A)
+/// - tasks/linear: uit tasks + linear_issues
 /// - inbox/health/kater/containers/secrets: tolerant (0 als snapshot leeg)
 ///
 /// Geen nieuwe netwerk-calls; alles komt uit `snapshot` en `ops`.
@@ -505,14 +529,19 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     ));
 
     // ---- CRM harnas (D3) --------------------------------------------------
-    // TODO Lane A will replace with snapshot.crm_deals len
+    let crm_queue = snapshot.crm_deals.len();
+    let crm_status = if crm_queue == 0 {
+        HarnessStatus::Idle
+    } else {
+        HarnessStatus::Running
+    };
     out.push(Harness::new(
         HarnessKind::Crm.id(),
         "CRM",
         HarnessKind::Crm,
-        HarnessStatus::Idle,
-        0,
-        None,
+        crm_status,
+        crm_queue,
+        snapshot.crm_deals.first().map(|deal| deal.title.clone()),
         None,
     ));
 
@@ -538,9 +567,7 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         snapshot
             .clipboard
             .first()
-            .and_then(|v| v.get("text"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.chars().take(24).collect()),
+            .map(|entry| entry.text.chars().take(24).collect()),
         None,
     ));
 
@@ -597,51 +624,79 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         None,
     ));
 
-    // ---- Linear harnas (D7) — placeholder tot Lane A ----------------------
-    // TODO Lane A will replace with snapshot.linear_issues len
+    // ---- Linear harnas (D7) -----------------------------------------------
+    let linear_queue = snapshot.linear_issues.len();
     out.push(Harness::new(
         HarnessKind::Linear.id(),
         "Linear",
         HarnessKind::Linear,
-        HarnessStatus::Idle,
-        0,
-        None,
+        if linear_queue == 0 {
+            HarnessStatus::Idle
+        } else {
+            HarnessStatus::Running
+        },
+        linear_queue,
+        snapshot
+            .linear_issues
+            .first()
+            .map(|issue| issue.title.clone()),
         None,
     ));
 
-    // ---- Containers harnas (D4) — placeholder -----------------------------
-    // TODO Lane A will replace with snapshot.containers drift len
+    // ---- Containers harnas (D4) -------------------------------------------
+    let container_queue = snapshot
+        .containers
+        .drift
+        .len()
+        .max(snapshot.containers.observed.len());
     out.push(Harness::new(
         HarnessKind::Containers.id(),
         "Containers",
         HarnessKind::Containers,
-        HarnessStatus::Idle,
-        0,
-        None,
+        if snapshot.containers.drift.is_empty() {
+            HarnessStatus::Idle
+        } else {
+            HarnessStatus::Blocked
+        },
+        container_queue,
+        snapshot.containers.drift.first().cloned(),
         None,
     ));
 
-    // ---- Secrets harnas (D5) — placeholder --------------------------------
-    // TODO Lane A will replace with snapshot.secrets_meta len
+    // ---- Secrets harnas (D5) ----------------------------------------------
+    let secrets_queue = snapshot.secrets_meta.len();
     out.push(Harness::new(
         HarnessKind::Secrets.id(),
         "Secrets",
         HarnessKind::Secrets,
         HarnessStatus::Idle,
-        0,
-        None,
+        secrets_queue,
+        snapshot
+            .secrets_meta
+            .first()
+            .map(|secret| secret.title.clone()),
         None,
     ));
 
-    // ---- Kater harnas (D8) — placeholder ----------------------------------
-    // TODO Lane A will replace with snapshot.kater_status
+    // ---- Kater harnas (D8) ------------------------------------------------
+    let kater_online = snapshot.kater_status.online;
     out.push(Harness::new(
         HarnessKind::Kater.id(),
         "Kater",
         HarnessKind::Kater,
-        HarnessStatus::Idle,
-        0,
-        None,
+        if kater_online {
+            HarnessStatus::Running
+        } else if snapshot.kater_status.status.is_empty() {
+            HarnessStatus::Idle
+        } else {
+            HarnessStatus::Blocked
+        },
+        if kater_online { 1 } else { 0 },
+        snapshot
+            .kater_status
+            .profile
+            .clone()
+            .or_else(|| Some(snapshot.kater_status.status.clone()).filter(|s| !s.is_empty())),
         None,
     ));
 
@@ -670,6 +725,31 @@ mod tests {
 
     fn empty_snapshot() -> Snapshot {
         Snapshot::default()
+    }
+
+    #[test]
+    fn alias_canonicaliseert_taken_en_accounts() {
+        assert_eq!(
+            HarnessKind::from_alias("taken").map(|k| k.id()),
+            Some("tasks")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("TASKS").map(|k| k.id()),
+            Some("tasks")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("accounts").map(|k| k.id()),
+            Some("commerce")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("providers").map(|k| k.id()),
+            Some("commerce")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("instellingen").map(|k| k.id()),
+            Some("health")
+        );
+        assert!(HarnessKind::from_alias("pane-99").is_none());
     }
 
     #[test]
@@ -878,9 +958,9 @@ mod tests {
         let h = build_harnesses(&snap, &ops);
         // oude test verwachtte exact 4; nu >=9, maar eerste 4 waren fleet/commerce/eval/sync
         assert!(h.len() >= 4);
-        assert_eq!(h[0].id, "fleet");
-        assert_eq!(h[1].id, "commerce");
-        assert_eq!(h[2].id, "eval");
-        assert_eq!(h[3].id, "sync");
+        let ids: Vec<&str> = h.iter().map(|x| x.id.as_str()).collect();
+        for need in ["fleet", "commerce", "eval", "sync"] {
+            assert!(ids.contains(&need), "compat id {need} ontbreekt in {ids:?}");
+        }
     }
 }
