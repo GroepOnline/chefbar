@@ -239,15 +239,14 @@ fn paint_combo(
         .target
         .clone()
         .or_else(|| resolve_target(&ops, pinned.as_deref()));
-    let fp = format!(
-        "{}#{}",
-        targets
-            .iter()
-            .map(|t| t.id.as_str())
-            .collect::<Vec<_>>()
-            .join("|"),
-        current.as_deref().unwrap_or("")
-    );
+    let mut ids = String::new();
+    for (i, target) in targets.iter().enumerate() {
+        if i > 0 {
+            ids.push('|');
+        }
+        ids.push_str(&target.id);
+    }
+    let fp = format!("{}#{}", ids, current.as_deref().unwrap_or(""));
     if !force && fp == *combo_fp.borrow() {
         return;
     }

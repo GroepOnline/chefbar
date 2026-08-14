@@ -13,7 +13,7 @@ static UI_TX: Mutex<Option<Sender<UiCommand>>> = Mutex::new(None);
 
 /// Register the in-process UI command sender (tray / ipc / palette).
 pub fn register_command_tx(tx: Sender<UiCommand>) {
-    *UI_TX.lock().unwrap() = Some(tx);
+    *UI_TX.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tx);
 }
 
 /// Queue a UI command on the GTK dispatcher. False when no sender is registered

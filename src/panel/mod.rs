@@ -751,9 +751,9 @@ fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harn
     if control {
         chat.root.set_no_show_all(false);
         chat.root.set_visible(true);
-        chat.root.show_all();
-        chat.refresh();
         if entering {
+            chat.root.show_all();
+            chat.refresh();
             chat.focus_composer();
         }
     } else {

@@ -75,6 +75,44 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+fn read_ops(shared: &crate::state::Shared) -> OpsSnapshot {
+    shared
+        .ops
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn read_snapshot(shared: &crate::state::Shared) -> Snapshot {
+    shared
+        .snapshot
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn with_chat_read<T, F>(shared: &crate::state::Shared, f: F) -> T
+where
+    F: FnOnce(&ChatLog) -> T,
+{
+    let log = shared
+        .chat
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&log)
+}
+
+fn with_chat_write<T, F>(shared: &crate::state::Shared, f: F) -> T
+where
+    F: FnOnce(&mut ChatLog) -> T,
+{
+    let mut log = shared
+        .chat
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    f(&mut log)
+}
+
 fn env_target() -> Option<String> {
     for key in ["CHEFBAR_CONTROL_AGENT", "CHEFBAR_CONTROL_PANE"] {
         if let Ok(value) = std::env::var(key) {
@@ -247,7 +285,7 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
     if id.is_empty() {
         return;
     }
-    let ops = shared.ops.read().unwrap().clone();
+    let ops = read_ops(shared);
     let kind = kind_for(&ops, id);
     let alias = ops
         .agents
@@ -255,14 +293,17 @@ pub fn pin_target(shared: &crate::state::Shared, id: &str) {
         .find(|a| agent_id(a) == id)
         .map(|a| a.alias.trim().to_string())
         .filter(|a| !a.is_empty());
-    let mut log = shared.chat.write().unwrap();
-    if log.busy {
+    if with_chat_write(shared, |log| {
+        if log.busy {
+            return true;
+        }
+        log.target = Some(id.to_string());
+        log.kind = kind;
+        log.pinned = true;
+        false
+    }) {
         return;
     }
-    log.target = Some(id.to_string());
-    log.kind = kind;
-    log.pinned = true;
-    drop(log);
     let persist_id = id.to_string();
     std::thread::spawn(move || {
         if !crate::panel_state::persist_control_pin(Some(&persist_id), true, alias.as_deref()) {
@@ -291,12 +332,18 @@ pub fn refresh_persisted_pin(shared: &crate::state::Shared) {
 
 /// Pad-expliciete kern van `refresh_persisted_pin` — testbaar zonder env.
 pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std::path::Path) {
-    let ops = shared.ops.read().unwrap().clone();
-    let (target, busy, pinned) = {
-        let log = shared.chat.read().unwrap();
-        (log.target.clone().unwrap_or_default(), log.busy, log.pinned)
-    };
+    let ops = read_ops(shared);
+    let (target, busy, pinned) = with_chat_read(shared, |log| {
+        (
+            log.target.clone().unwrap_or_default(),
+            log.busy,
+            log.pinned,
+        )
+    });
     if !pinned || busy {
+        return;
+    }
+    if ops.agents.is_empty() {
         return;
     }
     let alias = crate::panel_state::load_from(state_path)
@@ -314,21 +361,19 @@ pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std:
             } else {
                 Some(agent.alias.trim().to_string())
             };
-            let changed = {
-                let mut log = shared.chat.write().unwrap();
+            let changed = with_chat_write(shared, |log| {
                 if log.busy {
-                    false
-                } else {
-                    let stored_alias = (!alias.is_empty()).then_some(alias.as_str());
-                    let changed = log.target.as_deref() != Some(id.as_str())
-                        || log.kind.as_deref() != Some(kind.as_str())
-                        || alias_keep.as_deref() != stored_alias;
-                    log.target = Some(id.clone());
-                    log.kind = Some(kind.clone());
-                    log.pinned = true;
-                    changed
+                    return false;
                 }
-            };
+                let stored_alias = (!alias.is_empty()).then_some(alias.as_str());
+                let changed = log.target.as_deref() != Some(id.as_str())
+                    || log.kind.as_deref() != Some(kind.as_str())
+                    || alias_keep.as_deref() != stored_alias;
+                log.target = Some(id.clone());
+                log.kind = Some(kind.clone());
+                log.pinned = true;
+                changed
+            });
             if changed {
                 let _ = crate::panel_state::persist_control_pin_to(
                     state_path,
@@ -341,30 +386,40 @@ pub fn refresh_persisted_pin_at(shared: &crate::state::Shared, state_path: &std:
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
-        _ => {
-            {
-                let mut log = shared.chat.write().unwrap();
-                if log.busy {
-                    return;
-                }
-                log.target = None;
-                log.kind = None;
-                log.pinned = false;
-            }
-            let _ = crate::panel_state::persist_control_pin_to(state_path, None, false, None);
-            if let Some(auto) = resolve_target(&ops, None) {
-                let kind = kind_for(&ops, &auto);
-                let mut log = shared.chat.write().unwrap();
-                if !log.busy {
-                    log.target = Some(auto);
-                    log.kind = kind;
-                }
-            }
-            shared
-                .chat_revision
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
+        Some(_) => drop_ineligible_pin(shared, state_path, &ops),
+        None => {}
     }
+}
+
+fn drop_ineligible_pin(
+    shared: &crate::state::Shared,
+    state_path: &std::path::Path,
+    ops: &OpsSnapshot,
+) {
+    if with_chat_write(shared, |log| {
+        if log.busy {
+            return true;
+        }
+        log.target = None;
+        log.kind = None;
+        log.pinned = false;
+        false
+    }) {
+        return;
+    }
+    let _ = crate::panel_state::persist_control_pin_to(state_path, None, false, None);
+    if let Some(auto) = resolve_target(ops, None) {
+        let kind = kind_for(ops, &auto);
+        with_chat_write(shared, |log| {
+            if !log.busy {
+                log.target = Some(auto);
+                log.kind = kind;
+            }
+        });
+    }
+    shared
+        .chat_revision
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Hydrateer ChatLog vanuit panel-state: pin overleeft een herstart.
@@ -461,26 +516,24 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     if text.is_empty() {
         return SubmitStatus::Empty;
     }
-    let ops = shared.ops.read().unwrap().clone();
-    let snap = shared.snapshot.read().unwrap().clone();
-    let pinned = {
-        let log = shared.chat.read().unwrap();
+    let ops = read_ops(shared);
+    let snap = read_snapshot(shared);
+    let pinned = with_chat_read(shared, |log| {
         if log.pinned {
             log.target.clone()
         } else {
             None
         }
-    };
+    });
     let target = resolve_target(&ops, pinned.as_deref());
     let pin_kept = pinned.is_some() && target.as_deref() == pinned.as_deref();
     let kind = target
         .as_deref()
         .and_then(|id| kind_for(&ops, id))
         .unwrap_or_else(|| "pi".into());
-    {
-        let mut log = shared.chat.write().unwrap();
+    let early = with_chat_write(shared, |log| {
         if log.busy {
-            return SubmitStatus::Busy;
+            return Some(SubmitStatus::Busy);
         }
         log.busy = true;
         log.target = target.clone();
@@ -502,14 +555,22 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
                 at_unix: now_unix(),
                 kind: None,
             });
-            shared
-                .chat_revision
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if pinned.is_some() && !pin_kept {
-                persist_unpin_bg();
-            }
-            return SubmitStatus::NoTarget;
+            None
+        } else {
+            Some(SubmitStatus::Sent)
         }
+    });
+    if let Some(SubmitStatus::Busy) = early {
+        return SubmitStatus::Busy;
+    }
+    if early.is_none() {
+        shared
+            .chat_revision
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if pinned.is_some() && !pin_kept {
+            persist_unpin_bg();
+        }
+        return SubmitStatus::NoTarget;
     }
     if pinned.is_some() && !pin_kept {
         persist_unpin_bg();
@@ -521,27 +582,27 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
     let prompt = wrap_prompt(&snap, text, &kind);
     let reply_kind = kind;
     std::thread::spawn(move || {
-        let result = match shared.chat.read().unwrap().target.clone() {
+        let result = match with_chat_read(&shared, |log| log.target.clone()) {
             Some(target) => send_and_read(&target, &prompt),
             None => Err("Geen control-agent.".into()),
         };
-        let mut log = shared.chat.write().unwrap();
-        log.busy = false;
-        match result {
-            Ok(reply) => log.messages.push(ChatMessage {
-                role: ChatRole::Agent,
-                text: reply,
-                at_unix: now_unix(),
-                kind: Some(reply_kind),
-            }),
-            Err(err) => log.messages.push(ChatMessage {
-                role: ChatRole::System,
-                text: err,
-                at_unix: now_unix(),
-                kind: None,
-            }),
-        }
-        drop(log);
+        with_chat_write(&shared, |log| {
+            log.busy = false;
+            match result {
+                Ok(reply) => log.messages.push(ChatMessage {
+                    role: ChatRole::Agent,
+                    text: reply,
+                    at_unix: now_unix(),
+                    kind: Some(reply_kind),
+                }),
+                Err(err) => log.messages.push(ChatMessage {
+                    role: ChatRole::System,
+                    text: err,
+                    at_unix: now_unix(),
+                    kind: None,
+                }),
+            }
+        });
         shared
             .chat_revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -835,7 +896,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_pane_zonder_alias_unpint_en_auto_pickt() {
+    fn stale_pane_zonder_alias_behoudt_pin() {
         let _g = EnvGuard::acquire();
         let path = temp_state_path("stale-no-alias");
         assert!(crate::panel_state::persist_control_pin_to(
@@ -854,11 +915,39 @@ mod tests {
         );
         refresh_persisted_pin_at(&shared, &path);
         let log = shared.chat.read().unwrap().clone();
-        assert!(!log.pinned);
-        assert_eq!(log.target.as_deref(), Some("w2S:p2"));
+        assert!(log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2Q:p9"));
         let persisted = crate::panel_state::load_from(&path);
-        assert!(!persisted.control_pinned);
-        assert_eq!(persisted.control_target, None);
+        assert!(persisted.control_pinned);
+        assert_eq!(persisted.control_target.as_deref(), Some("w2Q:p9"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn lege_ops_snapshot_behoudt_pin() {
+        let _g = EnvGuard::acquire();
+        let path = temp_state_path("empty-ops");
+        assert!(crate::panel_state::persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
+        let shared = shared_met_pin(&path);
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![],
+            },
+        );
+        refresh_persisted_pin_at(&shared, &path);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2R:p2"));
+        let persisted = crate::panel_state::load_from(&path);
+        assert!(persisted.control_pinned);
+        assert_eq!(persisted.control_target.as_deref(), Some("w2R:p2"));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
