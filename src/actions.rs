@@ -52,7 +52,6 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
-    ShowPanel,
     SendControlChat,
 }
 
@@ -97,7 +96,6 @@ impl RunSpec {
             RunSpec::PrunePreview => "PrunePreview".into(),
             RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
             RunSpec::TogglePalette => "TogglePalette".into(),
-            RunSpec::ShowPanel => "ShowPanel".into(),
             RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
             RunSpec::SendControlChat => "SendControlChat".into(),
         }
@@ -191,7 +189,9 @@ pub fn build_inbox_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<A
             ),
             match &suggestion.kind {
                 crate::models::SuggestionKind::FocusAgent(id) => RunSpec::FocusAgent(id.clone()),
-                crate::models::SuggestionKind::OpenDashboard => RunSpec::ShowPanel,
+                crate::models::SuggestionKind::OpenDashboard => {
+                    RunSpec::FocusDomain("control".into())
+                }
                 crate::models::SuggestionKind::None_ => RunSpec::Noop,
             },
         ));
@@ -1255,11 +1255,6 @@ impl Executor {
             RunSpec::TogglePalette => {
                 if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {
                     crate::notify::notify("Palette", "toggle — Super+Space", "ok");
-                }
-            }
-            RunSpec::ShowPanel => {
-                if !crate::tray::send_ui(crate::tray::UiCommand::ShowPanel) {
-                    crate::notify::notify("ChefBar", "paneel nog niet klaar", "hulp");
                 }
             }
             RunSpec::SendControlChat => {
