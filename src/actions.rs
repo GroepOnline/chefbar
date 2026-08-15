@@ -1144,8 +1144,8 @@ impl Executor {
                 );
             }
             RunSpec::DesktopAction(verb) => {
-                // Geen lokale webtop meer op laptop joep. start/open opent de
-                // profiel-URL; stop is een no-op (geen POST, geen error-toast).
+                // Geen lokale webtop, geen Thuis/Ploeg. ChefBar is de surface.
+                // IPC desktop * is a no-op (geen POST, geen error-toast).
                 if let Some(url) = resolve_desktop_action(verb, &self.profile.desktop) {
                     crate::notify::open_url(&url);
                 }

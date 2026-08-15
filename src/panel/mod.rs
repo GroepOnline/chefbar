@@ -1444,7 +1444,9 @@ fn suggestion_spec(
     use crate::models::SuggestionKind;
     match &suggestion.kind {
         SuggestionKind::FocusAgent(id) => Some(crate::actions::RunSpec::FocusAgent(id.clone())),
-        SuggestionKind::OpenDashboard => Some(crate::actions::RunSpec::ShowPanel),
+        SuggestionKind::OpenDashboard => Some(crate::actions::RunSpec::FocusDomain(
+            "control".into(),
+        )),
         SuggestionKind::None_ => None,
     }
 }

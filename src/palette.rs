@@ -384,11 +384,7 @@ mod tests {
             "herdr workspace",
             "focus herdr spring",
         );
-        let b = action(
-            "Open overzicht",
-            "vault dashboard",
-            "open overzicht",
-        );
+        let b = action("Open overzicht", "vault dashboard", "open overzicht");
         let score_a = fuzzy_score("focus", &a);
         let score_b = fuzzy_score("focus", &b);
         assert!(score_a.unwrap_or(0) > score_b.unwrap_or(0));
