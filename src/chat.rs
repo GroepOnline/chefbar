@@ -1058,7 +1058,13 @@ mod tests {
             log.target = Some("w2R:p2".into());
             log.pinned = true;
         }
-        set_ops(&shared, OpsSnapshot { ok: true, agents: vec![] });
+        set_ops(
+            &shared,
+            OpsSnapshot {
+                ok: true,
+                agents: vec![],
+            },
+        );
         assert_eq!(submit(&shared, "status jan"), SubmitStatus::Sent);
         let log = shared.chat.read().unwrap().clone();
         assert!(log.pinned);

@@ -643,11 +643,7 @@ impl Panel {
                 &render_ctx,
             );
         } else {
-            update_control_chrome(
-                &self.shared,
-                &self.header_title,
-                &self.footer_label,
-            );
+            update_control_chrome(&self.shared, &self.header_title, &self.footer_label);
         }
     }
 
