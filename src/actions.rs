@@ -861,7 +861,6 @@ pub fn build_actions(
         }
     }
 
-    let desktop_running = snap.desktop.get("state").and_then(|v| v.as_str()) == Some("running");
     let pending = snap
         .share_sync
         .get("pendingFiles")
@@ -876,17 +875,6 @@ pub fn build_actions(
             RunSpec::CreateTask {
                 cwd: home_str.clone(),
             },
-        ),
-        action(
-            if desktop_running {
-                "Stop desktop"
-            } else {
-                "Start desktop"
-            },
-            "webtop · remote desktop",
-            if desktop_running { "BEZIG" } else { "STIL" },
-            "desktop webtop start stop",
-            RunSpec::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
         ),
         action(
             "Open ops",
@@ -1177,22 +1165,11 @@ impl Executor {
                 );
             }
             RunSpec::DesktopAction(verb) => {
-                let verb = verb.clone();
-                let vault = self.vault.clone();
-                self.spawn_bg(move || {
-                    match vault.post_json(&format!("/desktop/{verb}"), &json!({})) {
-                        Ok(_) => crate::notify::notify(
-                            if verb == "start" {
-                                "Desktop gestart"
-                            } else {
-                                "Desktop gestopt"
-                            },
-                            "",
-                            "ok",
-                        ),
-                        Err(_) => crate::notify::notify("Desktop-actie lukte niet", "", "error"),
-                    }
-                });
+                // Geen lokale webtop meer op laptop joep. start/open opent de
+                // profiel-URL; stop is een no-op (geen POST, geen error-toast).
+                if let Some(url) = resolve_desktop_action(verb, &self.profile.desktop) {
+                    crate::notify::open_url(&url);
+                }
             }
             RunSpec::ShareSync(kind) => {
                 let kind = kind.clone();
@@ -1345,6 +1322,14 @@ impl Executor {
     }
 }
 
+/// Laptop joep heeft geen Docker-webtop. `start`/`open` opent de profiel-URL; `stop` is een no-op.
+pub fn resolve_desktop_action(verb: &str, desktop_url: &str) -> Option<String> {
+    match verb {
+        "start" | "open" => Some(desktop_url.to_string()),
+        _ => None,
+    }
+}
+
 fn urlencoding(input: &str) -> String {
     let mut out = String::new();
     for byte in input.bytes() {
@@ -1463,6 +1448,27 @@ mod tests {
             .find(|a| a.title == "Vraag control")
             .expect("palette-actie Vraag control");
         assert!(matches!(vraag.run, RunSpec::SendControlChat));
+    }
+
+    #[test]
+    fn geen_lokale_desktop_start_stop() {
+        let actions = catalogus_met(&Snapshot::default());
+        assert!(actions
+            .iter()
+            .all(|a| a.title != "Start desktop" && a.title != "Stop desktop"));
+        let open = actions
+            .iter()
+            .find(|a| a.title == "Open desktop")
+            .expect("Open desktop blijft in de catalogus");
+        assert!(matches!(open.run, RunSpec::OpenUrl(_)));
+        assert_eq!(
+            resolve_desktop_action("start", "https://desktop.chefgroep.online"),
+            Some("https://desktop.chefgroep.online".into())
+        );
+        assert_eq!(
+            resolve_desktop_action("stop", "https://desktop.chefgroep.online"),
+            None
+        );
     }
 
     #[test]

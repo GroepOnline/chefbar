@@ -52,7 +52,7 @@ pub enum UiCommand {
     PauseNotifications,
     /// Meelopen vanaf login aan/uit (autostart-desktop-bestand).
     ToggleAutostart,
-    /// Desktop webtop starten/stoppen via de executor.
+    /// Desktop-IPC (`desktop start|stop`). Start opent de profiel-URL; stop is no-op.
     DesktopAction(String),
     /// Demp of ont-demp één agent in de watcher/inbox.
     ToggleMute(String),
@@ -420,6 +420,14 @@ impl ksni::Tray for ChefTray {
             }),
             ..Default::default()
         }));
+        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
+            label: "Open desktop".into(),
+            icon_name: "computer-symbolic".into(),
+            activate: Box::new(|tray: &mut Self| {
+                tray.send(UiCommand::OpenUrl(profile.desktop.clone()));
+            }),
+            ..Default::default()
+        }));
         items.push(ksni::MenuItem::Separator);
 
         // Account-submenu (zelfde data als Vault Accounts).
@@ -468,33 +476,6 @@ impl ksni::Tray for ChefTray {
                 ..Default::default()
             }));
         }
-
-        // Desktop starten/stoppen.
-        let desktop_running = snap
-            .as_ref()
-            .map(|s| s.desktop.get("state").and_then(|v| v.as_str()) == Some("running"))
-            .unwrap_or(false);
-        let (dlabel, dicon) = if desktop_running {
-            (
-                "Desktop stoppen".to_string(),
-                "system-shutdown-symbolic".to_string(),
-            )
-        } else {
-            (
-                "Desktop starten".to_string(),
-                "computer-symbolic".to_string(),
-            )
-        };
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: dlabel,
-            icon_name: dicon,
-            activate: Box::new(move |tray: &mut Self| {
-                tray.send(UiCommand::DesktopAction(
-                    if desktop_running { "stop" } else { "start" }.into(),
-                ));
-            }),
-            ..Default::default()
-        }));
 
         // Per-agent mute: de state-poller filtert deze keys vóór toast/inbox.
         let mutes = crate::mutes::load();
