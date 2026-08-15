@@ -1009,10 +1009,10 @@ mod tests {
             resolve_target(&ops, Some("w9:p1")).as_deref(),
             Some("w2S:p2")
         );
-        // bestaande pin weg → auto
+        // afwezige pin blijft gehonoreerd (poll-gap; zelfde als env_unknown)
         assert_eq!(
             resolve_target(&ops, Some("w9:p9")).as_deref(),
-            Some("w2S:p2")
+            Some("w9:p9")
         );
     }
 
