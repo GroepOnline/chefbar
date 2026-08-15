@@ -337,8 +337,8 @@ mod tests {
             Some(UiCommand::FocusDomain("vault".into()))
         );
         assert_eq!(
-            parse_command("focus fleet"),
-            Some(UiCommand::FocusDomain("fleet".into()))
+            parse_command("focus control"),
+            Some(UiCommand::FocusDomain("control".into()))
         );
         assert_eq!(
             parse_command("focus-domain kater"),
@@ -355,6 +355,10 @@ mod tests {
         assert_eq!(
             parse_command("focus tasks"),
             Some(UiCommand::FocusDomain("tasks".into()))
+        );
+        assert_eq!(
+            parse_command("focus fleet"),
+            Some(UiCommand::FocusDomain("fleet".into()))
         );
         assert_eq!(parse_command("palette"), Some(UiCommand::TogglePalette));
         assert_eq!(parse_command("inbox"), Some(UiCommand::OpenInbox));

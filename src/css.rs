@@ -629,6 +629,58 @@ button, entry {{
   padding: 4px 16px;
 }}
 
+/* ============ Control-chat (persistent canvas) ============ */
+.chefbar-chat {{
+  background-color: {canvas};
+}}
+.chefbar-chat-log {{
+  padding-top: 4px;
+}}
+.chefbar-chat-msg {{
+  background-color: {surface};
+  border: 1px solid {line};
+  border-radius: 10px;
+  padding: 8px 12px;
+}}
+.chefbar-chat-msg.operator {{
+  border-color: {focus};
+}}
+.chefbar-chat-msg.system {{
+  background-color: {surface_muted};
+}}
+.chefbar-chat-who {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: {text_muted};
+}}
+.chefbar-chat-body {{
+  font-family: "General Sans", system-ui, sans-serif;
+  font-size: 13px;
+  color: {text};
+}}
+.chefbar-chat-composer {{
+  padding-top: 4px;
+}}
+.chefbar-chat-combo {{
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  min-height: 28px;
+  border-radius: 6px;
+}}
+.chefbar-chat-entry, .chefbar-chat-entry entry {{
+  background-color: {surface};
+  border: 1px solid {control_border};
+  border-radius: 10px;
+  color: {text};
+  min-height: 36px;
+  padding: 6px 12px;
+}}
+.chefbar-chat-entry:focus,
+.chefbar-chat-entry entry:focus {{
+  border-color: {focus};
+  box-shadow: 0 0 0 3px {focus_soft};
+}}
+
 /* Scrollbars — dun en stil */
 scrollbar {{
   background-color: transparent;

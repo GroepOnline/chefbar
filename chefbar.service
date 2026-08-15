@@ -19,6 +19,10 @@ Environment=CHEFBAR_ENDPOINT_PROFILE=%h/.config/chefbar/endpoints.json
 # IPC-socket ligt op $XDG_RUNTIME_DIR/chefbar.sock (zie src/ipc.rs). Geen
 # RuntimeDirectory nodig — die zou $XDG_RUNTIME_DIR/chefbar/ aanmaken maar de
 # socket staat daar niet.
+# Control-chat target (default: beste idle Pi; jcode is geheugen, geen chat).
+# Voorbeeld: de Pi in Herdr-pane w2R:p2.
+# Environment=CHEFBAR_CONTROL_AGENT=w2R:p2
+# Environment=CHEFBAR_CONTROL_PANE=w2R:p2
 
 [Install]
 WantedBy=graphical-session.target

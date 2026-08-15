@@ -8,6 +8,7 @@ pub mod actions;
 pub mod aliases;
 pub mod auth;
 pub mod brain;
+pub mod chat;
 pub mod config;
 pub mod css;
 pub mod doctor;
@@ -28,6 +29,8 @@ pub mod policy;
 pub mod quiet;
 pub mod sessions;
 pub mod state;
+#[cfg(test)]
+pub(crate) mod test_env;
 pub mod tray;
 pub mod vault_bridge;
 

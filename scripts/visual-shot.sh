@@ -56,7 +56,7 @@ is_domain() {
   local candidate
   candidate="$(canonical_domain "$1")"
   local domain
-  for domain in "${DOMAINS[@]}" eval sync; do
+  for domain in "${DOMAINS[@]}" eval sync control; do
     if [ "$domain" = "$candidate" ]; then
       return 0
     fi

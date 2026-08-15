@@ -13,6 +13,7 @@
 //! Lane C: 1504 r monoliet gesplitst in 5 modules. Dit bestand blijft de
 //! lifecycle (Panel struct, new(), show/toggle, refresh-loop).
 
+pub mod chat;
 pub mod domains;
 pub mod drawer;
 pub mod header;
@@ -39,6 +40,8 @@ use zones::{
 pub struct Panel {
     pub window: gtk::Window,
     content: gtk::Box,
+    scroller: gtk::ScrolledWindow,
+    chat: Rc<chat::ChatPane>,
     search: gtk::SearchEntry,
     shared: Shared,
     executor: Executor,
@@ -156,6 +159,11 @@ impl Panel {
         content.set_hexpand(true);
         content.set_margin_bottom(8);
         scroller.add(&content);
+
+        let chat = Rc::new(chat::ChatPane::new(shared.clone()));
+        chat.root.set_no_show_all(true);
+        chat.root.set_visible(false);
+        main.pack_start(&chat.root, true, true, 0);
 
         root.pack_start(&main, true, true, 0);
 
@@ -354,6 +362,8 @@ impl Panel {
                 let drawer_clone = drawer.clone();
                 let footer_label_clone = footer_label.clone();
                 let header_title_clone = header_title.clone();
+                let scroller_clone = scroller.clone();
+                let chat_clone = chat.clone();
                 let _density_class = density_class.to_string();
                 btn_clone.connect_clicked(move |_| {
                     // Ctx binnen de closure: de clones leven in de closure zelf.
@@ -368,13 +378,22 @@ impl Panel {
                     dirty_clone.set(true);
                     // recent_domains wordt bij persist meegeschreven (push hier is impliciet via dirty)
                     let q = search_clone.text().to_string();
-                    render_into(
-                        &content_clone,
-                        &shared_clone,
-                        &q,
-                        &harness_state_clone,
-                        &render_ctx,
-                    );
+                    apply_canvas_mode(&scroller_clone, &chat_clone, &id);
+                    if id != "control" {
+                        render_into(
+                            &content_clone,
+                            &shared_clone,
+                            &q,
+                            &harness_state_clone,
+                            &render_ctx,
+                        );
+                    } else {
+                        update_control_chrome(
+                            &shared_clone,
+                            &header_title_clone,
+                            &footer_label_clone,
+                        );
+                    }
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
                 });
@@ -383,6 +402,8 @@ impl Panel {
         let panel = Self {
             window,
             content,
+            scroller,
+            chat,
             search,
             shared,
             executor,
@@ -403,6 +424,9 @@ impl Panel {
         panel.wire_overlay();
         let initial_query = panel.search.text().to_string();
         panel.render(&initial_query);
+        // W1: never map a 10×10 stub. Size is locked at 860×880; first show()
+        // is the only path that presents the window.
+        panel.window.set_visible(false);
         panel
     }
 
@@ -510,6 +534,7 @@ impl Panel {
         let overlay = self.overlay.clone();
         let shared = self.shared.clone();
         let executor = self.executor.clone();
+        let window = self.window.clone();
         self.overlay.entry.connect_changed(move |entry| {
             let query = entry.text().to_string();
             let snap = shared.snapshot.read().unwrap().clone();
@@ -524,8 +549,13 @@ impl Panel {
                 let rank_ctx = RankContext::local();
                 rank_actions_with(&actions, &query, 8, Some(&rank_ctx))
             };
+            let ranked: Vec<_> = ranked
+                .into_iter()
+                .filter(|a| !matches!(a.run, crate::actions::RunSpec::TogglePalette))
+                .collect();
             let overlay_for_action = overlay.clone();
             let executor_for_action = executor.clone();
+            let window_for_action = window.clone();
             overlay.render_actions(&ranked, move |action| {
                 let frecency_id = action.frecency_id();
                 let spec = action.run.clone();
@@ -533,6 +563,8 @@ impl Panel {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                     clipboard.set_text(text);
                     notify_copied();
+                } else if action.needs_text {
+                    prompt_for(&executor_for_action, &window_for_action, &action);
                 } else {
                     executor_for_action.run_for_ui(&spec);
                 }
@@ -552,18 +584,26 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let scroller = self.scroller.clone();
+        let chat = self.chat.clone();
         self.search.connect_changed(move |search| {
             dirty.set(true);
             let query = search.text().to_string();
             if window.is_visible() {
-                let render_ctx = RenderCtx {
-                    executor: &executor,
-                    window: &window,
-                    drawer: &drawer,
-                    footer_label: &footer_label,
-                    header_title: &header_title,
-                };
-                render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                let active = harness_state.borrow().clone();
+                apply_canvas_mode(&scroller, &chat, &active);
+                if active != "control" {
+                    let render_ctx = RenderCtx {
+                        executor: &executor,
+                        window: &window,
+                        drawer: &drawer,
+                        footer_label: &footer_label,
+                        header_title: &header_title,
+                    };
+                    render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                } else {
+                    update_control_chrome(&shared, &header_title, &footer_label);
+                }
             }
         });
     }
@@ -585,20 +625,26 @@ impl Panel {
             }
         }
         self.sync_sidebar_nav();
-        let render_ctx = RenderCtx {
-            executor: &self.executor,
-            window: &self.window,
-            drawer: &self.drawer,
-            footer_label: &self.footer_label,
-            header_title: &self.header_title,
-        };
-        render_into(
-            &self.content,
-            &self.shared,
-            query,
-            &self.harness_state,
-            &render_ctx,
-        );
+        let current = self.harness_state.borrow().clone();
+        apply_canvas_mode(&self.scroller, &self.chat, &current);
+        if current != "control" {
+            let render_ctx = RenderCtx {
+                executor: &self.executor,
+                window: &self.window,
+                drawer: &self.drawer,
+                footer_label: &self.footer_label,
+                header_title: &self.header_title,
+            };
+            render_into(
+                &self.content,
+                &self.shared,
+                query,
+                &self.harness_state,
+                &render_ctx,
+            );
+        } else {
+            update_control_chrome(&self.shared, &self.header_title, &self.footer_label);
+        }
     }
 
     fn sync_sidebar_nav(&self) {
@@ -610,22 +656,21 @@ impl Panel {
     pub fn flush_panel_state(&self) {
         if self.persist_dirty.get() {
             let current = self.harness_state.borrow().clone();
-            let mut state = crate::panel_state::PanelState {
-                active_group: Some(current.clone()),
-                harness: None,
-                query: Some(self.search.text().to_string())
-                    .filter(|q: &String| !q.trim().is_empty()),
-                drawer_open: self.drawer.is_open(),
-                density: self.density.borrow().clone(),
-                theme: self.theme.borrow().clone(),
-                recent_domains: crate::panel_state::load().recent_domains.clone(),
-            };
-            // push huidige group naar recent_domains MRU
-            state.push_recent_domain(&current);
-            if crate::panel_state::save(&state) {
+            let query =
+                Some(self.search.text().to_string()).filter(|q: &String| !q.trim().is_empty());
+            let drawer_open = self.drawer.is_open();
+            let density = self.density.borrow().clone();
+            let theme = self.theme.borrow().clone();
+            if crate::panel_state::mutate(|state| {
+                state.active_group = Some(current.clone());
+                state.harness = None;
+                state.query = query;
+                state.drawer_open = drawer_open;
+                state.density = density;
+                state.theme = theme;
+                state.push_recent_domain(&current);
+            }) {
                 self.persist_dirty.set(false);
-                // active_* fields in Panel zelf syncen
-                // (we kunnen niet &mut self, dus via try)
             }
         }
     }
@@ -644,18 +689,25 @@ impl Panel {
         let drawer = self.drawer.clone();
         let footer_label = self.footer_label.clone();
         let header_title = self.header_title.clone();
+        let scroller = self.scroller.clone();
+        let chat = self.chat.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(VAULT_POLL_MS), move || {
             if window.is_visible() {
-                let render_ctx = RenderCtx {
-                    executor: &executor,
-                    window: &window,
-                    drawer: &drawer,
-                    footer_label: &footer_label,
-                    header_title: &header_title,
-                };
                 let query = search.text().to_string();
-                render_into(&content, &shared, &query, &harness_state, &render_ctx);
                 let active = harness_state.borrow().clone();
+                apply_canvas_mode(&scroller, &chat, &active);
+                if active != "control" {
+                    let render_ctx = RenderCtx {
+                        executor: &executor,
+                        window: &window,
+                        drawer: &drawer,
+                        footer_label: &footer_label,
+                        header_title: &header_title,
+                    };
+                    render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                } else {
+                    update_control_chrome(&shared, &header_title, &footer_label);
+                }
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
             ControlFlow::Continue
@@ -669,16 +721,20 @@ impl Panel {
         gtk::glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
             if dirty_persist.get() {
                 let current = harness_persist.borrow().clone();
-                let mut state = crate::panel_state::load();
-                state.active_group = Some(current.clone());
-                state.harness = None;
-                state.query = Some(search_persist.text().to_string())
+                let query = Some(search_persist.text().to_string())
                     .filter(|q: &String| !q.trim().is_empty());
-                state.drawer_open = drawer_persist.is_open();
-                state.density = density_persist.borrow().clone();
-                state.theme = theme_persist.borrow().clone();
-                state.push_recent_domain(&current);
-                if crate::panel_state::save(&state) {
+                let drawer_open = drawer_persist.is_open();
+                let density = density_persist.borrow().clone();
+                let theme = theme_persist.borrow().clone();
+                if crate::panel_state::mutate(|state| {
+                    state.active_group = Some(current.clone());
+                    state.harness = None;
+                    state.query = query;
+                    state.drawer_open = drawer_open;
+                    state.density = density;
+                    state.theme = theme;
+                    state.push_recent_domain(&current);
+                }) {
                     dirty_persist.set(false);
                 }
             }
@@ -704,6 +760,25 @@ fn action_matches_harness(action: &Action, kind: &HarnessKind) -> bool {
         }
     }
     false
+}
+
+fn apply_canvas_mode(scroller: &gtk::ScrolledWindow, chat: &chat::ChatPane, harness: &str) {
+    let control = harness == "control";
+    let entering = control && !chat.root.is_visible();
+    scroller.set_no_show_all(control);
+    scroller.set_visible(!control);
+    if control {
+        chat.root.set_no_show_all(false);
+        chat.root.set_visible(true);
+        if entering {
+            chat.root.show_all();
+            chat.refresh();
+            chat.focus_composer();
+        }
+    } else {
+        chat.root.set_visible(false);
+        chat.root.set_no_show_all(true);
+    }
 }
 
 fn filter_actions_by_harness(actions: Vec<Action>, kind: Option<&HarnessKind>) -> Vec<Action> {
@@ -869,6 +944,27 @@ struct RenderCtx<'a> {
     header_title: &'a gtk::Label,
 }
 
+fn update_control_chrome(shared: &Shared, header_title: &gtk::Label, footer_label: &gtk::Label) {
+    let snap = shared.snapshot.read().unwrap().clone();
+    let profile = crate::config::global_profile();
+    let fetched = snap.fetched_label();
+    let target = shared
+        .chat
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .target_label();
+    header_title.set_text("Control");
+    let footer_text = format!(
+        "v{} · {} · {} · {}",
+        crate::VERSION,
+        profile.name,
+        target,
+        fetched
+    );
+    footer_label.set_text(&footer_text);
+    footer_label.set_tooltip_text(Some(&footer_text));
+}
+
 fn render_into(
     content: &gtk::Box,
     shared: &Shared,
@@ -891,7 +987,6 @@ fn render_into(
         (snap, ops)
     };
     let profile = crate::config::global_profile().clone();
-    let vault_label = profile.label("vaultApi");
     let fetched = snap.fetched_label();
     let sessions = crate::sessions::load_ranked_sessions(&snap.events);
     let (state, line) = snap.tray_state();
@@ -969,12 +1064,12 @@ fn render_into(
         .style_context()
         .add_class("chefbar-statuslijn-text");
     status_row.pack_start(&lijn_text, true, true, 0);
-    let updated = gtk::Label::new(Some(&format!("{} · {}", vault_label, fetched)));
+    let updated = gtk::Label::new(Some(&snap.poll_statuslijn()));
     updated.set_halign(gtk::Align::End);
     updated.set_xalign(1.0);
     updated.set_ellipsize(pango::EllipsizeMode::End);
     updated.set_line_wrap(false);
-    updated.set_max_width_chars(34);
+    updated.set_max_width_chars(52);
     updated.style_context().add_class("chefbar-card-meta");
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);

@@ -57,6 +57,8 @@ pub fn render_domain(
         HarnessKind::Kater => render_kater(content, snap, q),
         HarnessKind::Health => render_health(content, snap, q),
         HarnessKind::Eval => render_eval(content, snap, q),
+        // Control is the persistent chat canvas, not an operate-view rebuild.
+        HarnessKind::Control => {}
     }
 }
 
@@ -738,7 +740,11 @@ fn render_sync(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        let ok = snap.last_poll_ok.get(k.as_str()).copied().unwrap_or(false);
+        let ok = snap
+            .last_poll
+            .get(k.as_str())
+            .map(|h| h.ok)
+            .unwrap_or(false);
         let (meta, cls) = sync_stamp(ok, v);
         group.pack_start(
             &domain_row(cls, k, Some(meta.as_str()), None),
