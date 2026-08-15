@@ -26,9 +26,25 @@ pub fn valid_herdr_target(target: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-'))
 }
 
+/// JSON `/api/focus` body: vault agent keys may contain `?`, `/`, or spaces.
+/// Still reject empty, flag-like, and control characters. CLI fallback stays
+/// on `valid_herdr_target`.
+pub fn valid_ops_json_target(target: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() || target.starts_with('-') {
+        return false;
+    }
+    !target.chars().any(|c| c.is_control() || c == '\0')
+}
+
 fn herdr_target_or_none(target: &str) -> Option<&str> {
     let target = target.trim();
     valid_herdr_target(target).then_some(target)
+}
+
+fn ops_json_target_or_none(target: &str) -> Option<&str> {
+    let target = target.trim();
+    valid_ops_json_target(target).then_some(target)
 }
 
 fn run_herdr(args: &[String]) -> bool {
@@ -185,7 +201,8 @@ pub fn send_control_prompt(target: &str, text: &str) -> bool {
     let Some(target) = herdr_target_or_none(target) else {
         return false;
     };
-    if text.trim().is_empty() {
+    let text = text.trim();
+    if text.is_empty() || text.starts_with('-') {
         return false;
     }
     let wait = classify_herdr_wait(command_output_bounded(
@@ -232,9 +249,9 @@ fn fleet_template_is_scan(template: &str) -> bool {
     t.contains("scan") || t.contains("health") || t.contains("status") || t == "exec"
 }
 
-/// Focus een herdr agent/terminal; eerst joep-ops, dan CLI.
+/// Focus een herdr agent/terminal; eerst joep-ops JSON, dan CLI.
 pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
-    let Some(target) = herdr_target_or_none(target) else {
+    let Some(target) = ops_json_target_or_none(target) else {
         return false;
     };
     match ops_client.post_json("/api/focus", &json!({"target": target})) {
@@ -242,13 +259,20 @@ pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return true;
             }
-            run_herdr(&herdr_focus_args(target))
+            fallback_herdr_focus(target)
         }
         Err(ApiError::Blocked(_))
         | Err(ApiError::Http(_, _))
         | Err(ApiError::Transport(_))
-        | Err(ApiError::Decode(_)) => run_herdr(&herdr_focus_args(target)),
+        | Err(ApiError::Decode(_)) => fallback_herdr_focus(target),
     }
+}
+
+fn fallback_herdr_focus(target: &str) -> bool {
+    let Some(cli) = herdr_target_or_none(target) else {
+        return false;
+    };
+    run_herdr(&herdr_focus_args(cli))
 }
 
 /// Typ een prompt in de TUI van een lopende agent en verstuur met Enter.
@@ -261,6 +285,9 @@ pub fn send_prompt(terminal_id: &str, pane_id: Option<&str>, text: &str) -> bool
     let Some(id) = herdr_target_or_none(id) else {
         return false;
     };
+    if text.trim().is_empty() || text.trim().starts_with('-') {
+        return false;
+    }
     if !run_herdr(&herdr_prompt_args(id, text)) {
         return false;
     }
@@ -339,6 +366,13 @@ mod tests {
         assert!(!valid_herdr_target("--wait"));
         assert!(!valid_herdr_target("-p1"));
         assert!(!valid_herdr_target("pane id"));
+        assert!(!valid_herdr_target("cursor::?"));
+        assert!(valid_ops_json_target("cursor::?"));
+        assert!(valid_ops_json_target("cursor::/home/joep/x"));
+        assert!(valid_ops_json_target("agent with space"));
+        assert!(!valid_ops_json_target(""));
+        assert!(!valid_ops_json_target("--wait"));
+        assert!(!valid_ops_json_target("bad\nid"));
     }
 
     #[test]
