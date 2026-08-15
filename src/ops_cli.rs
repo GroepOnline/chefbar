@@ -15,6 +15,22 @@ const HERDR_READ_TIMEOUT: Duration = Duration::from_secs(8);
 /// herdr `--timeout 45000` plus slack if the child ignores it.
 const HERDR_PROMPT_WAIT_TIMEOUT: Duration = Duration::from_secs(50);
 
+/// Herdr pane/agent ids from env or panel-state must not be parsed as CLI flags.
+pub fn valid_herdr_target(target: &str) -> bool {
+    let target = target.trim();
+    if target.is_empty() || target.starts_with('-') {
+        return false;
+    }
+    target
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-'))
+}
+
+fn herdr_target_or_none(target: &str) -> Option<&str> {
+    let target = target.trim();
+    valid_herdr_target(target).then_some(target)
+}
+
 fn run_herdr(args: &[String]) -> bool {
     let output = Command::new("herdr").args(args).output().ok();
     match output {
@@ -158,9 +174,7 @@ fn run_herdr_output(args: &[String]) -> Option<String> {
 
 /// Read-only snapshot of an agent pane. Never used by the poll actor.
 pub fn read_agent(target: &str) -> Option<String> {
-    if target.trim().is_empty() {
-        return None;
-    }
+    let target = herdr_target_or_none(target)?;
     run_herdr_output(&herdr_read_args(target))
 }
 
@@ -168,7 +182,10 @@ pub fn read_agent(target: &str) -> Option<String> {
 /// (spawn-fout) vallen we terug op een kale prompt; een timeout na acceptatie
 /// mag dezelfde side-effecting vraag niet opnieuw insturen.
 pub fn send_control_prompt(target: &str, text: &str) -> bool {
-    if target.trim().is_empty() || text.trim().is_empty() {
+    let Some(target) = herdr_target_or_none(target) else {
+        return false;
+    };
+    if text.trim().is_empty() {
         return false;
     }
     let wait = classify_herdr_wait(command_output_bounded(
@@ -217,6 +234,9 @@ fn fleet_template_is_scan(template: &str) -> bool {
 
 /// Focus een herdr agent/terminal; eerst joep-ops, dan CLI.
 pub fn ops_focus(ops_client: &Client, target: &str) -> bool {
+    let Some(target) = herdr_target_or_none(target) else {
+        return false;
+    };
     match ops_client.post_json("/api/focus", &json!({"target": target})) {
         Ok(payload) => {
             if payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
@@ -238,9 +258,9 @@ pub fn send_prompt(terminal_id: &str, pane_id: Option<&str>, text: &str) -> bool
     } else {
         terminal_id
     };
-    if id.is_empty() {
+    let Some(id) = herdr_target_or_none(id) else {
         return false;
-    }
+    };
     if !run_herdr(&herdr_prompt_args(id, text)) {
         return false;
     }
@@ -309,6 +329,22 @@ pub fn prune_preview(vault_client: &Client) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn valid_herdr_target_rejects_flags_and_empty() {
+        assert!(valid_herdr_target("w2M:p1"));
+        assert!(valid_herdr_target("chefapp-herdr"));
+        assert!(!valid_herdr_target(""));
+        assert!(!valid_herdr_target("   "));
+        assert!(!valid_herdr_target("--wait"));
+        assert!(!valid_herdr_target("-p1"));
+        assert!(!valid_herdr_target("pane id"));
+    }
+
+    #[test]
+    fn read_agent_rejects_flag_like_target() {
+        assert!(read_agent("--wait").is_none());
+    }
 
     #[test]
     fn prompt_args_use_agent_prompt_not_send() {

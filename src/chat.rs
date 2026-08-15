@@ -253,7 +253,7 @@ fn configured_id_allowed(ops: &OpsSnapshot, id: &str) -> bool {
 /// Nooit jcode, nooit stiekem de werkende visual ChefApp-lane, nooit auto-Cursor.
 pub fn resolve_target(ops: &OpsSnapshot, pinned: Option<&str>) -> Option<String> {
     if let Some(pin) = pinned.map(str::trim).filter(|s| !s.is_empty()) {
-        if live_eligible(ops, pin) {
+        if configured_id_allowed(ops, pin) {
             return Some(pin.to_string());
         }
     }
@@ -471,9 +471,18 @@ pub fn parse_read_output(raw: &str) -> String {
 }
 
 /// Nieuw terminalstuk na een prompt: suffix van `after` t.o.v. `before`.
-/// Geen overlap (buffer geroteerd) → leeg, nooit de hele recente dump.
+/// Eerste read (lege `before`) en geroteerde scrollback → volledige `after`,
+/// nooit een echt antwoord weggooien.
 pub fn terminal_delta(before: &str, after: &str) -> String {
+    let before = before.trim();
+    let after = after.trim();
+    if after.is_empty() {
+        return String::new();
+    }
     if before.is_empty() {
+        return after.to_string();
+    }
+    if before == after {
         return String::new();
     }
     if let Some(stripped) = after.strip_prefix(before) {
@@ -482,7 +491,7 @@ pub fn terminal_delta(before: &str, after: &str) -> String {
     if let Some(idx) = after.find(before) {
         return after[idx + before.len()..].trim().to_string();
     }
-    String::new()
+    after.to_string()
 }
 
 fn send_and_read(target: &str, prompt: &str) -> Result<String, String> {
@@ -513,7 +522,6 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         return SubmitStatus::Empty;
     }
     let ops = read_ops(shared);
-    let snap = read_snapshot(shared);
     let pinned = with_chat_read(
         shared,
         |log| {
@@ -525,7 +533,10 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         },
     );
     let target = resolve_target(&ops, pinned.as_deref());
-    let pin_kept = pinned.is_some() && target.as_deref() == pinned.as_deref();
+    let pin_invalid = pinned
+        .as_deref()
+        .map(|pin| !configured_id_allowed(&ops, pin))
+        .unwrap_or(false);
     let kind = target
         .as_deref()
         .and_then(|id| kind_for(&ops, id))
@@ -537,7 +548,7 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         log.busy = true;
         log.target = target.clone();
         log.kind = Some(kind.clone());
-        if pinned.is_some() && !pin_kept {
+        if pin_invalid {
             log.pinned = false;
         }
         log.messages.push(ChatMessage {
@@ -566,18 +577,19 @@ pub fn submit(shared: &crate::state::Shared, text: &str) -> SubmitStatus {
         shared
             .chat_revision
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if pinned.is_some() && !pin_kept {
+        if pin_invalid {
             persist_unpin_bg();
         }
         return SubmitStatus::NoTarget;
     };
-    if pinned.is_some() && !pin_kept {
+    if pin_invalid {
         persist_unpin_bg();
     }
     shared
         .chat_revision
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let shared = shared.clone();
+    let snap = read_snapshot(&shared);
     let prompt = wrap_prompt(&snap, text, &kind);
     let reply_kind = kind;
     std::thread::spawn(move || {
@@ -771,9 +783,13 @@ mod tests {
     #[test]
     fn terminal_delta_takes_suffix() {
         assert_eq!(terminal_delta("abc", "abcdef"), "def");
-        assert_eq!(terminal_delta("nope", "hello"), "");
-        assert_eq!(terminal_delta("", "stale buffer"), "");
+        assert_eq!(terminal_delta("", "hello"), "hello");
+        assert_eq!(terminal_delta("nope", "hello"), "hello");
         assert_eq!(terminal_delta("abc", "abc"), "");
+        assert_eq!(
+            terminal_delta("old scroll\nline", "new answer only"),
+            "new answer only"
+        );
     }
 
     #[test]
@@ -1034,10 +1050,24 @@ mod tests {
     }
 
     #[test]
-    fn submit_stale_pin_unpint_voor_auto_pick() {
+    fn submit_houdt_pin_bij_lege_ops_snapshot() {
         let _g = EnvGuard::acquire();
-        let path = temp_state_path("submit-stale");
-        std::env::set_var("CHEFBAR_PANEL_STATE", &path);
+        let shared = crate::state::Shared::new();
+        {
+            let mut log = shared.chat.write().unwrap();
+            log.target = Some("w2R:p2".into());
+            log.pinned = true;
+        }
+        set_ops(&shared, OpsSnapshot { ok: true, agents: vec![] });
+        assert_eq!(submit(&shared, "status jan"), SubmitStatus::Sent);
+        let log = shared.chat.read().unwrap().clone();
+        assert!(log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2R:p2"));
+    }
+
+    #[test]
+    fn submit_houdt_pin_bij_afwezig_in_snapshot() {
+        let _g = EnvGuard::acquire();
         let shared = crate::state::Shared::new();
         {
             let mut log = shared.chat.write().unwrap();
@@ -1053,9 +1083,8 @@ mod tests {
         );
         assert_eq!(submit(&shared, "status jan"), SubmitStatus::Sent);
         let log = shared.chat.read().unwrap().clone();
-        assert!(!log.pinned);
-        assert_eq!(log.target.as_deref(), Some("w2S:p2"));
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+        assert!(log.pinned);
+        assert_eq!(log.target.as_deref(), Some("w2Q:p9"));
     }
 
     #[test]

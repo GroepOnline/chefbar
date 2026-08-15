@@ -6,8 +6,18 @@ use crate::models::Suggestion;
 use crate::policy::EndpointPolicy;
 use std::process::Command;
 
+/// Map tray/UI vocabulary to joep-notify `-S` contract (`ok` | `warn` | `error`).
+pub fn joep_notify_status(status: &str) -> &'static str {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "error" | "fout" => "error",
+        "warn" | "warning" | "hulp" => "warn",
+        _ => "ok",
+    }
+}
+
 /// Notificatie via joep-notify (ChefGroep), fallback notify-send.
 pub fn notify(title: &str, body: &str, status: &str) {
+    let status = joep_notify_status(status);
     let home = dirs::home_dir().map(|p| p.to_string_lossy().to_string());
     let candidates: Vec<Vec<String>> = vec![
         home.as_ref()
@@ -123,5 +133,14 @@ mod tests {
         assert_eq!(coalesced_severity(&[mk("KLAAR")]), "ok");
         assert_eq!(coalesced_severity(&[mk("KLAAR"), mk("HULP")]), "warn");
         assert_eq!(coalesced_severity(&[mk("HULP"), mk("FOUT")]), "error");
+    }
+
+    #[test]
+    fn joep_notify_status_maps_hulp_to_warn() {
+        assert_eq!(joep_notify_status("hulp"), "warn");
+        assert_eq!(joep_notify_status("HULP"), "warn");
+        assert_eq!(joep_notify_status("ok"), "ok");
+        assert_eq!(joep_notify_status("error"), "error");
+        assert_eq!(joep_notify_status("fout"), "error");
     }
 }

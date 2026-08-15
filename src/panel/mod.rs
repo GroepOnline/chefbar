@@ -387,6 +387,12 @@ impl Panel {
                             &harness_state_clone,
                             &render_ctx,
                         );
+                    } else {
+                        update_control_chrome(
+                            &shared_clone,
+                            &header_title_clone,
+                            &footer_label_clone,
+                        );
                     }
                     sync_nav_buttons(&nav_rc, &shared_clone, &id_for_class);
                     let _ = &density_clone;
@@ -528,6 +534,7 @@ impl Panel {
         let overlay = self.overlay.clone();
         let shared = self.shared.clone();
         let executor = self.executor.clone();
+        let window = self.window.clone();
         self.overlay.entry.connect_changed(move |entry| {
             let query = entry.text().to_string();
             let snap = shared.snapshot.read().unwrap().clone();
@@ -542,8 +549,13 @@ impl Panel {
                 let rank_ctx = RankContext::local();
                 rank_actions_with(&actions, &query, 8, Some(&rank_ctx))
             };
+            let ranked: Vec<_> = ranked
+                .into_iter()
+                .filter(|a| !matches!(a.run, crate::actions::RunSpec::TogglePalette))
+                .collect();
             let overlay_for_action = overlay.clone();
             let executor_for_action = executor.clone();
+            let window_for_action = window.clone();
             overlay.render_actions(&ranked, move |action| {
                 let frecency_id = action.frecency_id();
                 let spec = action.run.clone();
@@ -551,9 +563,10 @@ impl Panel {
                     let clipboard = gtk::Clipboard::get(&gdk::SELECTION_CLIPBOARD);
                     clipboard.set_text(text);
                     notify_copied();
+                } else if action.needs_text {
+                    prompt_for(&executor_for_action, &window_for_action, &action);
                 } else {
-                    let query = overlay_for_action.entry.text().to_string();
-                    executor_for_action.run(&spec, &query);
+                    executor_for_action.run_for_ui(&spec);
                 }
                 crate::frecency::record(&frecency_id);
                 overlay_for_action.hide();
@@ -588,6 +601,8 @@ impl Panel {
                         header_title: &header_title,
                     };
                     render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                } else {
+                    update_control_chrome(&shared, &header_title, &footer_label);
                 }
             }
         });
@@ -626,6 +641,12 @@ impl Panel {
                 query,
                 &self.harness_state,
                 &render_ctx,
+            );
+        } else {
+            update_control_chrome(
+                &self.shared,
+                &self.header_title,
+                &self.footer_label,
             );
         }
     }
@@ -688,6 +709,8 @@ impl Panel {
                         header_title: &header_title,
                     };
                     render_into(&content, &shared, &query, &harness_state, &render_ctx);
+                } else {
+                    update_control_chrome(&shared, &header_title, &footer_label);
                 }
                 sync_nav_buttons(&nav_buttons, &shared_nav, &active);
             }
@@ -923,6 +946,27 @@ struct RenderCtx<'a> {
     drawer: &'a Rc<Drawer>,
     footer_label: &'a gtk::Label,
     header_title: &'a gtk::Label,
+}
+
+fn update_control_chrome(shared: &Shared, header_title: &gtk::Label, footer_label: &gtk::Label) {
+    let snap = shared.snapshot.read().unwrap().clone();
+    let profile = crate::config::global_profile();
+    let fetched = snap.fetched_label();
+    let target = shared
+        .chat
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .target_label();
+    header_title.set_text("Control");
+    let footer_text = format!(
+        "v{} · {} · {} · {}",
+        crate::VERSION,
+        profile.name,
+        target,
+        fetched
+    );
+    footer_label.set_text(&footer_text);
+    footer_label.set_tooltip_text(Some(&footer_text));
 }
 
 fn render_into(
