@@ -38,7 +38,7 @@ pub enum UiCommand {
     Refresh,
     Doctor,
     Quit,
-    /// Open een URL (Thuis/Ploeg/desktop/ops) via de executor.
+    /// Open een URL via de executor (sessies, Linear, policy-checked).
     OpenUrl(String),
     /// Focus een agent-werkstroom (terminal-id uit de event-line).
     FocusAgent(String),
@@ -52,7 +52,7 @@ pub enum UiCommand {
     PauseNotifications,
     /// Meelopen vanaf login aan/uit (autostart-desktop-bestand).
     ToggleAutostart,
-    /// Desktop-IPC (`desktop start|stop`). Start opent de profiel-URL; stop is no-op.
+    /// Desktop-IPC (`desktop start|stop`) is een no-op: geen lokale webtop.
     DesktopAction(String),
     /// Demp of ont-demp één agent in de watcher/inbox.
     ToggleMute(String),
@@ -340,7 +340,6 @@ impl ksni::Tray for ChefTray {
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
-        let profile = crate::config::global_profile();
 
         // Live eventregels — uitgebreid van 3 naar 5 (spec Lane E).
         let snap = self.shared.read().ok();
@@ -402,33 +401,6 @@ impl ksni::Tray for ChefTray {
         if !items.is_empty() {
             items.push(ksni::MenuItem::Separator);
         }
-
-        // Acties: Open Thuis / Open Ploeg.
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Thuis".into(),
-            icon_name: "go-home-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.dashboard.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Ploeg".into(),
-            icon_name: "x-office-document-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.ops_api.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open desktop".into(),
-            icon_name: "computer-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.desktop.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Separator);
 
         // Account-submenu (zelfde data als Vault Accounts).
         let mut account_items: Vec<ksni::MenuItem<Self>> = Vec::new();

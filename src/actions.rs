@@ -52,6 +52,7 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
+    ShowPanel,
     SendControlChat,
 }
 
@@ -96,6 +97,7 @@ impl RunSpec {
             RunSpec::PrunePreview => "PrunePreview".into(),
             RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
             RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::ShowPanel => "ShowPanel".into(),
             RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
             RunSpec::SendControlChat => "SendControlChat".into(),
         }
@@ -189,9 +191,7 @@ pub fn build_inbox_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<A
             ),
             match &suggestion.kind {
                 crate::models::SuggestionKind::FocusAgent(id) => RunSpec::FocusAgent(id.clone()),
-                crate::models::SuggestionKind::OpenDashboard => {
-                    RunSpec::OpenUrl(_profile.dashboard.clone())
-                }
+                crate::models::SuggestionKind::OpenDashboard => RunSpec::ShowPanel,
                 crate::models::SuggestionKind::None_ => RunSpec::Noop,
             },
         ));
@@ -877,27 +877,6 @@ pub fn build_actions(
             },
         ),
         action(
-            "Open ops",
-            format!("joep-ops · {}", profile.label("opsApi")),
-            "STIL",
-            "open ops joep-ops herdr overzicht",
-            RunSpec::OpenUrl(profile.ops_api.clone()),
-        ),
-        action(
-            "Open dashboard (Thuis)",
-            "vault dashboard · alles in één oogopslag",
-            "STIL",
-            "open dashboard thuis vault",
-            RunSpec::OpenUrl(profile.dashboard.clone()),
-        ),
-        action(
-            "Open desktop",
-            "webtop · remote desktop",
-            "STIL",
-            "open desktop webtop",
-            RunSpec::OpenUrl(profile.desktop.clone()),
-        ),
-        action(
             "Open OpenCodex",
             "dashboard en providerstatus",
             "STIL",
@@ -1278,6 +1257,11 @@ impl Executor {
                     crate::notify::notify("Palette", "toggle — Super+Space", "ok");
                 }
             }
+            RunSpec::ShowPanel => {
+                if !crate::tray::send_ui(crate::tray::UiCommand::ShowPanel) {
+                    crate::notify::notify("ChefBar", "paneel nog niet klaar", "hulp");
+                }
+            }
             RunSpec::SendControlChat => {
                 let text = query.trim();
                 if text.is_empty() {
@@ -1322,12 +1306,9 @@ impl Executor {
     }
 }
 
-/// Laptop joep heeft geen Docker-webtop. `start`/`open` opent de profiel-URL; `stop` is een no-op.
-pub fn resolve_desktop_action(verb: &str, desktop_url: &str) -> Option<String> {
-    match verb {
-        "start" | "open" => Some(desktop_url.to_string()),
-        _ => None,
-    }
+/// Geen lokale webtop, geen Thuis/Ploeg-split. IPC desktop start/stop is een no-op.
+pub fn resolve_desktop_action(_verb: &str, _desktop_url: &str) -> Option<String> {
+    None
 }
 
 fn urlencoding(input: &str) -> String {
@@ -1451,19 +1432,19 @@ mod tests {
     }
 
     #[test]
-    fn geen_lokale_desktop_start_stop() {
+    fn geen_thuis_ploeg_desktop_split() {
         let actions = catalogus_met(&Snapshot::default());
-        assert!(actions
-            .iter()
-            .all(|a| a.title != "Start desktop" && a.title != "Stop desktop"));
-        let open = actions
-            .iter()
-            .find(|a| a.title == "Open desktop")
-            .expect("Open desktop blijft in de catalogus");
-        assert!(matches!(open.run, RunSpec::OpenUrl(_)));
+        assert!(actions.iter().all(|a| {
+            !a.title.contains("Thuis")
+                && !a.title.contains("Ploeg")
+                && a.title != "Open ops"
+                && a.title != "Open desktop"
+                && a.title != "Start desktop"
+                && a.title != "Stop desktop"
+        }));
         assert_eq!(
             resolve_desktop_action("start", "https://desktop.chefgroep.online"),
-            Some("https://desktop.chefgroep.online".into())
+            None
         );
         assert_eq!(
             resolve_desktop_action("stop", "https://desktop.chefgroep.online"),

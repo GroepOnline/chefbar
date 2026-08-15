@@ -1439,14 +1439,12 @@ fn session_cta(
 
 fn suggestion_spec(
     suggestion: &crate::models::Suggestion,
-    profile: &crate::config::EndpointProfile,
+    _profile: &crate::config::EndpointProfile,
 ) -> Option<crate::actions::RunSpec> {
     use crate::models::SuggestionKind;
     match &suggestion.kind {
         SuggestionKind::FocusAgent(id) => Some(crate::actions::RunSpec::FocusAgent(id.clone())),
-        SuggestionKind::OpenDashboard => {
-            Some(crate::actions::RunSpec::OpenUrl(profile.dashboard.clone()))
-        }
+        SuggestionKind::OpenDashboard => Some(crate::actions::RunSpec::ShowPanel),
         SuggestionKind::None_ => None,
     }
 }
