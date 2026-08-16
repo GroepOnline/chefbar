@@ -190,7 +190,7 @@ pub fn build_inbox_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<A
             match &suggestion.kind {
                 crate::models::SuggestionKind::FocusAgent(id) => RunSpec::FocusAgent(id.clone()),
                 crate::models::SuggestionKind::OpenDashboard => {
-                    RunSpec::OpenUrl(_profile.dashboard.clone())
+                    RunSpec::FocusDomain("control".into())
                 }
                 crate::models::SuggestionKind::None_ => RunSpec::Noop,
             },
@@ -861,7 +861,6 @@ pub fn build_actions(
         }
     }
 
-    let desktop_running = snap.desktop.get("state").and_then(|v| v.as_str()) == Some("running");
     let pending = snap
         .share_sync
         .get("pendingFiles")
@@ -876,38 +875,6 @@ pub fn build_actions(
             RunSpec::CreateTask {
                 cwd: home_str.clone(),
             },
-        ),
-        action(
-            if desktop_running {
-                "Stop desktop"
-            } else {
-                "Start desktop"
-            },
-            "webtop · remote desktop",
-            if desktop_running { "BEZIG" } else { "STIL" },
-            "desktop webtop start stop",
-            RunSpec::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
-        ),
-        action(
-            "Open ops",
-            format!("joep-ops · {}", profile.label("opsApi")),
-            "STIL",
-            "open ops joep-ops herdr overzicht",
-            RunSpec::OpenUrl(profile.ops_api.clone()),
-        ),
-        action(
-            "Open dashboard (Thuis)",
-            "vault dashboard · alles in één oogopslag",
-            "STIL",
-            "open dashboard thuis vault",
-            RunSpec::OpenUrl(profile.dashboard.clone()),
-        ),
-        action(
-            "Open desktop",
-            "webtop · remote desktop",
-            "STIL",
-            "open desktop webtop",
-            RunSpec::OpenUrl(profile.desktop.clone()),
         ),
         action(
             "Open OpenCodex",
@@ -1177,22 +1144,11 @@ impl Executor {
                 );
             }
             RunSpec::DesktopAction(verb) => {
-                let verb = verb.clone();
-                let vault = self.vault.clone();
-                self.spawn_bg(move || {
-                    match vault.post_json(&format!("/desktop/{verb}"), &json!({})) {
-                        Ok(_) => crate::notify::notify(
-                            if verb == "start" {
-                                "Desktop gestart"
-                            } else {
-                                "Desktop gestopt"
-                            },
-                            "",
-                            "ok",
-                        ),
-                        Err(_) => crate::notify::notify("Desktop-actie lukte niet", "", "error"),
-                    }
-                });
+                // Geen lokale webtop, geen Thuis/Ploeg. ChefBar is de surface.
+                // IPC desktop * is a no-op (geen POST, geen error-toast).
+                if let Some(url) = resolve_desktop_action(verb, &self.profile.desktop) {
+                    crate::notify::open_url(&url);
+                }
             }
             RunSpec::ShareSync(kind) => {
                 let kind = kind.clone();
@@ -1345,6 +1301,11 @@ impl Executor {
     }
 }
 
+/// Geen lokale webtop, geen Thuis/Ploeg-split. IPC desktop start/stop is een no-op.
+pub fn resolve_desktop_action(_verb: &str, _desktop_url: &str) -> Option<String> {
+    None
+}
+
 fn urlencoding(input: &str) -> String {
     let mut out = String::new();
     for byte in input.bytes() {
@@ -1463,6 +1424,27 @@ mod tests {
             .find(|a| a.title == "Vraag control")
             .expect("palette-actie Vraag control");
         assert!(matches!(vraag.run, RunSpec::SendControlChat));
+    }
+
+    #[test]
+    fn geen_thuis_ploeg_desktop_split() {
+        let actions = catalogus_met(&Snapshot::default());
+        assert!(actions.iter().all(|a| {
+            !a.title.contains("Thuis")
+                && !a.title.contains("Ploeg")
+                && a.title != "Open ops"
+                && a.title != "Open desktop"
+                && a.title != "Start desktop"
+                && a.title != "Stop desktop"
+        }));
+        assert_eq!(
+            resolve_desktop_action("start", "https://desktop.chefgroep.online"),
+            None
+        );
+        assert_eq!(
+            resolve_desktop_action("stop", "https://desktop.chefgroep.online"),
+            None
+        );
     }
 
     #[test]

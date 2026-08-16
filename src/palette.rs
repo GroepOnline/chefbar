@@ -384,11 +384,7 @@ mod tests {
             "herdr workspace",
             "focus herdr spring",
         );
-        let b = action(
-            "Open dashboard (Thuis)",
-            "vault dashboard",
-            "open dashboard thuis",
-        );
+        let b = action("Open overzicht", "vault dashboard", "open overzicht");
         let score_a = fuzzy_score("focus", &a);
         let score_b = fuzzy_score("focus", &b);
         assert!(score_a.unwrap_or(0) > score_b.unwrap_or(0));
@@ -397,7 +393,7 @@ mod tests {
     #[test]
     fn prefix_words_rank_above_gappy() {
         let a = action("Stuur naar agent", "herdr", "stuur send prompt");
-        let b = action("Open ops", "joep-ops", "open ops overzicht");
+        let b = action("Open overzicht", "status", "open overzicht");
         let score_a = fuzzy_score("stuur", &a);
         let score_b = fuzzy_score("stuur", &b);
         assert!(score_a.unwrap_or(0) > score_b.unwrap_or(0));

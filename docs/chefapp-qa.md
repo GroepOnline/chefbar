@@ -48,7 +48,7 @@
   - [ ] `chefbar --ipc "state fout"` → fout-glyph
   - [ ] `chefbar --ipc "state offline"` → offline-glyph; na 10 s terug naar live
 - [ ] Statuslijn max 5 live regels + profielregel; nieuwste eerst binnen priority-groep
-- [ ] Menu-items werken: FocusDomain / Open Thuis / Pause / Doctor / Quit
+- [ ] Menu-items werken: FocusDomain / Pause / Doctor / Quit (geen Open Thuis/Ploeg, geen desktop start/stop)
 
 ## Offline & freshness
 
