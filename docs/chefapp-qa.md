@@ -48,7 +48,7 @@
   - [ ] `chefbar --ipc "state fout"` → fout-glyph
   - [ ] `chefbar --ipc "state offline"` → offline-glyph; na 10 s terug naar live
 - [ ] Statuslijn max 5 live regels + profielregel; nieuwste eerst binnen priority-groep
-- [ ] Menu-items werken: FocusDomain / Open Thuis / Pause / Doctor / Quit
+- [ ] Menu-items werken: FocusDomain / Pause / Doctor / Quit (geen Open Thuis/Ploeg, geen desktop start/stop)
 
 ## Offline & freshness
 
@@ -91,3 +91,27 @@
 - Tester: ___________
 - Branch / SHA: ___________
 - Open issues: ___________
+
+## ChefApp 5.0 — acceptatiechecklist (§7)
+
+Voer deze acht punten handmatig uit op de runner/service-installatie en noteer datum, SHA en display. Een lege kaart zonder freshness-reden is een fout.
+
+- [ ] **1. Launch & stacked close:** `Super+Space` opent binnen 300 ms precies één venster; `Esc` sluit drawer → overlay → panel.
+- [ ] **2. Search:** zoeken vindt resultaten in alle 15 domeinen; recent aangeraakt staat bovenaan, onafhankelijk van tier.
+- [ ] **3. Freshness/offline:** elke zone toont verse data of `stale sinds <tijd> — <reden>`; offline behoudt de laatste goede snapshot met banner.
+- [ ] **4. Tray:** zeven live regels, statuslijn en glyph (`stil/bezig/hulp/fout/offline`) kloppen; `FocusDomain` opent elk domein.
+- [ ] **5. Inbox & quiet:** blocked/hulp/stale/limited worden op urgentie gebundeld; snooze/pause en quiet hours werken.
+- [ ] **6. Read-first domains:** Fleet/containers drift, Vault accounts/providers/usage, CRM deals/Neon health en Commander tasks/work zijn zichtbaar; writes zijn beperkt tot policy-gedekte acties.
+- [ ] **7. Secrets:** alleen metadata is zichtbaar; copy gaat via vault-api met audit en automatische clear na 45 seconden.
+- [ ] **8. Doctor & single instance:** `chefbar --doctor` is consistent tussen shell en service-env (exit 0/1/2); twee processen houden één socket/venster.
+
+### Lane-G visual matrix
+
+Op `chef-runner-01-1` na een release-build:
+
+```bash
+shellcheck install.sh scripts/*.sh
+scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
+```
+
+Dit maakt panel, overlay, drawer, beide density-varianten en vijftien domeinshots. `Xvfb`/ImageMagick ontbreken betekent exit 2 (soft skip); een ontbrekend accentpixel of gestorven app is exit 1. CI uploadt de PNG-artefacten ook wanneer een warning-only shot faalt.

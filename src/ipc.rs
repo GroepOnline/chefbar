@@ -30,6 +30,7 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
         "toggle-autostart" => Some(UiCommand::ToggleAutostart),
         "palette" => Some(UiCommand::TogglePalette),
         "inbox" => Some(UiCommand::OpenInbox),
+        "drawer" | "open-drawer" => Some(UiCommand::DrawerPreview),
         _ if trimmed.starts_with("state ") => {
             let state = trimmed.trim_start_matches("state ").trim();
             if matches!(state, "stil" | "bezig" | "hulp" | "fout" | "offline") {
@@ -43,38 +44,11 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
             let arg = trimmed.trim_start_matches("focus ").trim();
             if arg.is_empty() {
                 None
+            } else if let Some(kind) = crate::harness::HarnessKind::from_alias(arg) {
+                Some(UiCommand::FocusDomain(kind.id().to_string()))
             } else {
-                // If arg matches known domains, it's FocusDomain; but we need
-                // to disambiguate: legacy "focus <agent-id>" is still valid.
-                // Convention: domain values are one of
-                // inbox/fleet/vault/share/taken/containers/secrets/kater/health/instellingen
-                // plus future. For now: if arg is a known domain, emit FocusDomain,
-                // otherwise treat as FocusAgent (backwards-compatible).
-                const KNOWN_DOMAINS: &[&str] = &[
-                    "inbox",
-                    "fleet",
-                    "herdr",
-                    "vault",
-                    "accounts",
-                    "providers",
-                    "crm",
-                    "share",
-                    "clipboard",
-                    "desktop",
-                    "taken",
-                    "linear",
-                    "containers",
-                    "secrets",
-                    "kater",
-                    "health",
-                    "instellingen",
-                    "settings",
-                ];
-                if KNOWN_DOMAINS.contains(&arg) {
-                    Some(UiCommand::FocusDomain(arg.to_string()))
-                } else {
-                    Some(UiCommand::FocusAgent(arg.to_string()))
-                }
+                // Legacy "focus <agent-id>" blijft geldig voor onbekende ids.
+                Some(UiCommand::FocusAgent(arg.to_string()))
             }
         }
         _ => {
@@ -86,9 +60,16 @@ pub fn parse_command(line: &str) -> Option<UiCommand> {
                 Some("focus") => parts
                     .next()
                     .map(|id| UiCommand::FocusAgent(id.trim().to_string())),
-                Some("focus-domain") => parts
-                    .next()
-                    .map(|domain| UiCommand::FocusDomain(domain.trim().to_string())),
+                Some("focus-domain") => parts.next().and_then(|domain| {
+                    let domain = domain.trim();
+                    if domain.is_empty() {
+                        None
+                    } else if let Some(kind) = crate::harness::HarnessKind::from_alias(domain) {
+                        Some(UiCommand::FocusDomain(kind.id().to_string()))
+                    } else {
+                        Some(UiCommand::FocusDomain(domain.to_lowercase()))
+                    }
+                }),
                 Some("desktop") => parts
                     .next()
                     .map(|verb| UiCommand::DesktopAction(verb.trim().to_string())),
@@ -147,6 +128,7 @@ pub fn send_command(command: UiCommand) -> Result<(), String> {
         UiCommand::FocusDomain(domain) => format!("focus-domain {domain}\n"),
         UiCommand::TogglePalette => "palette\n".to_string(),
         UiCommand::OpenInbox => "inbox\n".to_string(),
+        UiCommand::DrawerPreview => "drawer\n".to_string(),
     };
     use std::io::Write;
     let mut stream = stream;
@@ -191,7 +173,11 @@ fn acquire_at(path: &std::path::Path) -> Acquire {
     }
     match UnixListener::bind(path) {
         Ok(listener) => {
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            if std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).is_err() {
+                drop(listener);
+                let _ = std::fs::remove_file(path);
+                return Acquire::Occupied;
+            }
             Acquire::Owner(listener)
         }
         Err(_) => Acquire::Occupied,
@@ -351,15 +337,33 @@ mod tests {
             Some(UiCommand::FocusDomain("vault".into()))
         );
         assert_eq!(
-            parse_command("focus fleet"),
-            Some(UiCommand::FocusDomain("fleet".into()))
+            parse_command("focus control"),
+            Some(UiCommand::FocusDomain("control".into()))
         );
         assert_eq!(
             parse_command("focus-domain kater"),
             Some(UiCommand::FocusDomain("kater".into()))
         );
+        assert_eq!(
+            parse_command("focus taken"),
+            Some(UiCommand::FocusDomain("tasks".into()))
+        );
+        assert_eq!(
+            parse_command("focus-domain accounts"),
+            Some(UiCommand::FocusDomain("commerce".into()))
+        );
+        assert_eq!(
+            parse_command("focus tasks"),
+            Some(UiCommand::FocusDomain("tasks".into()))
+        );
+        assert_eq!(
+            parse_command("focus fleet"),
+            Some(UiCommand::FocusDomain("fleet".into()))
+        );
         assert_eq!(parse_command("palette"), Some(UiCommand::TogglePalette));
         assert_eq!(parse_command("inbox"), Some(UiCommand::OpenInbox));
+        assert_eq!(parse_command("drawer"), Some(UiCommand::DrawerPreview));
+        assert_eq!(parse_command("open-drawer"), Some(UiCommand::DrawerPreview));
         // unknown focus arg stays FocusAgent (backwards-compat)
         assert_eq!(
             parse_command("focus pane-99"),

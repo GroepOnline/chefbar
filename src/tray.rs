@@ -9,6 +9,27 @@ use ksni::menu::StandardItem;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, RwLock};
 
+static UI_TX: Mutex<Option<Sender<UiCommand>>> = Mutex::new(None);
+
+/// Register the in-process UI command sender (tray / ipc / palette).
+pub fn register_command_tx(tx: Sender<UiCommand>) {
+    *UI_TX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tx);
+}
+
+/// Queue a UI command on the GTK dispatcher. False when no sender is registered
+/// yet (tests, early startup).
+pub fn send_ui(cmd: UiCommand) -> bool {
+    let Ok(guard) = UI_TX.lock() else {
+        return false;
+    };
+    let Some(tx) = guard.as_ref() else {
+        return false;
+    };
+    tx.send(cmd).is_ok()
+}
+
 /// UI-commando's van tray/ipc naar de GTK-thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiCommand {
@@ -17,7 +38,7 @@ pub enum UiCommand {
     Refresh,
     Doctor,
     Quit,
-    /// Open een URL (Thuis/Ploeg/desktop/ops) via de executor.
+    /// Open een URL via de executor (sessies, Linear, policy-checked).
     OpenUrl(String),
     /// Focus een agent-werkstroom (terminal-id uit de event-line).
     FocusAgent(String),
@@ -31,7 +52,7 @@ pub enum UiCommand {
     PauseNotifications,
     /// Meelopen vanaf login aan/uit (autostart-desktop-bestand).
     ToggleAutostart,
-    /// Desktop webtop starten/stoppen via de executor.
+    /// Desktop-IPC (`desktop start|stop`) is een no-op: geen lokale webtop.
     DesktopAction(String),
     /// Demp of ont-demp één agent in de watcher/inbox.
     ToggleMute(String),
@@ -44,6 +65,8 @@ pub enum UiCommand {
     TogglePalette,
     /// Open de inbox-zone in het panel.
     OpenInbox,
+    /// Preview de detail-drawer met de eerste actie (visual-shot/CI path).
+    DrawerPreview,
 }
 
 /// Glib-idle-bridge: leegt het commando-kanaal op de UI-thread.
@@ -136,9 +159,10 @@ fn tray_domains() -> Vec<(&'static str, &'static str)> {
         ("inbox", "Inbox"),
         ("fleet", "Fleet"),
         ("herdr", "Herdr"),
+        ("control", "Control"),
         ("vault", "Vault"),
         ("share", "Share"),
-        ("taken", "Taken"),
+        ("tasks", "Taken"),
         ("containers", "Containers"),
         ("secrets", "Secrets"),
         ("kater", "Kater"),
@@ -152,9 +176,11 @@ fn domain_label(id: &str) -> &'static str {
         "inbox" => "Inbox",
         "fleet" => "Fleet",
         "herdr" => "Herdr",
+        "control" => "Control",
         "vault" => "Vault",
         "share" => "Share",
-        "taken" => "Taken",
+        "tasks" | "taken" => "Taken",
+        "commerce" | "accounts" | "providers" => "Accounts",
         "containers" => "Containers",
         "secrets" => "Secrets",
         "kater" => "Kater",
@@ -293,7 +319,7 @@ impl ksni::Tray for ChefTray {
         "chefbar".into()
     }
     fn title(&self) -> String {
-        "ChefBar".into()
+        "ChefApp".into()
     }
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         vec![self.icon.clone()]
@@ -306,7 +332,7 @@ impl ksni::Tray for ChefTray {
             .unwrap_or_default();
         let _ = state;
         ksni::ToolTip {
-            title: "ChefBar".into(),
+            title: "ChefApp".into(),
             description: line,
             icon_name: "chefbar".into(),
             icon_pixmap: vec![self.icon.clone()],
@@ -314,39 +340,20 @@ impl ksni::Tray for ChefTray {
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
-        let profile = crate::config::global_profile();
 
-        // Kopieer alle menu-invoer binnen een korte read-lock; callbacks houden
-        // daarna geen snapshot-guard vast terwijl het menu wordt opgebouwd.
-        let (events, inbox_n, desktop_running, mute_agents) = self
-            .shared
-            .read()
-            .map(|snapshot| {
-                let inbox_n = snapshot
-                    .suggestions
+        // Live eventregels — uitgebreid van 3 naar 5 (spec Lane E).
+        let snap = self.shared.read().ok();
+        let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
+        let sessions = crate::sessions::load_tray_events(&events);
+        let inbox_n = snap
+            .as_ref()
+            .map(|s| {
+                s.suggestions
                     .iter()
                     .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
-                    .count();
-                let desktop_running = snapshot
-                    .desktop
-                    .get("state")
-                    .and_then(|v| v.as_str())
-                    == Some("running");
-                let mute_agents = snapshot
-                    .agents
-                    .iter()
-                    .map(|agent| {
-                        (
-                            agent.key.clone(),
-                            agent.agent.clone(),
-                            agent.workspace.clone(),
-                        )
-                    })
-                    .collect();
-                (snapshot.events.clone(), inbox_n, desktop_running, mute_agents)
+                    .count()
             })
-            .unwrap_or_default();
-        let sessions = crate::sessions::load_tray_events(&events);
+            .unwrap_or(0);
         // Inbox-count regel bovenaan indien non-empty: "3 om aandacht".
         if inbox_n > 0 {
             let label = if inbox_n == 1 {
@@ -395,25 +402,6 @@ impl ksni::Tray for ChefTray {
             items.push(ksni::MenuItem::Separator);
         }
 
-        // Acties: Open Thuis / Open Ploeg.
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Thuis".into(),
-            icon_name: "go-home-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.dashboard.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: "Open Ploeg".into(),
-            icon_name: "x-office-document-symbolic".into(),
-            activate: Box::new(|tray: &mut Self| {
-                tray.send(UiCommand::OpenUrl(profile.ops_api.clone()));
-            }),
-            ..Default::default()
-        }));
-        items.push(ksni::MenuItem::Separator);
-
         // Account-submenu (zelfde data als Vault Accounts).
         let mut account_items: Vec<ksni::MenuItem<Self>> = Vec::new();
         if let Ok(snap) = self.shared.read() {
@@ -461,46 +449,25 @@ impl ksni::Tray for ChefTray {
             }));
         }
 
-        // Desktop starten/stoppen.
-
-        let (dlabel, dicon) = if desktop_running {
-            (
-                "Desktop stoppen".to_string(),
-                "system-shutdown-symbolic".to_string(),
-            )
-        } else {
-            (
-                "Desktop starten".to_string(),
-                "computer-symbolic".to_string(),
-            )
-        };
-        items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
-            label: dlabel,
-            icon_name: dicon,
-            activate: Box::new(move |tray: &mut Self| {
-                tray.send(UiCommand::DesktopAction(
-                    if desktop_running { "stop" } else { "start" }.into(),
-                ));
-            }),
-            ..Default::default()
-        }));
-
         // Per-agent mute: de state-poller filtert deze keys vóór toast/inbox.
         let mutes = crate::mutes::load();
         let mut mute_items: Vec<ksni::MenuItem<Self>> = Vec::new();
-        for (key, agent, workspace) in mute_agents {
-            let label = format!("{agent} · {workspace}");
-            let checked = mutes.contains(&key);
-            mute_items.push(ksni::MenuItem::Checkmark(
-                ksni::menu::CheckmarkItem::<Self> {
-                    label,
-                    checked,
-                    activate: Box::new(move |tray: &mut Self| {
-                        tray.send(UiCommand::ToggleMute(key.clone()));
-                    }),
-                    ..Default::default()
-                },
-            ));
+        if let Some(snapshot) = snap.as_ref() {
+            for agent in &snapshot.agents {
+                let key = agent.key.clone();
+                let label = format!("{} · {}", agent.agent, agent.workspace);
+                let checked = mutes.contains(&key);
+                mute_items.push(ksni::MenuItem::Checkmark(
+                    ksni::menu::CheckmarkItem::<Self> {
+                        label,
+                        checked,
+                        activate: Box::new(move |tray: &mut Self| {
+                            tray.send(UiCommand::ToggleMute(key.clone()));
+                        }),
+                        ..Default::default()
+                    },
+                ));
+            }
         }
         if mute_items.is_empty() {
             items.push(ksni::MenuItem::Standard(StandardItem::<Self> {

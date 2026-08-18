@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit for chefbar — visual ChefApp (Herdr pane). Rust review via CI, never laptop cargo.
+
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: false
+  collapse_walkthrough: true
+  path_filters:
+    - "!target/**"
+    - "!**/*.lock"
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "src/**"
+      instructions: >-
+        Native ChefApp. Flag unsafe, secret logging, and design-token drift
+        against DESIGN.md. Do not request a local cargo build.
+    - path: ".github/**"
+      instructions: >-
+        Security boundary. Flag new secrets, permission escalation, and mutable
+        third-party action refs. Rust proof stays on chef-runner-01 / CI.
+  instructions: |
+    chefbar is the visual ChefApp, not Control-flow. Focus on correctness,
+    secrets, and UI contract. Never ask reviewers to run cargo locally.
+
+chat:
+  auto_reply: false

@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "snapshot-domain",
+      "prompt": "nieuwe Snapshot sectie",
+      "must_match_description": ["Snapshot", "state.rs", "poll-actor"]
+    },
+    {
+      "id": "second-loop",
+      "prompt": "tweede loop",
+      "must_match_description": ["second loop", "socket"]
+    },
+    {
+      "id": "harnesskind",
+      "prompt": "HarnessKind toevoegen",
+      "must_match_description": ["HarnessKind"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "pure-css",
+      "prompt": "alleen een padding-token in css.rs",
+      "must_not_all_match": ["860x880", "drawer.rs"]
+    }
+  ]
+}

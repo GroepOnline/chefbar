@@ -1,0 +1,16 @@
+{
+  "should_trigger": [
+    {
+      "id": "graph-terms",
+      "prompt": "Draai de graph loop met qa-converge",
+      "must_match_description": ["qa-converge", "file-disjoint", "orchestrator"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "css-not-graph",
+      "prompt": "GTK3 CSS gap property in css.rs",
+      "must_not_all_match": ["gtk3", "css.rs", "gap", "drawer"]
+    }
+  ]
+}

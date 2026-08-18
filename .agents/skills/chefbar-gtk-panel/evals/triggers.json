@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "css",
+      "prompt": "css.rs gap",
+      "must_match_description": ["css.rs", "GTK3", "gap"]
+    },
+    {
+      "id": "drawer",
+      "prompt": "drawer",
+      "must_match_description": ["drawer.rs", "860x880"]
+    },
+    {
+      "id": "overlay",
+      "prompt": "palette overlay",
+      "must_match_description": ["overlay", "panel_state.rs"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "policy",
+      "prompt": "safe_join",
+      "must_not_all_match": ["safe_join", "CF_ACCESS"]
+    }
+  ]
+}

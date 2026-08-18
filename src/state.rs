@@ -3,8 +3,8 @@
 //! Een enkele thread draait het ritme (vault 5s, ops 15s, vault-extra 30s,
 //! linear 60s, kater 30s), fan-out per endpoint met een kort afnamebudget,
 //! en publiceert één gedeelde Snapshot. UI leest onder een korte read-lock;
-//! mislukte secties behouden hun laatste goede waarde en markeren
-//! last_poll_at als stale.
+//! mislukte secties behouden hun laatste goede `last_poll_at` en zetten
+//! `last_poll.ok` op false. Sync toont fout, niet een verse attempt-tijd.
 
 use crate::http::{ApiError, Client};
 use crate::models::{
@@ -12,11 +12,12 @@ use crate::models::{
     build_crm_deals, build_fleet, build_fleet_nodes, build_herdr_workspaces, build_inbox,
     build_kater_status, build_linear_issues, build_obs_summary, build_ops_snapshot,
     build_providers, build_secrets_meta, build_vault_accounts, day_score_from_agent_summary,
-    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, HealthInfo,
-    OpsSnapshot, Snapshot, SUGGESTION_TTL_SECONDS,
+    iso_now, load_day_score_file, parse_health, watch_dog_path, watcher_events, BrainDigest,
+    HealthInfo, OpsSnapshot, PollHealth, Snapshot, SUGGESTION_TTL_SECONDS,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
@@ -27,6 +28,8 @@ pub const OPS_POLL_MS: u64 = 15_000;
 pub const VAULT_EXTRA_POLL_MS: u64 = 30_000;
 pub const LINEAR_POLL_MS: u64 = 60_000;
 pub const KATER_POLL_MS: u64 = 30_000;
+pub const JCODE_POLL_MS: u64 = 30_000;
+pub const BRAIN_POLL_MS: u64 = 120_000;
 pub const FETCH_BUDGET_MS: u64 = 8_000;
 const PER_ENDPOINT_TIMEOUT_MS: u64 = 2_000;
 
@@ -36,6 +39,52 @@ fn suggestion_allowed(suggestion: &crate::models::Suggestion, mutes: &HashSet<St
 
 fn toast_allowed_during_quiet(quiet: bool, status: &str) -> bool {
     !quiet || status == "error"
+}
+
+/// All fan-out keys present and Some. Empty map is not success (no poll ran).
+fn all_results_ok(results: &HashMap<String, Option<Value>>) -> bool {
+    !results.is_empty() && results.values().all(Option::is_some)
+}
+
+/// Vault statuslijn chip. Decode beats HTTP/blocked/offline so JSON failures
+/// are not "offline". All-failed HTTP fan-out keeps the HTTP/blocked chip.
+fn vault_poll_chip(results: &HashMap<String, Option<Value>>, errors: &[ApiError]) -> String {
+    if all_results_ok(results) {
+        return "ok".into();
+    }
+    if errors.iter().any(|err| matches!(err, ApiError::Decode(_))) {
+        return "decode".into();
+    }
+    if let Some(err) = errors
+        .iter()
+        .find(|err| matches!(err, ApiError::Http(_, _) | ApiError::Blocked(_)))
+    {
+        return err.statuslijn_chip();
+    }
+    if !results.is_empty() && results.values().all(Option::is_none) {
+        return "offline".into();
+    }
+    "gedeeltelijk".into()
+}
+
+/// Success: verse timestamp + ok. Failure: behoud laatste goede tijd, ok=false.
+/// Eerste fail zonder prior success zet de attempt-tijd zodat Sync een rij toont.
+fn mark_poll(snap: &mut Snapshot, source: &str, ok: bool, chip: &str) {
+    if ok {
+        snap.last_poll_at.insert(source.into(), iso_now());
+    } else {
+        snap.last_poll_at
+            .entry(source.into())
+            .or_insert_with(iso_now);
+    }
+    snap.last_poll.insert(
+        source.into(),
+        if ok {
+            PollHealth::ok()
+        } else {
+            PollHealth::fail(chip)
+        },
+    );
 }
 
 /// Commandokanaal naar de actor (RefreshNow → directe poll, Shutdown).
@@ -62,6 +111,8 @@ pub struct Shared {
     pub revision: Arc<AtomicI64>,
     pub vault_online: Arc<RwLock<bool>>,
     pub last_error: Arc<RwLock<Option<String>>>,
+    pub chat: Arc<RwLock<crate::chat::ChatLog>>,
+    pub chat_revision: Arc<AtomicI64>,
 }
 
 impl Default for Shared {
@@ -78,6 +129,10 @@ impl Shared {
             revision: Arc::new(AtomicI64::new(0)),
             vault_online: Arc::new(RwLock::new(false)),
             last_error: Arc::new(RwLock::new(None)),
+            chat: Arc::new(RwLock::new(crate::chat::chat_log_from_panel(
+                &crate::panel_state::load(),
+            ))),
+            chat_revision: Arc::new(AtomicI64::new(0)),
         }
     }
 }
@@ -126,6 +181,8 @@ impl Poller {
         let mut next_vault_extra = Instant::now();
         let mut next_linear = Instant::now();
         let mut next_kater = Instant::now();
+        let mut next_jcode = Instant::now();
+        let mut next_brain = Instant::now();
         let mut next_local = Instant::now();
         self.poll_watchdog_into_shared();
         loop {
@@ -154,11 +211,21 @@ impl Poller {
                 self.poll_kater();
                 next_kater = Instant::now() + Duration::from_millis(KATER_POLL_MS);
             }
+            if now >= next_jcode {
+                self.poll_jcode_memory();
+                next_jcode = Instant::now() + Duration::from_millis(JCODE_POLL_MS);
+            }
+            if now >= next_brain {
+                self.poll_brain_digest();
+                next_brain = Instant::now() + Duration::from_millis(BRAIN_POLL_MS);
+            }
             let deadline = next_vault
                 .min(next_ops)
                 .min(next_vault_extra)
                 .min(next_linear)
-                .min(next_kater);
+                .min(next_kater)
+                .min(next_jcode)
+                .min(next_brain);
             let timeout = deadline
                 .saturating_duration_since(Instant::now())
                 .min(Duration::from_secs(1));
@@ -193,7 +260,7 @@ impl Poller {
     }
 
     fn poll_vault(&self) {
-        let results = self.fetch_all();
+        let (results, fetch_errors) = self.fetch_all();
         let prev_snapshot = self.shared.snapshot.read().unwrap().clone();
         let (mut snap, mut any_ok) = (prev_snapshot.clone(), false);
 
@@ -322,25 +389,24 @@ impl Poller {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        snap.last_poll_at.insert("vault".into(), iso_now());
-
         let mut errors: Vec<String> = Vec::new();
         for (key, value) in &results {
             if value.is_none() {
                 errors.push(key.clone());
             }
         }
-        // Bij geheel falen: markeer stale
-        if errors.len() == results.len() && !results.is_empty() {
-            snap.last_poll_at.insert("vault".into(), iso_now());
-        }
-        snap.error = if errors.is_empty() {
-            None
-        } else if errors.len() == results.len() {
-            Some("vault offline".to_string())
-        } else {
-            Some(format!("gedeeltelijk: {}", errors.join(", ")))
+        // Availability stays any_ok (at least one endpoint). Sync freshness
+        // requires every expected vault response — partial is fout, not verse.
+        let vault_ok = all_results_ok(&results);
+        let vault_chip = vault_poll_chip(&results, &fetch_errors);
+        snap.error = match vault_chip.as_str() {
+            "ok" => None,
+            "offline" => Some("vault offline".to_string()),
+            "decode" => Some("vault decode".to_string()),
+            "geblokkeerd" => Some("vault geblokkeerd".to_string()),
+            _ => Some(format!("gedeeltelijk: {}", errors.join(", "))),
         };
+        mark_poll(&mut snap, "vault", vault_ok, &vault_chip);
 
         {
             let mut vault_online = self.shared.vault_online.write().unwrap();
@@ -370,40 +436,29 @@ impl Poller {
     }
 
     fn poll_vault_extra(&self) {
-        let results = self.fetch_vault_extra();
+        let (results, errors) = self.fetch_vault_extra();
         let mut snap = self.shared.snapshot.write().unwrap();
-        let mut any_ok = false;
 
         if let Some(val) = results.get("vault_accounts").cloned().flatten() {
             snap.vault_accounts = build_vault_accounts(Some(&val));
-            any_ok = true;
-        } else if results.contains_key("vault_accounts") {
-            snap.last_poll_at
-                .insert("vault_extra:accounts".into(), iso_now());
         }
         if let Some(val) = results.get("crm_deals").cloned().flatten() {
             snap.crm_deals = build_crm_deals(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("secrets_meta").cloned().flatten() {
             snap.secrets_meta = build_secrets_meta(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("containers").cloned().flatten() {
             snap.containers = build_container_diff(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("inbox").cloned().flatten() {
             snap.inbox = build_inbox(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("fleet_nodes").cloned().flatten() {
             snap.fleet_nodes = build_fleet_nodes(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("herdr_workspaces").cloned().flatten() {
             snap.herdr_workspaces = build_herdr_workspaces(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("commander_tasks").cloned().flatten() {
             snap.commander_tasks = build_commander_tasks(Some(&val));
@@ -411,29 +466,25 @@ impl Poller {
             if let Some(arr) = val.get("tasks").and_then(|v| v.as_array()) {
                 snap.tasks = arr.clone();
             }
-            any_ok = true;
         }
         if let Some(val) = results.get("clipboard_extra").cloned().flatten() {
             snap.clipboard = build_clipboard_entries(Some(&val));
-            any_ok = true;
         }
         if let Some(val) = results.get("observability").cloned().flatten() {
             snap.observability = build_obs_summary(Some(&val));
-            any_ok = true;
+        }
+        if let Some(val) = results.get("brain").cloned().flatten() {
+            if let Some(parsed) = crate::vault_bridge::parse_brain(&val) {
+                snap.brain = parsed;
+            }
         }
 
-        // freshness
-        if any_ok {
-            snap.last_poll_at.insert("vault_extra".into(), iso_now());
-        } else {
-            // alles mislukt → stale marker, behoud vorige waarden
-            let stale = iso_now();
-            for k in ["vault_extra", "vault_extra:accounts"] {
-                snap.last_poll_at.entry(k.into()).or_insert(stale.clone());
-            }
-            // ensure at least vault_extra stale
-            snap.last_poll_at.insert("vault_extra".into(), stale);
-        }
+        mark_poll(
+            &mut snap,
+            "vault_extra",
+            all_results_ok(&results),
+            &vault_poll_chip(&results, &errors),
+        );
     }
 
     fn poll_linear(&self) {
@@ -441,9 +492,8 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("linear").cloned().flatten() {
             snap.linear_issues = build_linear_issues(Some(&val));
-            snap.last_poll_at.insert("linear".into(), iso_now());
+            mark_poll(&mut snap, "linear", true, "ok");
         } else {
-            // niet geconfigureerd → geen stale, gewoon behoud; wel markeren als stale als wel geconfigureerd maar faalde
             let linear_api = std::env::var("LINEAR_API")
                 .or_else(|_| std::env::var("CHEFBAR_LINEAR_API"))
                 .ok();
@@ -452,7 +502,7 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false)
             {
-                snap.last_poll_at.insert("linear".into(), iso_now());
+                mark_poll(&mut snap, "linear", false, "offline");
             }
         }
     }
@@ -462,7 +512,7 @@ impl Poller {
         let mut snap = self.shared.snapshot.write().unwrap();
         if let Some(val) = results.get("kater").cloned().flatten() {
             snap.kater_status = build_kater_status(Some(&val));
-            snap.last_poll_at.insert("kater".into(), iso_now());
+            mark_poll(&mut snap, "kater", true, "ok");
         } else {
             let has_kater = crate::config::global_profile()
                 .kater_workspace
@@ -470,12 +520,71 @@ impl Poller {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
             if has_kater {
-                snap.last_poll_at.insert("kater".into(), iso_now());
+                mark_poll(&mut snap, "kater", false, "offline");
             }
         }
     }
 
-    fn fetch_all(&self) -> HashMap<String, Option<Value>> {
+    fn poll_jcode_memory(&self) {
+        let bind = std::env::var("CHEFBAR_JCODE_MEMORY_BIND")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "100.111.187.17:7643".into());
+        let host = bind
+            .rsplit_once(':')
+            .map(|(h, _)| h.to_string())
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| bind.clone());
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            let addr = bind.parse::<SocketAddr>().ok().or_else(|| {
+                bind.to_socket_addrs()
+                    .ok()
+                    .and_then(|mut addrs| addrs.next())
+            });
+            let online = match addr {
+                Some(addr) => {
+                    std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
+                }
+                None => false,
+            };
+            let mut snap = shared.snapshot.write().unwrap();
+            snap.jcode_memory = crate::models::JcodeMemoryStatus {
+                online,
+                host,
+                bind,
+                status: if online {
+                    "online".into()
+                } else {
+                    "offline".into()
+                },
+            };
+            mark_poll(
+                &mut snap,
+                "jcode_memory",
+                online,
+                if online { "ok" } else { "offline" },
+            );
+        });
+    }
+
+    /// Read-only brain-digest ophalen (HTTP of lokaal vault-pad). Geen
+    /// endpoint ingesteld → niets doen, geen error-spam. Fail-closed in brain.rs.
+    fn poll_brain_digest(&self) {
+        let profile = crate::config::global_profile();
+        if profile.brain_api.is_none() && crate::brain::no_local_digest() {
+            let mut snap = self.shared.snapshot.write().unwrap();
+            snap.brain_digest = BrainDigest::default();
+            snap.last_poll_at.insert("brain_digest".into(), iso_now());
+            return;
+        }
+        let digest = crate::brain::fetch_digest(profile);
+        let mut snap = self.shared.snapshot.write().unwrap();
+        snap.brain_digest = digest;
+        snap.last_poll_at.insert("brain_digest".into(), iso_now());
+    }
+
+    fn fetch_all(&self) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let paths: &[(&str, &str)] = &[
             ("status", "/status"),
             ("accounts/overview", "/accounts/overview"),
@@ -511,6 +620,7 @@ impl Poller {
             .iter()
             .map(|(key, _)| (key.to_string(), None))
             .collect();
+        let mut errors: Vec<ApiError> = Vec::new();
         loop {
             if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
                 break;
@@ -519,15 +629,17 @@ impl Poller {
                 Ok((key, Ok(value))) => {
                     results.insert(key, Some(value));
                 }
-                Ok((_, Err(_))) => {}
+                Ok((_, Err(err))) => {
+                    errors.push(err);
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-        results
+        (results, errors)
     }
 
-    fn fetch_vault_extra(&self) -> HashMap<String, Option<Value>> {
+    fn fetch_vault_extra(&self) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let paths: &[(&str, &str)] = &[
             ("vault_accounts", "/accounts"),
             ("crm_deals", "/crm/deals"),
@@ -539,8 +651,9 @@ impl Poller {
             ("commander_tasks", "/commander/tasks?limit=20"),
             ("clipboard_extra", "/clipboard"),
             ("observability", "/observability/summary"),
+            ("brain", "/brain"),
         ];
-        Self::fanout(&self.vault, paths)
+        Self::fanout_with_errors(&self.vault, paths)
     }
 
     fn fetch_linear(&self) -> HashMap<String, Option<Value>> {
@@ -586,6 +699,13 @@ impl Poller {
     }
 
     fn fanout(client: &Client, paths: &[(&str, &str)]) -> HashMap<String, Option<Value>> {
+        Self::fanout_with_errors(client, paths).0
+    }
+
+    fn fanout_with_errors(
+        client: &Client,
+        paths: &[(&str, &str)],
+    ) -> (HashMap<String, Option<Value>>, Vec<ApiError>) {
         let (tx, rx): (Sender<(String, Result<Value, ApiError>)>, _) = channel();
         let client = client
             .clone()
@@ -608,6 +728,7 @@ impl Poller {
             .iter()
             .map(|(key, _)| (key.to_string(), None))
             .collect();
+        let mut errors: Vec<ApiError> = Vec::new();
         loop {
             if started.elapsed() > Duration::from_millis(FETCH_BUDGET_MS) {
                 break;
@@ -616,12 +737,14 @@ impl Poller {
                 Ok((key, Ok(value))) => {
                     results.insert(key, Some(value));
                 }
-                Ok((_, Err(_))) => {}
+                Ok((_, Err(err))) => {
+                    errors.push(err);
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
-        results
+        (results, errors)
     }
 
     fn poll_ops(&self) {
@@ -632,9 +755,9 @@ impl Poller {
             .get_json("/api/snapshot")
         {
             Ok(payload) => payload,
-            Err(_) => {
+            Err(err) => {
                 let mut snap = self.shared.snapshot.write().unwrap();
-                snap.last_poll_at.insert("ops".into(), iso_now());
+                mark_poll(&mut snap, "ops", false, &err.statuslijn_chip());
                 return;
             }
         };
@@ -643,9 +766,10 @@ impl Poller {
             let mut current = self.shared.ops.write().unwrap();
             *current = ops;
         }
+        crate::chat::refresh_persisted_pin(&self.shared);
         {
             let mut snap = self.shared.snapshot.write().unwrap();
-            snap.last_poll_at.insert("ops".into(), iso_now());
+            mark_poll(&mut snap, "ops", true, "ok");
         }
     }
 }
@@ -682,5 +806,101 @@ mod tests {
         assert!(toast_allowed_during_quiet(true, "error"));
         assert!(!toast_allowed_during_quiet(true, "warn"));
         assert!(!toast_allowed_during_quiet(true, "ok"));
+    }
+
+    #[test]
+    fn mark_poll_keeps_last_good_time_on_failure() {
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "linear", true, "ok");
+        let good = snap.last_poll_at.get("linear").cloned().unwrap();
+        assert_eq!(snap.last_poll.get("linear"), Some(&PollHealth::ok()));
+        mark_poll(&mut snap, "linear", false, "offline");
+        assert_eq!(snap.last_poll_at.get("linear"), Some(&good));
+        assert_eq!(
+            snap.last_poll.get("linear"),
+            Some(&PollHealth::fail("offline"))
+        );
+    }
+
+    #[test]
+    fn mark_poll_first_failure_still_records_a_row() {
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "ops", false, "offline");
+        assert!(snap.last_poll_at.contains_key("ops"));
+        assert_eq!(
+            snap.last_poll.get("ops"),
+            Some(&PollHealth::fail("offline"))
+        );
+    }
+
+    #[test]
+    fn vault_partial_failure_is_not_a_fresh_poll() {
+        let mut results = HashMap::new();
+        results.insert("health".into(), Some(Value::Null));
+        results.insert("agents".into(), None);
+        assert!(!all_results_ok(&results));
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "vault", all_results_ok(&results), "gedeeltelijk");
+        assert_eq!(
+            snap.last_poll.get("vault"),
+            Some(&PollHealth::fail("gedeeltelijk"))
+        );
+    }
+
+    #[test]
+    fn vault_poll_chip_decode_beats_offline_and_partial() {
+        let mut mixed = HashMap::new();
+        mixed.insert("status".into(), Some(Value::Null));
+        mixed.insert("agents".into(), None);
+        let decode = vec![ApiError::Decode("JSON-parse faalde".into())];
+        assert_eq!(vault_poll_chip(&mixed, &decode), "decode");
+
+        let mut all_failed = HashMap::new();
+        all_failed.insert("status".into(), None);
+        all_failed.insert("agents".into(), None);
+        assert_eq!(vault_poll_chip(&all_failed, &decode), "decode");
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Transport("down".into())]),
+            "offline"
+        );
+        assert_eq!(vault_poll_chip(&mixed, &[]), "gedeeltelijk");
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Http(302, "access".into())]),
+            "302"
+        );
+    }
+
+    #[test]
+    fn vault_extra_partial_failure_is_not_a_fresh_poll() {
+        let mut results = HashMap::new();
+        results.insert("inbox".into(), Some(Value::Null));
+        results.insert("fleet_nodes".into(), None);
+        results.insert("brain".into(), Some(Value::Null));
+        assert!(!all_results_ok(&results));
+        let chip = vault_poll_chip(&results, &[]);
+        assert_eq!(chip, "gedeeltelijk");
+        let mut snap = Snapshot::default();
+        mark_poll(&mut snap, "vault_extra", all_results_ok(&results), &chip);
+        assert_eq!(
+            snap.last_poll.get("vault_extra"),
+            Some(&PollHealth::fail("gedeeltelijk"))
+        );
+
+        let mut all_failed = HashMap::new();
+        all_failed.insert("inbox".into(), None);
+        all_failed.insert("brain".into(), None);
+        assert_eq!(
+            vault_poll_chip(&all_failed, &[ApiError::Decode("kapot".into())]),
+            "decode"
+        );
+    }
+
+    #[test]
+    fn all_results_ok_requires_every_expected_key() {
+        let mut results = HashMap::new();
+        results.insert("health".into(), Some(Value::Null));
+        results.insert("agents".into(), Some(Value::Null));
+        assert!(all_results_ok(&results));
+        assert!(!all_results_ok(&HashMap::new()));
     }
 }

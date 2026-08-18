@@ -8,11 +8,14 @@ use crate::http::Client;
 use crate::models::{OpsSnapshot, Snapshot};
 use crate::palette::Action;
 use serde_json::json;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunSpec {
     Noop,
     OpenUrl(String),
+    /// Open brain-chunk doel: url eerst, anders lokaal pad.
+    BrainOpen(String),
     OpenOcx,
     FocusAgent(String),
     SendPrompt {
@@ -49,7 +52,54 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
-    ToggleMute(String),
+    SendControlChat,
+}
+
+impl RunSpec {
+    /// Stable suffix for local frecency keys. Clipboard payloads stay out of
+    /// `~/.local/share/chefbar/frecency.json`; secret ids stay as ids only.
+    pub fn frecency_key(&self) -> String {
+        match self {
+            RunSpec::Noop => "Noop".into(),
+            RunSpec::OpenUrl(_) => "OpenUrl".into(),
+            RunSpec::OpenOcx => "OpenOcx".into(),
+            RunSpec::FocusAgent(id) => format!("FocusAgent:{id}"),
+            RunSpec::SendPrompt {
+                terminal_id,
+                pane_id,
+            } => format!(
+                "SendPrompt:{terminal_id}:{}",
+                pane_id.as_deref().unwrap_or("")
+            ),
+            RunSpec::CreateTask { .. } => "CreateTask".into(),
+            RunSpec::SwitchAccount {
+                account_id,
+                source,
+                driver,
+            } => format!(
+                "SwitchAccount:{account_id}:{source}:{}",
+                driver.as_deref().unwrap_or("")
+            ),
+            RunSpec::CancelTask(id) => format!("CancelTask:{id}"),
+            RunSpec::ClipboardAdd => "ClipboardAdd".into(),
+            RunSpec::ClipboardDelete(index) => format!("ClipboardDelete:{index}"),
+            RunSpec::CopyText(_) => "CopyText".into(),
+            RunSpec::DesktopAction(verb) => format!("DesktopAction:{verb}"),
+            RunSpec::ShareSync(id) => format!("ShareSync:{id}"),
+            RunSpec::Refresh => "Refresh".into(),
+            RunSpec::OpenLinearIssue(id) => format!("OpenLinearIssue:{id}"),
+            RunSpec::CopySecretMeta { id } => format!("CopySecretMeta:{id}"),
+            RunSpec::FleetDeploy { node } => format!("FleetDeploy:{node}"),
+            RunSpec::FleetExec { node, template } => {
+                format!("FleetExec:{node}:{template}")
+            }
+            RunSpec::PrunePreview => "PrunePreview".into(),
+            RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
+            RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
+            RunSpec::SendControlChat => "SendControlChat".into(),
+        }
+    }
 }
 
 fn action(
@@ -140,7 +190,7 @@ pub fn build_inbox_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<A
             match &suggestion.kind {
                 crate::models::SuggestionKind::FocusAgent(id) => RunSpec::FocusAgent(id.clone()),
                 crate::models::SuggestionKind::OpenDashboard => {
-                    RunSpec::OpenUrl(_profile.dashboard.clone())
+                    RunSpec::FocusDomain("control".into())
                 }
                 crate::models::SuggestionKind::None_ => RunSpec::Noop,
             },
@@ -184,6 +234,9 @@ pub fn build_fleet_actions(
     }
     // Per agent een deploy/exec hint (read-only in 4.0 — template exec)
     for agent in ops.agents.iter().take(8) {
+        if agent.name.trim().is_empty() && agent.workspace.trim().is_empty() {
+            continue;
+        }
         let node = agent.workspace.clone();
         out.push(action(
             format!("Deploy naar {} · {}", agent.name, node),
@@ -203,12 +256,27 @@ pub fn build_fleet_actions(
             },
         ));
     }
-    // TODO Lane A will replace with snapshot.fleet_nodes iteration
+    for node in snap.fleet_nodes.iter().take(8) {
+        if node.id.is_empty() && node.title.is_empty() {
+            continue;
+        }
+        let label = if node.title.is_empty() {
+            node.id.clone()
+        } else {
+            node.title.clone()
+        };
+        out.push(action(
+            format!("Node · {label}"),
+            node.host.clone().unwrap_or_else(|| node.meta.clone()),
+            if node.online { "BEZIG" } else { "STIL" },
+            format!("fleet nodes {} {}", label, node.id),
+            RunSpec::FocusDomain("fleet".into()),
+        ));
+    }
     out
 }
 
 /// Vault: accounts/providers/CRM — D3.
-/// Tolerant: bestaande providers-logica, CRM placeholder tot Lane A.
 pub fn build_vault_actions(
     snap: &Snapshot,
     _ops: &OpsSnapshot,
@@ -218,7 +286,7 @@ pub fn build_vault_actions(
     for row in &snap.providers {
         for acc in &row.accounts {
             let acc_id = acc.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if Some(acc_id) == row.active_id.as_deref() {
+            if acc_id.is_empty() || Some(acc_id) == row.active_id.as_deref() {
                 continue;
             }
             let label = acc
@@ -239,7 +307,31 @@ pub fn build_vault_actions(
             ));
         }
     }
-    // TODO Lane A will replace with snapshot.vault_accounts / crm_deals
+    for account in snap.vault_accounts.iter().take(8) {
+        if account.id.is_empty() && account.title.is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Account · {}", account.title),
+            format!("{} · {}", account.provider, account.meta),
+            "STIL",
+            format!("vault account {} {}", account.title, account.id),
+            RunSpec::FocusDomain("vault".into()),
+        ));
+    }
+    for deal in snap.crm_deals.iter().take(8) {
+        if deal.id.is_empty() && deal.title.is_empty() {
+            continue;
+        }
+        let amount = deal.amount.clone().unwrap_or_default();
+        out.push(action(
+            format!("Deal · {}", deal.title),
+            format!("{} {}", deal.status, amount).trim().to_string(),
+            "STIL",
+            format!("crm deals neon {} {}", deal.title, deal.id),
+            RunSpec::FocusDomain("crm".into()),
+        ));
+    }
     out
 }
 
@@ -258,10 +350,13 @@ pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
     if let Some(containers) = snap.raw.get("containers") {
         if let Some(items) = containers.get("observed").and_then(|v| v.as_array()) {
             for item in items.iter().take(6) {
-                let name = item
+                let Some(name) = item
                     .get("name")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("container");
+                    .filter(|name| !name.is_empty())
+                else {
+                    continue;
+                };
                 let host = item
                     .get("host")
                     .and_then(|v| v.as_str())
@@ -276,24 +371,52 @@ pub fn build_container_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
             }
         }
     }
-    // TODO Lane A will replace with snapshot.containers drift
-    let _ = snap;
+    for name in snap.containers.drift.iter().take(6) {
+        if name.trim().is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Drift · {name}"),
+            "observed vs desired",
+            "HULP",
+            format!("containers docker drift {name}"),
+            RunSpec::CopyText(name.clone()),
+        ));
+    }
     out
 }
 
 /// Secrets: alleen meta, copy via vault-api — D5.
 pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
     let mut out = Vec::new();
-    // Placeholder tot Lane A: als er geen secrets_meta is, toon één uitleg-actie
-    // Secrets-meta is nog niet in Snapshot — tolerant.
-    // TODO Lane A will replace with snapshot.secrets_meta
+    for item in snap.secrets_meta.iter().take(8) {
+        if item.id.is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Kopieer secret · {}", item.title),
+            "kopieert via vault — zichtbaar in audit-log, auto-clear",
+            "STIL",
+            format!("secrets vaultwarden wachtwoord {} {}", item.title, item.id),
+            RunSpec::CopySecretMeta {
+                id: item.id.clone(),
+            },
+        ));
+    }
+    let mut seen: HashSet<String> = out
+        .iter()
+        .filter_map(|a| match &a.run {
+            RunSpec::CopySecretMeta { id } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
     if let Some(secrets) = snap.raw.get("secrets_meta").and_then(|v| v.as_array()) {
         for item in secrets.iter().take(8) {
             let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
-            if id.is_empty() {
+            if id.is_empty() || !seen.insert(id.to_string()) {
                 continue;
             }
+            let title = item.get("title").and_then(|v| v.as_str()).unwrap_or(id);
             out.push(action(
                 format!("Kopieer secret · {title}"),
                 "kopieert via vault — zichtbaar in audit-log, auto-clear",
@@ -302,8 +425,8 @@ pub fn build_secret_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
                 RunSpec::CopySecretMeta { id: id.to_string() },
             ));
         }
-    } else if out.is_empty() {
-        // Lege state → hint, geen netwerk
+    }
+    if out.is_empty() {
         out.push(action(
             "Secrets · geen items",
             "vaultwarden — kopieert via vault met audit-log",
@@ -332,6 +455,9 @@ pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        if full.trim().is_empty() {
+            continue;
+        }
         out.push(action(
             format!("Kopieer · {text}"),
             format!("clipboard-rij {index}"),
@@ -360,22 +486,32 @@ pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
 /// Linear: assigned-to-me — D7.
 pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Action> {
     let mut out = Vec::new();
-    // TODO Lane A will replace with snapshot.linear_issues
+    for issue in snap.linear_issues.iter().take(10) {
+        if issue.id.is_empty() {
+            continue;
+        }
+        out.push(action(
+            format!("Linear · {}", issue.title),
+            issue.id.clone(),
+            "STIL",
+            format!("linear taken issues tickets {} {}", issue.title, issue.id),
+            RunSpec::OpenLinearIssue(issue.id.clone()),
+        ));
+    }
+    let mut seen: HashSet<String> = out
+        .iter()
+        .filter_map(|a| match &a.run {
+            RunSpec::OpenLinearIssue(id) => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
     if let Some(issues) = snap.raw.get("linear_issues").and_then(|v| v.as_array()) {
         for issue in issues.iter().take(10) {
             let id = issue.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
-            let url = issue
-                .get("url")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    format!("{}/linear/{}", profile.dashboard.trim_end_matches('/'), id)
-                });
-            let _ = url;
-            if id.is_empty() {
+            if id.is_empty() || !seen.insert(id.to_string()) {
                 continue;
             }
+            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
             out.push(action(
                 format!("Linear · {title}"),
                 id.to_string(),
@@ -413,8 +549,23 @@ pub fn build_kater_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Ac
             RunSpec::OpenUrl(kater_url),
         ));
     }
-    // TODO Lane A will replace with snapshot.kater_status
-    if let Some(kater) = snap.raw.get("kater_status") {
+    if !snap.kater_status.status.is_empty() {
+        let status = snap.kater_status.status.as_str();
+        out.push(action(
+            format!("Kater · {status}"),
+            snap.kater_status
+                .profile
+                .clone()
+                .unwrap_or_else(|| "gateway status".into()),
+            if snap.kater_status.online {
+                "STIL"
+            } else {
+                "FOUT"
+            },
+            "kater gateway status",
+            RunSpec::FocusDomain("kater".into()),
+        ));
+    } else if let Some(kater) = snap.raw.get("kater_status") {
         let status = kater
             .get("status")
             .and_then(|v| v.as_str())
@@ -472,8 +623,57 @@ pub fn build_health_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<
         "health dagscore eval score",
         RunSpec::FocusDomain("health".into()),
     ));
-    // TODO Lane A will replace with snapshot.observability
+    if !snap.observability.status.is_empty() {
+        out.push(action(
+            format!("Observability · {}", snap.observability.status),
+            snap.observability
+                .updated_at
+                .clone()
+                .unwrap_or_else(|| "samenvatting".into()),
+            if snap.observability.ok {
+                "STIL"
+            } else {
+                "FOUT"
+            },
+            "health observability events catalog",
+            RunSpec::FocusDomain("health".into()),
+        ));
+    }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Brain search — palette-prefix `?` (D10)
+// ---------------------------------------------------------------------------
+
+/// `?term` zoekt lexical door de brain-digest; resultaat opent pad/url.
+/// Zonder `?`-prefix: lege lijst (de normale catalogus blijft ongewijzigd).
+pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
+    if !query.starts_with('?') {
+        return Vec::new();
+    }
+    let needle = query.trim_start_matches('?');
+    crate::brain::search(needle, &snap.brain_digest)
+        .into_iter()
+        .filter_map(|chunk| {
+            let target = crate::brain::open_target(chunk);
+            if target.is_empty() {
+                return None;
+            }
+            Some(action(
+                if chunk.title.is_empty() {
+                    target.clone()
+                } else {
+                    chunk.title.clone()
+                },
+                chunk.excerpt.clone().unwrap_or_default(),
+                "STIL",
+                format!("brain digest zoek {}", chunk.title),
+                RunSpec::BrainOpen(target),
+            ))
+        })
+        .take(8)
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -501,18 +701,38 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
-    for agent in &snap.agents {
+    if snap.brain.ok || !snap.brain.skills.is_empty() {
+        let counts = snap.brain.counts.clone().unwrap_or_default();
         actions.push(action(
-            format!("Demp {} · {}", agent.agent, agent.workspace),
-            "tray- en inboxmeldingen aan/uit",
-            "STIL",
-            format!("demp mute agent {} {}", agent.agent, agent.workspace),
-            RunSpec::ToggleMute(agent.key.clone()),
+            format!("Brain · {} skills · {} evals", counts.skills, counts.evals),
+            snap.brain
+                .source
+                .clone()
+                .unwrap_or_else(|| "vault /api/brain".into()),
+            if snap.brain.ok { "STIL" } else { "HULP" },
+            "brain memory wiki skills eval",
+            RunSpec::FocusDomain("health".into()),
+        ));
+    }
+    if !snap.jcode_memory.status.is_empty() {
+        actions.push(action(
+            format!("jcode memory · {}", snap.jcode_memory.status),
+            format!("{} · {}", snap.jcode_memory.host, snap.jcode_memory.bind),
+            if snap.jcode_memory.online {
+                "BEZIG"
+            } else {
+                "FOUT"
+            },
+            "jcode memory session gateway runner",
+            RunSpec::FocusDomain("kater".into()),
         ));
     }
 
     // Bestaand: herdr focus/send
     for agent in &ops.agents {
+        if agent.terminal_id.trim().is_empty() {
+            continue;
+        }
         let stamp = agent_stamp(&agent.status);
         let cwd_label = agent.cwd.replace(&home_str, "~");
         actions.push(action(
@@ -641,7 +861,6 @@ pub fn build_actions(
         }
     }
 
-    let desktop_running = snap.desktop.get("state").and_then(|v| v.as_str()) == Some("running");
     let pending = snap
         .share_sync
         .get("pendingFiles")
@@ -656,38 +875,6 @@ pub fn build_actions(
             RunSpec::CreateTask {
                 cwd: home_str.clone(),
             },
-        ),
-        action(
-            if desktop_running {
-                "Stop desktop"
-            } else {
-                "Start desktop"
-            },
-            "webtop · remote desktop",
-            if desktop_running { "BEZIG" } else { "STIL" },
-            "desktop webtop start stop",
-            RunSpec::DesktopAction(if desktop_running { "stop" } else { "start" }.into()),
-        ),
-        action(
-            "Open ops",
-            format!("joep-ops · {}", profile.label("opsApi")),
-            "STIL",
-            "open ops joep-ops herdr overzicht",
-            RunSpec::OpenUrl(profile.ops_api.clone()),
-        ),
-        action(
-            "Open dashboard (Thuis)",
-            "vault dashboard · alles in één oogopslag",
-            "STIL",
-            "open dashboard thuis vault",
-            RunSpec::OpenUrl(profile.dashboard.clone()),
-        ),
-        action(
-            "Open desktop",
-            "webtop · remote desktop",
-            "STIL",
-            "open desktop webtop",
-            RunSpec::OpenUrl(profile.desktop.clone()),
         ),
         action(
             "Open OpenCodex",
@@ -716,6 +903,19 @@ pub fn build_actions(
             "STIL",
             "toggle palette zoek overlay",
             RunSpec::TogglePalette,
+        ),
+        action(
+            "Open control-chat",
+            "devops en overzicht — directe agent-praat",
+            "STIL",
+            "control chat devops overzicht agent prompt",
+            RunSpec::FocusDomain("control".into()),
+        ),
+        task_action(
+            "Vraag control",
+            "typ je vraag en kies deze regel",
+            "control chat stuur vraag devops fleet",
+            RunSpec::SendControlChat,
         ),
     ]);
 
@@ -800,6 +1000,8 @@ pub struct Executor {
     pub profile: EndpointProfile,
     /// Laatste bekende vault-revision (expectedRevision bij accountswitch).
     pub revision: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// Zelfde snapshot/pin als het Control-canvas (palette "Vraag control").
+    pub shared: crate::state::Shared,
 }
 
 impl Executor {
@@ -812,6 +1014,19 @@ impl Executor {
                 crate::notify::notify("Gekopieerd", "Tekst staat op het klembord.", "ok");
             }
             RunSpec::OpenUrl(url) => crate::notify::open_url(url),
+            RunSpec::BrainOpen(target) => {
+                let target = target.trim();
+                if target.starts_with("http://") || target.starts_with("https://") {
+                    crate::notify::open_url(target);
+                } else if target.starts_with('/') && !target.contains('\0') {
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg("--")
+                        .arg(target)
+                        .spawn();
+                } else if !target.is_empty() {
+                    eprintln!("[warn] BrainOpen geweigerd: {target}");
+                }
+            }
             RunSpec::Refresh => self.request_refresh(),
             RunSpec::OpenOcx => {
                 let url = self.profile.opencodex_dashboard.clone().unwrap_or_else(|| {
@@ -826,7 +1041,7 @@ impl Executor {
                 let target = terminal_id.clone();
                 let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    let _ = ops_focus(&ops, &target);
+                    let _ = crate::ops_cli::ops_focus(&ops, &target);
                 });
             }
             RunSpec::SendPrompt {
@@ -929,22 +1144,11 @@ impl Executor {
                 );
             }
             RunSpec::DesktopAction(verb) => {
-                let verb = verb.clone();
-                let vault = self.vault.clone();
-                self.spawn_bg(move || {
-                    match vault.post_json(&format!("/desktop/{verb}"), &json!({})) {
-                        Ok(_) => crate::notify::notify(
-                            if verb == "start" {
-                                "Desktop gestart"
-                            } else {
-                                "Desktop gestopt"
-                            },
-                            "",
-                            "ok",
-                        ),
-                        Err(_) => crate::notify::notify("Desktop-actie lukte niet", "", "error"),
-                    }
-                });
+                // Geen lokale webtop, geen Thuis/Ploeg. ChefBar is de surface.
+                // IPC desktop * is a no-op (geen POST, geen error-toast).
+                if let Some(url) = resolve_desktop_action(verb, &self.profile.desktop) {
+                    crate::notify::open_url(&url);
+                }
             }
             RunSpec::ShareSync(kind) => {
                 let kind = kind.clone();
@@ -990,24 +1194,25 @@ impl Executor {
             RunSpec::CopySecretMeta { id } => {
                 let id = id.clone();
                 let vault = self.vault.clone();
-                self.spawn_bg(move || {
-                    match vault.post_json("/api/secrets/copy", &json!({"id": id})) {
+                self.spawn_bg(
+                    move || match vault.post_json("/secrets/copy", &json!({"id": id})) {
                         Ok(_) => crate::notify::notify(
                             "Secret gekopieerd",
                             "via vault — zichtbaar in audit-log, auto-clear",
                             "ok",
                         ),
                         Err(_) => crate::notify::notify("Kopiëren lukte niet", "", "error"),
-                    }
-                });
+                    },
+                );
             }
             RunSpec::FleetDeploy { node } => {
                 let node = node.clone();
-                let vault = self.vault.clone();
+                let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    match vault.post_json("/fleet/deploy", &json!({"node": node})) {
-                        Ok(_) => crate::notify::notify("Deploy gestart", &node, "ok"),
-                        Err(_) => crate::notify::notify("Deploy lukte niet", "", "error"),
+                    if crate::ops_cli::fleet_deploy(&ops, &node) {
+                        crate::notify::notify("Deploy gestart", &node, "ok");
+                    } else {
+                        crate::notify::notify("Deploy lukte niet", "", "error");
                     }
                 });
             }
@@ -1016,10 +1221,7 @@ impl Executor {
                 let template = template.clone();
                 let ops = self.ops.clone();
                 self.spawn_bg(move || {
-                    // Probeer via joep-ops fleet exec; fallback naar vault.
-                    let body = json!({"node": node, "template": template});
-                    let ok = ops.post_json("/api/fleet/exec", &body).is_ok();
-                    if ok {
+                    if crate::ops_cli::fleet_exec(&ops, &node, &template) {
                         crate::notify::notify(
                             "Fleet exec gestart",
                             &format!("{node}:{template}"),
@@ -1044,18 +1246,41 @@ impl Executor {
                 });
             }
             RunSpec::FocusDomain(domain) => {
-                // IPC/palette focus — no network, UI-thread safe via notify + refresh.
-                crate::notify::notify("Focus domein", domain, "ok");
+                if crate::tray::send_ui(crate::tray::UiCommand::FocusDomain(domain.clone())) {
+                    crate::notify::notify("Focus domein", domain, "ok");
+                } else {
+                    crate::notify::notify("Focus domein", "paneel nog niet klaar", "hulp");
+                }
             }
             RunSpec::TogglePalette => {
-                crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {
+                    crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+                }
             }
-            RunSpec::ToggleMute(key) => {
-                let key = key.clone();
-                self.spawn_bg(move || {
-                    let _ = crate::mutes::toggle(&key);
-                    crate::state::refresh_global();
-                });
+            RunSpec::SendControlChat => {
+                let text = query.trim();
+                if text.is_empty() {
+                    crate::notify::notify("Control", "typ eerst een vraag", "hulp");
+                    return;
+                }
+                match crate::chat::submit(&self.shared, text) {
+                    crate::chat::SubmitStatus::Sent => {
+                        crate::notify::notify("Control", "vraag verstuurd", "ok");
+                    }
+                    crate::chat::SubmitStatus::Busy => {
+                        crate::notify::notify("Control", "vorige vraag loopt nog", "hulp");
+                    }
+                    crate::chat::SubmitStatus::NoTarget => {
+                        crate::notify::notify(
+                            "Control",
+                            "geen Pi — zet CHEFBAR_CONTROL_AGENT of kies een harnas",
+                            "hulp",
+                        );
+                    }
+                    crate::chat::SubmitStatus::Empty => {
+                        crate::notify::notify("Control", "typ eerst een vraag", "hulp");
+                    }
+                }
             }
         }
     }
@@ -1076,8 +1301,9 @@ impl Executor {
     }
 }
 
-fn ops_focus(ops: &Client, target: &str) -> bool {
-    crate::ops_cli::ops_focus(ops, target)
+/// Geen lokale webtop, geen Thuis/Ploeg-split. IPC desktop start/stop is een no-op.
+pub fn resolve_desktop_action(_verb: &str, _desktop_url: &str) -> Option<String> {
+    None
 }
 
 fn urlencoding(input: &str) -> String {
@@ -1097,7 +1323,7 @@ fn urlencoding(input: &str) -> String {
 mod tests {
     use super::*;
     use crate::config::EndpointProfile;
-    use crate::models::OpsSnapshot;
+    use crate::models::{BrainChunk, BrainDigest, OpsSnapshot};
 
     fn catalogus_met(snap: &Snapshot) -> Vec<Action> {
         build_actions(
@@ -1106,6 +1332,119 @@ mod tests {
             &EndpointProfile::default(),
             Vec::new(),
         )
+    }
+
+    fn snap_met_digest() -> Snapshot {
+        Snapshot {
+            brain_digest: BrainDigest {
+                chunks: vec![
+                    BrainChunk {
+                        title: "hard constraints".into(),
+                        path: Some("/brain/hard.md".into()),
+                        ..Default::default()
+                    },
+                    BrainChunk {
+                        title: "compute ssot".into(),
+                        url: Some("https://vault.chefgroep.online/brain/compute".into()),
+                        excerpt: Some("live compute latch".into()),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn brain_search_vereist_vraagteken_prefix() {
+        let snap = snap_met_digest();
+        assert!(build_brain_search_actions(&snap, "hard").is_empty());
+        assert!(build_brain_search_actions(&snap, "?").is_empty());
+        assert_eq!(build_brain_search_actions(&snap, "?hard").len(), 1);
+    }
+
+    #[test]
+    fn brain_search_opent_pad_of_url() {
+        let snap = snap_met_digest();
+        let actions = build_brain_search_actions(&snap, "?hard");
+        assert_eq!(actions[0].run, RunSpec::BrainOpen("/brain/hard.md".into()));
+        let actions = build_brain_search_actions(&snap, "?compute");
+        assert_eq!(
+            actions[0].run,
+            RunSpec::BrainOpen("https://vault.chefgroep.online/brain/compute".into())
+        );
+    }
+
+    #[test]
+    fn brain_search_slaat_chunks_zonder_doel_over() {
+        let snap = Snapshot {
+            brain_digest: BrainDigest {
+                chunks: vec![BrainChunk {
+                    title: "geen doel".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(build_brain_search_actions(&snap, "?geen").is_empty());
+    }
+
+    #[test]
+    fn brain_search_doelloze_hits_eten_limiet_niet_op() {
+        let mut chunks: Vec<BrainChunk> = (0..8)
+            .map(|i| BrainChunk {
+                title: format!("hard leeg {i}"),
+                ..Default::default()
+            })
+            .collect();
+        chunks.push(BrainChunk {
+            title: "hard constraints".into(),
+            path: Some("/brain/hard.md".into()),
+            ..Default::default()
+        });
+        let snap = Snapshot {
+            brain_digest: BrainDigest {
+                chunks,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let actions = build_brain_search_actions(&snap, "?hard");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].run, RunSpec::BrainOpen("/brain/hard.md".into()));
+    }
+
+    #[test]
+    fn vraag_control_zit_in_catalogus() {
+        let actions = catalogus_met(&Snapshot::default());
+        let vraag = actions
+            .iter()
+            .find(|a| a.title == "Vraag control")
+            .expect("palette-actie Vraag control");
+        assert!(matches!(vraag.run, RunSpec::SendControlChat));
+    }
+
+    #[test]
+    fn geen_thuis_ploeg_desktop_split() {
+        let actions = catalogus_met(&Snapshot::default());
+        assert!(actions.iter().all(|a| {
+            !a.title.contains("Thuis")
+                && !a.title.contains("Ploeg")
+                && a.title != "Open ops"
+                && a.title != "Open desktop"
+                && a.title != "Start desktop"
+                && a.title != "Stop desktop"
+        }));
+        assert_eq!(
+            resolve_desktop_action("start", "https://desktop.chefgroep.online"),
+            None
+        );
+        assert_eq!(
+            resolve_desktop_action("stop", "https://desktop.chefgroep.online"),
+            None
+        );
     }
 
     #[test]
@@ -1198,6 +1537,14 @@ mod tests {
             template: "status".into(),
         };
         assert_eq!(f, g);
+
+        let copy = RunSpec::CopyText("super-secret-token".into());
+        assert_eq!(copy.frecency_key(), "CopyText");
+        assert!(!copy.frecency_key().contains("super-secret"));
+        assert_eq!(
+            RunSpec::CopySecretMeta { id: "sec-1".into() }.frecency_key(),
+            "CopySecretMeta:sec-1"
+        );
     }
 
     #[test]
@@ -1206,6 +1553,11 @@ mod tests {
         let profile = EndpointProfile::default();
         // Bouw met placeholder raw secrets_meta
         let mut snap_with = snap.clone();
+        snap_with.secrets_meta = vec![crate::models::SecretMeta {
+            id: "sec-1".into(),
+            title: "API key".into(),
+            ..Default::default()
+        }];
         snap_with.raw = serde_json::json!({
             "secrets_meta": [{"id": "sec-1", "title": "API key"}]
         });
@@ -1232,6 +1584,16 @@ mod tests {
         assert!(actions
             .iter()
             .any(|a| matches!(a.run, RunSpec::TogglePalette)));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a.run, RunSpec::SendControlChat)));
+        assert!(actions.iter().any(|a| matches!(
+            a.run,
+            RunSpec::FocusDomain(ref d) if d == "control"
+        )));
+        assert!(actions
+            .iter()
+            .any(|a| a.needs_text && matches!(a.run, RunSpec::SendControlChat)));
     }
 
     #[test]

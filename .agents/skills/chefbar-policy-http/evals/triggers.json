@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "policy",
+      "prompt": "EndpointPolicy",
+      "must_match_description": ["EndpointPolicy", "safe_join"]
+    },
+    {
+      "id": "ureq",
+      "prompt": "ureq redirects",
+      "must_match_description": ["ureq", "redirects(0)"]
+    },
+    {
+      "id": "auth",
+      "prompt": "get_headers",
+      "must_match_description": ["get_headers", "CHEFBAR_VAULT_TOKEN"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "palette",
+      "prompt": "gappy 500",
+      "must_not_all_match": ["RankContext", "gappy"]
+    }
+  ]
+}

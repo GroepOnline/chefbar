@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 *.log
+/.idea/
+/qodana.yaml
+.cursor/evals/last-report.json

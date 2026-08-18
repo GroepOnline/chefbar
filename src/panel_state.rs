@@ -11,13 +11,42 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 /// Dichtheid-token voor spacing in de UI.
 pub const DENSITY_COMFORTABLE: &str = "comfortable";
 pub const DENSITY_COMPACT: &str = "compact";
 
+/// Thema-keuze voor de skin (Signaal v2: light-first Devin).
+/// System-dark volgt GTK prefer-dark in `css::detect_theme`; `CHEFBAR_THEME` wint.
+pub const THEME_DARK: &str = "dark";
+pub const THEME_LIGHT: &str = "light";
+
 fn default_density() -> String {
     DENSITY_COMFORTABLE.to_string()
+}
+
+fn default_theme() -> String {
+    THEME_LIGHT.to_string()
+}
+
+static STATE_LOCK: Mutex<()> = Mutex::new(());
+static SAVE_TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn with_state_lock<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    f()
+}
+
+/// Normaliseert theme naar één van de twee toegestane waarden.
+/// Alleen expliciet `dark` blijft donker; onbekend valt terug op light-first.
+pub fn normalize_theme(raw: &str) -> String {
+    if raw.trim() == THEME_DARK {
+        THEME_DARK.to_string()
+    } else {
+        THEME_LIGHT.to_string()
+    }
 }
 
 fn is_compact(d: &str) -> bool {
@@ -61,9 +90,26 @@ pub struct PanelState {
     #[serde(default = "default_density")]
     pub density: String,
 
+    /// `light` | `dark` (Signaal v2, light-first).
+    #[serde(default = "default_theme")]
+    pub theme: String,
+
     /// Recent bezochte domeinen/groepen, MRU, capped 20.
     #[serde(default)]
     pub recent_domains: Vec<String>,
+
+    /// Control-chat pin (chefapp-herdr / w2R:p2 e.d.). Overleeft herstart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_target: Option<String>,
+
+    /// Live herdr-alias van de gepinde agent (bijv. chefapp-herdr).
+    /// Wordt gebruikt om de pin te remappen als het pane-id verhuist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_alias: Option<String>,
+
+    /// Of de control-pin actief is (combo blijft vast na restart).
+    #[serde(default)]
+    pub control_pinned: bool,
 }
 
 impl Default for PanelState {
@@ -74,7 +120,11 @@ impl Default for PanelState {
             query: None,
             drawer_open: false,
             density: default_density(),
+            theme: default_theme(),
             recent_domains: Vec::new(),
+            control_target: None,
+            control_alias: None,
+            control_pinned: false,
         }
     }
 }
@@ -97,7 +147,15 @@ impl<'de> Deserialize<'de> for PanelState {
             #[serde(default)]
             density: Option<String>,
             #[serde(default)]
+            theme: Option<String>,
+            #[serde(default)]
             recent_domains: Option<Vec<String>>,
+            #[serde(default)]
+            control_target: Option<String>,
+            #[serde(default)]
+            control_alias: Option<String>,
+            #[serde(default)]
+            control_pinned: Option<bool>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
@@ -105,6 +163,7 @@ impl<'de> Deserialize<'de> for PanelState {
 
         let density_raw = raw.density.unwrap_or_else(default_density);
         let density = normalize_density(&density_raw);
+        let theme = normalize_theme(&raw.theme.unwrap_or_else(default_theme));
 
         let mut recent = raw.recent_domains.unwrap_or_default();
         // deduplicate behoudend volgorde, cap 20
@@ -126,7 +185,11 @@ impl<'de> Deserialize<'de> for PanelState {
             query: raw.query.filter(|q| !q.trim().is_empty()),
             drawer_open: raw.drawer_open.unwrap_or(false),
             density,
+            theme,
             recent_domains: recent,
+            control_target: raw.control_target.filter(|t| !t.trim().is_empty()),
+            control_alias: raw.control_alias.filter(|t| !t.trim().is_empty()),
+            control_pinned: raw.control_pinned.unwrap_or(false),
         })
     }
 }
@@ -161,6 +224,42 @@ impl PanelState {
     }
 }
 
+/// Persist de control-chat pin zonder andere panel-velden te verliezen.
+pub fn persist_control_pin(target: Option<&str>, pinned: bool, alias: Option<&str>) -> bool {
+    persist_control_pin_to(&state_path(), target, pinned, alias)
+}
+
+/// Pad-expliciete kern — testbaar zonder env.
+pub fn persist_control_pin_to(
+    path: &std::path::Path,
+    target: Option<&str>,
+    pinned: bool,
+    alias: Option<&str>,
+) -> bool {
+    mutate_to(path, |state| {
+        let target = target.filter(|t| !t.trim().is_empty());
+        let alias = alias.filter(|t| !t.trim().is_empty());
+        state.control_target = target.map(str::to_string);
+        state.control_alias = alias.map(str::to_string);
+        state.control_pinned = pinned && state.control_target.is_some();
+    })
+}
+
+/// Load-modify-save under the process-wide panel-state lock.
+pub fn mutate(f: impl FnOnce(&mut PanelState)) -> bool {
+    mutate_to(&state_path(), f)
+}
+
+/// Pad-expliciete load-modify-save. Lock spans load and save so pin and
+/// navigation writers cannot interleave.
+pub fn mutate_to(path: &std::path::Path, f: impl FnOnce(&mut PanelState)) -> bool {
+    with_state_lock(|| {
+        let mut state = load_from_unlocked(path);
+        f(&mut state);
+        save_to_unlocked(path, &state)
+    })
+}
+
 /// Pad naar het state-bestand; `CHEFBAR_PANEL_STATE` wint (tests, warden-laag).
 pub fn state_path() -> PathBuf {
     match std::env::var("CHEFBAR_PANEL_STATE") {
@@ -183,6 +282,10 @@ pub fn save(state: &PanelState) -> bool {
 
 /// Pad-expliciete kern van `load` — testbaar zonder env.
 pub fn load_from(path: &std::path::Path) -> PanelState {
+    with_state_lock(|| load_from_unlocked(path))
+}
+
+fn load_from_unlocked(path: &std::path::Path) -> PanelState {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -192,6 +295,10 @@ pub fn load_from(path: &std::path::Path) -> PanelState {
 /// Pad-expliciete kern van `save` — testbaar zonder env.
 /// Normaliseert verbose velden en schrijft alleen `active_group` (canoniek).
 pub fn save_to(path: &std::path::Path, state: &PanelState) -> bool {
+    with_state_lock(|| save_to_unlocked(path, state))
+}
+
+fn save_to_unlocked(path: &std::path::Path, state: &PanelState) -> bool {
     if let Some(parent) = path.parent() {
         if std::fs::create_dir_all(parent).is_err() {
             return false;
@@ -200,6 +307,7 @@ pub fn save_to(path: &std::path::Path, state: &PanelState) -> bool {
     // Zorg dat density genormaliseerd is en recent_domains gecapped.
     let mut normalized = state.clone();
     normalized.density = normalize_density(&normalized.density);
+    normalized.theme = normalize_theme(&normalized.theme);
     if normalized.recent_domains.len() > RECENT_DOMAINS_CAP {
         normalized.recent_domains.truncate(RECENT_DOMAINS_CAP);
     }
@@ -209,11 +317,25 @@ pub fn save_to(path: &std::path::Path, state: &PanelState) -> bool {
     let Ok(json) = serde_json::to_string_pretty(&normalized) else {
         return false;
     };
-    let tmp = path.with_extension("json.tmp");
+    let seq = SAVE_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp_name = format!(
+        "{}.{}.{}.tmp",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("panel-state.json"),
+        std::process::id(),
+        seq
+    );
+    let tmp = path.with_file_name(tmp_name);
     if std::fs::write(&tmp, json).is_err() {
+        let _ = std::fs::remove_file(&tmp);
         return false;
     }
-    std::fs::rename(&tmp, path).is_ok()
+    let ok = std::fs::rename(&tmp, path).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    ok
 }
 
 #[cfg(test)]
@@ -235,7 +357,11 @@ mod tests {
             query: Some("fleet".into()),
             drawer_open: false,
             density: DENSITY_COMFORTABLE.into(),
+            theme: THEME_DARK.into(),
             recent_domains: vec!["fleet".into()],
+            control_target: Some("w2R:p2".into()),
+            control_alias: Some("chefapp-herdr".into()),
+            control_pinned: true,
         };
         assert!(save_to(&path, &state));
         assert_eq!(load_from(&path), state);
@@ -312,6 +438,35 @@ mod tests {
     }
 
     #[test]
+    fn theme_normalizes_en_persists() {
+        let path = temp_path("theme");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"theme":"light"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_DARK);
+        std::fs::write(&path, r#"{"theme":"onzin"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        let state = PanelState {
+            theme: THEME_DARK.into(),
+            ..Default::default()
+        };
+        assert!(save_to(&path, &state));
+        assert_eq!(load_from(&path).theme, THEME_DARK);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn ontbrekende_theme_is_light_first() {
+        let path = temp_path("theme-default");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"active_group":"fleet"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        assert_eq!(PanelState::default().theme, THEME_LIGHT);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
     fn drawer_open_persists() {
         let path = temp_path("drawer");
         let state = PanelState {
@@ -320,6 +475,78 @@ mod tests {
         };
         assert!(save_to(&path, &state));
         assert!(load_from(&path).drawer_open);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn control_pin_roundtrip_behoudt_andere_velden() {
+        let path = temp_path("control-pin");
+        let state = PanelState {
+            active_group: Some("fleet".into()),
+            ..Default::default()
+        };
+        assert!(save_to(&path, &state));
+        assert!(persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
+        let loaded = load_from(&path);
+        assert_eq!(loaded.control_target.as_deref(), Some("w2R:p2"));
+        assert_eq!(loaded.control_alias.as_deref(), Some("chefapp-herdr"));
+        assert!(loaded.control_pinned);
+        assert_eq!(loaded.active_group.as_deref(), Some("fleet"));
+        // unpin
+        assert!(persist_control_pin_to(&path, None, false, None));
+        let loaded = load_from(&path);
+        assert!(!loaded.control_pinned);
+        assert_eq!(loaded.control_target, None);
+        assert_eq!(loaded.control_alias, None);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn oude_json_zonder_control_velden_werkt() {
+        let path = temp_path("compat-control");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"active_group":"fleet","query":"x"}"#).unwrap();
+        let loaded = load_from(&path);
+        assert_eq!(loaded.control_target, None);
+        assert_eq!(loaded.control_alias, None);
+        assert!(!loaded.control_pinned);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn lege_persist_target_zet_pin_uit() {
+        let path = temp_path("lege-target");
+        assert!(persist_control_pin_to(&path, Some("   "), true, None));
+        let loaded = load_from(&path);
+        assert_eq!(loaded.control_target, None);
+        assert!(!loaded.control_pinned);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn mutate_nav_keeps_control_pin() {
+        let path = temp_path("mutate-nav-pin");
+        assert!(persist_control_pin_to(
+            &path,
+            Some("w2R:p2"),
+            true,
+            Some("chefapp-herdr")
+        ));
+        assert!(mutate_to(&path, |state| {
+            state.active_group = Some("fleet".into());
+            state.query = Some("jan".into());
+        }));
+        let loaded = load_from(&path);
+        assert_eq!(loaded.active_group.as_deref(), Some("fleet"));
+        assert_eq!(loaded.query.as_deref(), Some("jan"));
+        assert_eq!(loaded.control_target.as_deref(), Some("w2R:p2"));
+        assert_eq!(loaded.control_alias.as_deref(), Some("chefapp-herdr"));
+        assert!(loaded.control_pinned);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

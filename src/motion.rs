@@ -9,11 +9,21 @@ use gtk::prelude::*;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-pub const PRESS_MS: u32 = 140;
-pub const HOVER_MS: u32 = 140;
-pub const PANEL_MS: u32 = 280;
-pub const DRAWER_MS: u32 = 160;
-pub const OVERLAY_MS: u32 = 100;
+/// Devin v2 duur-ladder (`tokens.css`): `--dur-fast` / `--dur-med` /
+/// `--dur-slow`. Elke timing hieronder moet één van deze drie zijn — geen
+/// tussenwaarden, anders loopt de chrome uit de pas met de designfile.
+pub const DUR_FAST_MS: u32 = 140;
+pub const DUR_MED_MS: u32 = 280;
+pub const DUR_SLOW_MS: u32 = 420;
+
+pub const PRESS_MS: u32 = DUR_FAST_MS;
+pub const HOVER_MS: u32 = DUR_FAST_MS;
+pub const PANEL_MS: u32 = DUR_MED_MS;
+/// Drawer is een pane-slide en volgt dus dezelfde duur als het paneel
+/// (was 160ms — naast de ladder).
+pub const DRAWER_MS: u32 = DUR_MED_MS;
+/// Palette-overlay is een reveal, niet een pane (was 100ms — naast de ladder).
+pub const OVERLAY_MS: u32 = DUR_FAST_MS;
 const FADE_STEPS: u32 = 8;
 
 /// Per-window animation generation: elke start-fade bumped de token zodat
@@ -115,7 +125,7 @@ pub fn fade_out(window: &gtk::Window, duration_ms: u32) {
     );
 }
 
-/// Slide drawer in/uit (160ms). Wrapper om fade_in/fade_out met DRAWER_MS.
+/// Slide drawer in/uit (`DRAWER_MS`). Wrapper om fade_in/fade_out.
 /// TODO: echte translate-animatie als GTK reveal-infrastructuur beschikbaar is;
 /// voor nu fade — compileerbaar en visueel consistent met panel.
 pub fn slide_drawer(window: &gtk::Window, open: bool) {
@@ -126,7 +136,7 @@ pub fn slide_drawer(window: &gtk::Window, open: bool) {
     }
 }
 
-/// Fade palette-overlay in/uit (100ms). Wrapper om fade_in/fade_out met OVERLAY_MS.
+/// Fade palette-overlay in/uit (`OVERLAY_MS`). Wrapper om fade_in/fade_out.
 pub fn fade_overlay(window: &gtk::Window, show: bool) {
     if show {
         fade_in(window, OVERLAY_MS);
@@ -145,6 +155,28 @@ pub fn fill_width_px(frac: f64, track_width: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timings_blijven_op_de_devin_ladder() {
+        let ladder = [DUR_FAST_MS, DUR_MED_MS, DUR_SLOW_MS];
+        for (naam, ms) in [
+            ("PRESS_MS", PRESS_MS),
+            ("HOVER_MS", HOVER_MS),
+            ("PANEL_MS", PANEL_MS),
+            ("DRAWER_MS", DRAWER_MS),
+            ("OVERLAY_MS", OVERLAY_MS),
+        ] {
+            assert!(
+                ladder.contains(&ms),
+                "{naam} = {ms}ms staat niet op de ladder 140/280/420"
+            );
+        }
+    }
+
+    #[test]
+    fn ladder_matcht_tokens_css() {
+        assert_eq!((DUR_FAST_MS, DUR_MED_MS, DUR_SLOW_MS), (140, 280, 420));
+    }
 
     #[test]
     fn fill_width_clamps() {

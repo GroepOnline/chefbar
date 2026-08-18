@@ -1,0 +1,51 @@
+{
+  "skill_name": "chefbar-rust",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add tokio so we can poll Linear without blocking GTK.",
+      "expected_output": "Reject tokio; Linear already ticks on the actor. GTK must not HTTP.",
+      "expectations": [
+        "Does not add tokio to Cargo.toml",
+        "Points at LINEAR_POLL_MS or state.rs actor",
+        "Keeps ureq + std::thread"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Write tests for palette ranking.",
+      "expected_output": "Inline #[cfg(test)] in palette.rs following exact_phrase_wins / prefix_words_rank_above_gappy.",
+      "expectations": [
+        "Uses #[cfg(test)] in the module, not tests/ + mockall",
+        "Asserts tier order contains > prefix > gappy or boost-within-tier"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Match RunSpec with a wildcard so we don't miss compile when adding variants.",
+      "expected_output": "Refuse _ arm; exhaustive match.",
+      "expectations": [
+        "Requires listing every RunSpec variant",
+        "Mentions Executor and/or build_actions"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add mockall to unit-test Executor without HTTP.",
+      "expected_output": "Refuse mockall; extract a pure builder or assert RunSpec.",
+      "expectations": [
+        "Does not add mockall",
+        "Keeps #[cfg(test)] inline"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "unwrap the doctor fingerprint parse.",
+      "expected_output": "No unwrap in production; skip/warn on missing token.",
+      "expectations": [
+        "Forbids unwrap/expect on that path",
+        "Mentions sha256 fingerprint"
+      ]
+    }
+  ]
+}

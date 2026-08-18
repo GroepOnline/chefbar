@@ -1,16 +1,12 @@
 //! Detail-drawer voor het ChefApp-panel: slide + focus-trap + Esc.
-//!
-//! Rechts uitklappende drawer (300 px). In Fase 0 een compileerbare shell
-//! die via `GtkRevealer` 160 ms slide biedt en focus-trap + Esc laat Panel
-//! afhandelen. Inhoud (velden + acties-rij) wordt door `panel::mod` gevuld
-//! zodra een card geselecteerd is.
 
 use gtk::prelude::*;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use crate::motion::DRAWER_MS;
+
 pub const DRAWER_WIDTH: i32 = 300;
-pub const DRAWER_SLIDE_MS: u32 = 160;
 
 /// Eén drawer-instantie, gekoppeld als derde kolom naast de main-canvas.
 pub struct Drawer {
@@ -19,6 +15,7 @@ pub struct Drawer {
     title: gtk::Label,
     meta: gtk::Label,
     actions: gtk::Box,
+    streak: gtk::Box,
     open: Rc<Cell<bool>>,
 }
 
@@ -26,7 +23,7 @@ impl Drawer {
     pub fn new() -> Self {
         let revealer = gtk::Revealer::new();
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideLeft);
-        revealer.set_transition_duration(DRAWER_SLIDE_MS);
+        revealer.set_transition_duration(DRAWER_MS);
         revealer.set_reveal_child(false);
         revealer.set_halign(gtk::Align::End);
         revealer.set_valign(gtk::Align::Fill);
@@ -41,7 +38,13 @@ impl Drawer {
         header.set_margin_top(12);
         header.set_margin_start(12);
         header.set_margin_end(12);
-        let title = gtk::Label::new(Some("\u{2014}"));
+        // v2 worked-row-streep: kleur volgt de stamp van de actie.
+        let streak = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        streak.set_size_request(2, -1);
+        streak.set_valign(gtk::Align::Fill);
+        streak.style_context().add_class("chefbar-signature");
+        header.pack_start(&streak, false, false, 0);
+        let title = gtk::Label::new(Some("Detail"));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
@@ -70,8 +73,14 @@ impl Drawer {
         actions.style_context().add_class("chefbar-drawer-actions");
         actions.set_margin_start(12);
         actions.set_margin_end(12);
-        actions.set_margin_bottom(12);
+        actions.set_margin_bottom(6);
         inner.pack_start(&actions, false, false, 0);
+
+        let hint = gtk::Label::new(Some("enter voert uit \u{00b7} esc sluit"));
+        hint.set_halign(gtk::Align::Start);
+        hint.set_xalign(0.0);
+        hint.style_context().add_class("chefbar-drawer-hint");
+        inner.pack_start(&hint, false, false, 0);
 
         let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         inner.pack_start(&spacer, true, true, 0);
@@ -92,24 +101,63 @@ impl Drawer {
             title,
             meta,
             actions,
+            streak,
             open,
         }
     }
 
-    /// Toon de drawer voor een action (titel + meta), met slide-animatie.
     pub fn show_for(&self, action: &crate::palette::Action) {
+        self.show_for_with(action, || {});
+    }
+
+    pub fn show_for_with<F>(&self, action: &crate::palette::Action, on_activate: F)
+    where
+        F: Fn() + 'static,
+    {
         self.title.set_text(&action.title);
         self.meta.set_text(&action.meta);
+        // Streak-kleur volgt de stamp (KLAAR=groen, HULP=amber, FOUT=rood,
+        // BEZIG=accent, rest neutraal).
+        for cls in ["ok", "warn", "error", "info", "running"] {
+            self.streak.style_context().remove_class(cls);
+        }
+        let streak_cls = match action.stamp.as_str() {
+            "KLAAR" => "ok",
+            "HULP" => "warn",
+            "FOUT" | "LIMIET" => "error",
+            "BEZIG" | "TAAK" => "info",
+            _ => "",
+        };
+        if !streak_cls.is_empty() {
+            self.streak.style_context().add_class(streak_cls);
+        }
         for child in self.actions.children() {
             self.actions.remove(&child);
         }
-        self.title.set_can_focus(true);
-        self.title.grab_focus();
+        let execute = gtk::Button::with_label("Uitvoeren");
+        execute.style_context().add_class("chefbar-btn");
+        execute.style_context().add_class("chefbar-primary");
+        execute.connect_clicked(move |btn| {
+            btn.set_sensitive(false);
+            on_activate();
+        });
+        self.actions.pack_start(&execute, false, false, 0);
+        let cancel = gtk::Button::with_label("Annuleren");
+        cancel.style_context().add_class("chefbar-btn");
+        let revealer_cancel = self.container.clone();
+        let open_cancel = self.open.clone();
+        cancel.connect_clicked(move |_| {
+            slide_drawer(&revealer_cancel, false);
+            open_cancel.set(false);
+        });
+        self.actions.pack_end(&cancel, false, false, 0);
+        self.actions.show_all();
+        // Enter voert uit (focused button), Esc zit al op het window.
+        execute.grab_focus();
         slide_drawer(&self.container, true);
         self.open.set(true);
     }
 
-    /// Verberg de drawer.
     pub fn hide(&self) {
         if !self.open.get() {
             return;

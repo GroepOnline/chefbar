@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "sock",
+      "prompt": "chefbar.sock",
+      "must_match_description": ["chefbar.sock", "UiCommand"]
+    },
+    {
+      "id": "doctor",
+      "prompt": "doctor exit",
+      "must_match_description": ["doctor.rs", "sha256"]
+    },
+    {
+      "id": "forcestate",
+      "prompt": "ForceState",
+      "must_match_description": ["ForceState", "parse_command"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "fuzzy",
+      "prompt": "gappy ranking",
+      "must_not_all_match": ["gappy 500", "RankContext"]
+    }
+  ]
+}

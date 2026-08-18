@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "runspec",
+      "prompt": "RunSpec",
+      "must_match_description": ["RunSpec", "Executor", "actions.rs"]
+    },
+    {
+      "id": "tiers",
+      "prompt": "contains 1000",
+      "must_match_description": ["contains 1000", "prefix 700", "gappy 500"]
+    },
+    {
+      "id": "rankctx",
+      "prompt": "RankContext",
+      "must_match_description": ["RankContext", "harness.rs"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "css",
+      "prompt": "inset css",
+      "must_not_all_match": ["inset", "860x880"]
+    }
+  ]
+}

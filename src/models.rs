@@ -3,6 +3,7 @@
 //! Parsing blijft tolerant: losse API-payloads worden genormaliseerd naar deze
 //! structs; elke misser degradeert naar een lege/neutrale waarde, nooit panic.
 
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -571,6 +572,8 @@ pub fn build_fleet(fleet_payload: Option<&Value>) -> FleetInfo {
 pub struct HerdrAgent {
     pub terminal_id: String,
     pub name: String,
+    /// herdr-pane "name" (bijv. chefapp-herdr) — apart van het agent-kind.
+    pub alias: String,
     pub status: String, // working | idle | blocked | unknown
     pub workspace: String,
     pub workspace_id: String,
@@ -608,6 +611,11 @@ pub fn build_ops_snapshot(data: Option<&Value>) -> OpsSnapshot {
                     .get("agent")
                     .and_then(|v| v.as_str())
                     .unwrap_or("agent")
+                    .to_string(),
+                alias: a
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
                     .to_string(),
                 status,
                 workspace: a
@@ -752,6 +760,14 @@ pub struct ObsSummary {
     pub status: String,
     pub errors: Vec<String>,
     pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JcodeMemoryStatus {
+    pub online: bool,
+    pub host: String,
+    pub bind: String,
+    pub status: String,
 }
 
 // --- tolerant builders (Value -> structs, misser = Default) ---
@@ -1108,6 +1124,58 @@ pub fn iso_now() -> String {
     now_iso8601()
 }
 
+/// Per-bron pollresultaat: ok-flag voor Sync + compacte chip voor de statuslijn.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PollHealth {
+    pub ok: bool,
+    /// Compact chip: `"ok"`, HTTP-code (`"302"`), `"offline"`, `"gedeeltelijk"`, …
+    pub chip: String,
+}
+
+impl PollHealth {
+    pub fn ok() -> Self {
+        Self {
+            ok: true,
+            chip: "ok".into(),
+        }
+    }
+
+    pub fn fail(chip: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            chip: chip.into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Brain digest (D10) — read-only Joep Brain; NIET UDO Project Brain
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainChunk {
+    pub id: Option<String>,
+    pub title: String,
+    pub path: Option<String>,
+    pub url: Option<String>,
+    pub excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct BrainDigest {
+    pub source: Option<String>,
+    pub generated_at: Option<String>,
+    pub chunks: Vec<BrainChunk>,
+}
+
+/// Tolerant: ontbrekende sectie / foute velden → lege digest, geen error.
+/// Leeg = de zone blijft verborgen in de UI.
+pub fn parse_brain_digest(value: &Value) -> BrainDigest {
+    serde_json::from_value::<BrainDigest>(value.clone()).unwrap_or_default()
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot (één consistent beeld voor de hele app)
 // ---------------------------------------------------------------------------
@@ -1142,6 +1210,11 @@ pub struct Snapshot {
     pub kater_status: KaterStatus,
     pub observability: ObsSummary,
     pub last_poll_at: HashMap<String, String>,
+    /// Per bron: ok + statuslijn-chip. Ontbreekt = nog nooit gepold.
+    pub last_poll: HashMap<String, PollHealth>,
+    pub brain: crate::vault_bridge::BrainResponse,
+    pub jcode_memory: JcodeMemoryStatus,
+    pub brain_digest: BrainDigest,
 }
 
 impl Snapshot {
@@ -1162,6 +1235,51 @@ impl Snapshot {
             return format!("{}min geleden", elapsed / 60);
         }
         format!("{}u geleden", elapsed / 3600)
+    }
+
+    /// W4 statuslijn-chip: `"laatste poll 4s geleden · vault ok · ops 302"`.
+    pub fn poll_statuslijn(&self) -> String {
+        format!(
+            "{} · {} · {}",
+            self.poll_age_label(),
+            self.endpoint_chip("vault"),
+            self.endpoint_chip("ops")
+        )
+    }
+
+    fn poll_age_label(&self) -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        if self.fetched_at_unix == 0 {
+            return "laatste poll —".to_string();
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let elapsed = now.max(self.fetched_at_unix) - self.fetched_at_unix;
+        if elapsed < 60 {
+            return format!("laatste poll {elapsed}s geleden");
+        }
+        if elapsed < 3600 {
+            return format!("laatste poll {}min geleden", elapsed / 60);
+        }
+        format!("laatste poll {}u geleden", elapsed / 3600)
+    }
+
+    fn endpoint_chip(&self, key: &str) -> String {
+        if let Some(health) = self.last_poll.get(key) {
+            return format!("{key} {}", health.chip);
+        }
+        if key == "vault" {
+            return match self.error.as_deref() {
+                None if self.fetched_at_unix > 0 => "vault ok".to_string(),
+                Some("vault offline") => "vault offline".to_string(),
+                Some("vault decode") => "vault decode".to_string(),
+                Some(_) => "vault gedeeltelijk".to_string(),
+                None => "vault —".to_string(),
+            };
+        }
+        format!("{key} —")
     }
 
     /// Tray-state per de statuslijn-spec: offline > fout > hulp > bezig > stil.
@@ -1579,6 +1697,31 @@ mod chefapp_tolerant_tests {
     }
 
     #[test]
+    fn brain_digest_tolerant_en_leeg_is_verborgen() {
+        // ontbrekende sectie / null / onbekende velden → lege digest (zone verborgen)
+        assert!(parse_brain_digest(&json!(null)).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({})).chunks.is_empty());
+        assert!(parse_brain_digest(&json!({"onbekend": true}))
+            .chunks
+            .is_empty());
+        // typed, Default: velden mogen ontbreken per chunk
+        let v = json!({
+            "chunks": [
+                {"title": "hard constraints", "path": "/brain/hard.md"},
+                {"title": "compute", "url": "https://x/b"}
+            ]
+        });
+        let digest = parse_brain_digest(&v);
+        assert_eq!(digest.chunks.len(), 2);
+        assert_eq!(digest.chunks[0].title, "hard constraints");
+        assert_eq!(digest.chunks[0].path.as_deref(), Some("/brain/hard.md"));
+        assert_eq!(digest.chunks[1].url.as_deref(), Some("https://x/b"));
+        // snapshot-veld bestaat en is Default
+        let snap = Snapshot::default();
+        assert!(snap.brain_digest.chunks.is_empty());
+    }
+
+    #[test]
     fn obs_summary_default_ok_when_no_errors() {
         let s = build_obs_summary(Some(&json!({})));
         assert!(s.ok);
@@ -1603,8 +1746,38 @@ mod chefapp_tolerant_tests {
         assert!(snap.vault_accounts.is_empty());
         assert!(snap.linear_issues.is_empty());
         assert!(snap.last_poll_at.is_empty());
+        assert!(snap.last_poll.is_empty());
         // tolerant builders should not panic on garbage
         let _ = build_secrets_meta(Some(&json!("garbage")));
         let _ = build_crm_deals(Some(&json!(123)));
+    }
+
+    #[test]
+    fn poll_statuslijn_vault_ok_ops_http() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let mut snap = Snapshot {
+            fetched_at_unix: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+                - 4,
+            ..Default::default()
+        };
+        snap.last_poll.insert("vault".into(), PollHealth::ok());
+        snap.last_poll.insert("ops".into(), PollHealth::fail("302"));
+        let line = snap.poll_statuslijn();
+        assert!(line.contains("vault ok"), "expected vault ok in {line}");
+        assert!(line.contains("ops 302"), "expected ops 302 in {line}");
+        assert!(line.contains("laatste poll"), "expected poll age in {line}");
+        assert!(
+            line.contains("s geleden"),
+            "expected seconds chip in {line}"
+        );
+    }
+
+    #[test]
+    fn poll_statuslijn_never_polled() {
+        let snap = Snapshot::default();
+        assert_eq!(snap.poll_statuslijn(), "laatste poll — · vault — · ops —");
     }
 }

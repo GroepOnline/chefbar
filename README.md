@@ -1,3 +1,26 @@
+
+## ChefApp 5.0 — mission control
+
+ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
+**Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
+Data blijft offline-tolerant en freshness-first; writes lopen uitsluitend via policy- en audit-gecontroleerde acties.
+
+Elk domein is een eigen operate-surface (KPI, buckets, typed rijen) uit de gedeelde snapshot — geen gekopieerde Acties-lijst. Idle toont het domein eerst, met compacte Doen-chips eronder; zoeken toont treffers. De gepinde footer draagt live counts plus toggles voor **dichtheid** (Rustig/Compact) en **thema** (Donker/Licht, live skin-wissel). Alle UI volgt de Devin v2-taal (`GroepOnline/design-system`): warm basalt, hairlines, één accent, 2px-statusstreak, geen spinners/emoji/gradients.
+
+Detail: [plan-superapp-ui.md](docs/plan-superapp-ui.md) (lane-contract), [plan-chefapp-5.0.md](docs/plan-chefapp-5.0.md) (campagne) en [chefapp-qa.md](docs/chefapp-qa.md) (acceptatie).
+
+### Lane-G tooling
+
+Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:
+
+```bash
+# op chef-runner-01-1, nadat target/release/chefbar bestaat
+scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain
+scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
+```
+
+De CI houdt `cargo fmt` en `cargo clippy --all-targets -- -D warnings` als harde gates; visual shots en screenshot-diffs zijn warning-only. Zie [het 5.0-plan](docs/plan-chefapp-5.0.md) en de [QA-checklist](docs/chefapp-qa.md).
+
 # ChefBar 3.1
 
 Mission control aan je menubalk. Eén venster, één actor, alle harnassen.
@@ -143,17 +166,37 @@ IPC-socket:  $XDG_RUNTIME_DIR/chefbar.sock (0600)
 
 Logs: `journalctl --user -u chefbar.service -f`
 
+## Control-chat
+
+De control-chat (devops/fleet-vragen) stuurt naar een live Herdr-Pi. Default
+is de beste idle Pi; `jcode` is geheugen (context in de prompt, nooit een
+chat-doel). De werkende visual ChefApp-lane is gereserveerd en wordt
+overgeslagen; een idle Pi op die checkout blijft gewoon kiesbaar.
+
+Handmatige target (pane of agent-id), zelfde volgorde als het Control-canvas
+en de palette-actie **Vraag control**: pin (overleeft herstart) > env > beste
+idle Pi.
+
+```bash
+CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
+# of in de service-unit: Environment=CHEFBAR_CONTROL_AGENT=w2R:p2
+# alternatief: CHEFBAR_CONTROL_PANE (zelfde rol)
+```
+
 ## Development
 
-ChefBar bouwt niet lokaal op de laptop. CI is notify-first en draait op de self-hosted runner. Zie `.github/workflows/ci.yml`.
+ChefBar bouwt niet lokaal op de laptop. CI is notify-first: full lane op self-hosted GHA (`.github/workflows/ci.yml`); optionele snelle Rust-lane op Buildkite (`.buildkite/`, niet required).
 
 ```yaml
-runs-on: [self-hosted, Linux, X64, company-control]
+# PR → pr-isolated; push/main → heavy (niet alleen company-control)
+runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
 steps:
   - cargo test --all-targets
   - cargo build --release
   - upload artifact: target/release/chefbar
 ```
+
+Cursor Cloud Agents bootstrap via `.cursor/environment.json` (`install` + `start`): toolchain-updates en de Chrome-wrapper zitten daar, niet in een handmatige `apt`/`bun`-ronde. Daytona nood-runner en Cloudflare browser-kit notes: [docs/cloud-agent.md](docs/cloud-agent.md).
 
 Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rustup` zijn fail-fast stubs die naar de runner verwijzen (zie `~/AGENTS.md`). Build/test altijd op de runner:
 
@@ -228,6 +271,22 @@ Docs: [plan-full-chefapp.md](docs/plan-full-chefapp.md) (SSOT, requirement atlas
 QA: `scripts/visual-shot.sh` (panel/palette/drawer/density, Xvfb + accent-assert) · `shellcheck` · `cargo fmt/clippy/test` op runner.
 
 Scope blijft strak. Geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
+
+## Agent skills en workers
+
+Cursor-agents in deze repo krijgen ChefBar-eigen skills, file-disjoint subagents en een graph-loop (plus geselecteerde ecosysteem-skills via `npx skills` / [find-skills](https://www.skills.sh/vercel-labs/skills/find-skills)).
+
+- Ingang: [`AGENTS.md`](AGENTS.md)
+- Catalogus (chains, Kater-koppeling, workers): [`docs/agent-harness.md`](docs/agent-harness.md)
+- Slash: `/chefbar-graph`, `/chefbar-review`, `/find-skills`, `/chefbar-new-skill`
+
+Rust-skills uit het ecosysteem (`rust-best-practices`, `rust-patterns`, `rust-testing`) staan onder `.agents/skills/`. ChefBar blijft **sync** (geen tokio): de lokale skill `chefbar-rust` wint.
+
+Harness-score (deterministisch):
+
+```bash
+node scripts/agent-bench.mjs
+```
 
 ## Licentie
 

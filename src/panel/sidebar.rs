@@ -1,19 +1,74 @@
 //! Sidebar voor het ChefApp-panel (240 px, groepen, dots).
 //!
-//! Eén plek voor de navigatie-kolom: titel, nav-knoppen en status-footer.
-//! Lane C split uit de 1504 r monoliet; gedrag identiek, alleen locatie
-//! verschoven. Gangbare harnassen blijven `fleet / commerce / eval / sync`
-//! tot Lane B de 9 domein-kinds levert.
+//! Canonieke 5.0-navigatie: 16 live-domeinen + compat-ids `eval`/`sync`.
+//! Groepen komen uit `HarnessKind::group()`; de scroller houdt de kolom
+//! binnen 880 px zonder een tweede venster.
 
 use gtk::prelude::*;
 
+use crate::harness::{HarnessGroup, HarnessKind};
+
 pub const SIDEBAR_WIDTH: i32 = 240;
 
-/// Nav-ids en labels zoals in de monoliet; Lane B vervangt dit later door
-/// `HarnessKind::all()` + `group()` zonder API-break (deze consts blijven
-/// bestaan als fallback).
-pub const NAV_IDS: &[&str] = &["fleet", "commerce", "eval", "sync"];
-pub const NAV_LABELS: &[&str] = &["Fleet", "Commerce", "Evaluatie", "Sync"];
+/// Linkerrail van de sidebar. Nav-labels landen op 20px: 8 (nav_box) plus
+/// 2 (border-left) plus 10 (padding). Titel en footer volgen diezelfde rail
+/// zodat er één optische kantlijn is in plaats van drie.
+const RAIL_START: i32 = 20;
+/// Rechter-inzet, gelijk aan de 16px van de header-padding.
+const RAIL_END: i32 = 16;
+
+/// Canonieke nav-ids (16 domeinen + eval/sync compat), gegroepeerd per
+/// HarnessGroup zodat de hairlines in de sidebar schone secties vormen.
+pub const NAV_IDS: &[&str] = &[
+    "inbox",
+    "tasks",
+    "linear",
+    "fleet",
+    "herdr",
+    "control",
+    "containers",
+    "vault",
+    "commerce",
+    "crm",
+    "share",
+    "clipboard",
+    "desktop",
+    "sync",
+    "secrets",
+    "kater",
+    "health",
+    "eval",
+];
+pub const NAV_LABELS: &[&str] = &[
+    "Inbox",
+    "Taken",
+    "Linear",
+    "Fleet",
+    "Herdr",
+    "Control",
+    "Containers",
+    "Vault",
+    "Accounts",
+    "CRM",
+    "Share",
+    "Klembord",
+    "Bureaublad",
+    "Sync",
+    "Sleutels",
+    "Kater",
+    "Gezondheid",
+    "Evaluatie",
+];
+
+/// Statische label voor een nav-id (for nav-count suffixes); onbekend → leeg.
+pub fn label_for(id: &str) -> &'static str {
+    NAV_IDS
+        .iter()
+        .zip(NAV_LABELS.iter())
+        .find(|(i, _)| **i == id)
+        .map(|(_, l)| *l)
+        .unwrap_or("")
+}
 
 /// Bouwt de volledige sidebar en geeft `(sidebar_container, nav_buttons)` terug.
 ///
@@ -28,29 +83,57 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     // App-titel
     let title_wrap = gtk::Box::new(gtk::Orientation::Vertical, 2);
     title_wrap.set_margin_top(14);
-    title_wrap.set_margin_start(14);
-    title_wrap.set_margin_end(14);
+    title_wrap.set_margin_start(RAIL_START);
+    title_wrap.set_margin_end(RAIL_END);
     title_wrap.set_margin_bottom(10);
     let title = gtk::Label::new(Some("ChefBar"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.style_context().add_class("chefbar-sidebar-title");
+    // Zelfde v2-heading tracking als de paneeltitel, op 14px.
+    let title_attrs = pango::AttrList::new();
+    let tracking = super::header::heading_tracking_units(14.0);
+    title_attrs.insert(pango::AttrInt::new_letter_spacing(tracking));
+    title.set_attributes(Some(&title_attrs));
     title_wrap.pack_start(&title, false, false, 0);
-    let sub = gtk::Label::new(Some("agentische assistent"));
+    let sub = gtk::Label::new(Some("ChefGroep"));
     sub.set_halign(gtk::Align::Start);
     sub.set_xalign(0.0);
     sub.style_context().add_class("chefbar-sidebar-sub");
     title_wrap.pack_start(&sub, false, false, 0);
     sidebar.pack_start(&title_wrap, false, false, 0);
 
-    // Nav-lijst
-    let nav_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let nav_scroller = gtk::ScrolledWindow::new(gtk::Adjustment::NONE, gtk::Adjustment::NONE);
+    nav_scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    nav_scroller.set_vexpand(true);
+
+    let nav_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
     nav_box.style_context().add_class("chefbar-nav");
     nav_box.set_margin_start(8);
     nav_box.set_margin_end(8);
 
     let mut nav_buttons: Vec<(String, gtk::Button)> = Vec::new();
+    let mut last_group: Option<HarnessGroup> = None;
     for (idx, (id, label)) in NAV_IDS.iter().zip(NAV_LABELS.iter()).enumerate() {
+        let kind = HarnessKind::all().into_iter().find(|kind| kind.id() == *id);
+        if let Some(kind) = kind {
+            let group = kind.group();
+            if last_group.as_ref() != Some(&group) {
+                if last_group.is_some() {
+                    let hairline = gtk::Separator::new(gtk::Orientation::Horizontal);
+                    hairline.style_context().add_class("chefbar-nav-sep");
+                    nav_box.pack_start(&hairline, false, false, 0);
+                }
+                let group_label = gtk::Label::new(Some(group.label()));
+                group_label.set_halign(gtk::Align::Start);
+                group_label.set_xalign(0.0);
+                group_label
+                    .style_context()
+                    .add_class("chefbar-sidebar-group-title");
+                nav_box.pack_start(&group_label, false, false, 0);
+                last_group = Some(group);
+            }
+        }
         let btn = gtk::Button::with_label(label);
         btn.set_relief(gtk::ReliefStyle::None);
         btn.style_context().add_class("chefbar-nav-item");
@@ -68,17 +151,14 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
         nav_buttons.push((id.to_string(), btn.clone()));
         nav_box.pack_start(&btn, false, false, 0);
     }
-    sidebar.pack_start(&nav_box, false, false, 0);
-
-    // Spacer
-    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    sidebar.pack_start(&spacer, true, true, 0);
+    nav_scroller.add(&nav_box);
+    sidebar.pack_start(&nav_scroller, true, true, 0);
 
     // Status-footer
     let footer = gtk::Box::new(gtk::Orientation::Vertical, 4);
     footer.style_context().add_class("chefbar-sidebar-footer");
-    footer.set_margin_start(12);
-    footer.set_margin_end(12);
+    footer.set_margin_start(RAIL_START);
+    footer.set_margin_end(RAIL_END);
     footer.set_margin_top(10);
     footer.set_margin_bottom(12);
     let footer_title = gtk::Label::new(Some("Status"));
@@ -88,7 +168,7 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
         .style_context()
         .add_class("chefbar-sidebar-footer-title");
     footer.pack_start(&footer_title, false, false, 0);
-    let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal v2"));
+    let footer_meta = gtk::Label::new(Some("online \u{00b7} klaar voor instructies"));
     footer_meta.set_halign(gtk::Align::Start);
     footer_meta.set_xalign(0.0);
     footer_meta
@@ -98,4 +178,26 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     sidebar.pack_end(&footer, false, false, 0);
 
     (sidebar, nav_buttons)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nav_ids_en_labels_zelfde_lengte() {
+        assert_eq!(NAV_IDS.len(), NAV_LABELS.len());
+    }
+
+    #[test]
+    fn nav_labels_zijn_warm_nederlands() {
+        assert!(NAV_LABELS.contains(&"Klembord"));
+        assert!(NAV_LABELS.contains(&"Bureaublad"));
+        assert!(NAV_LABELS.contains(&"Sleutels"));
+        assert!(NAV_LABELS.contains(&"Gezondheid"));
+        assert!(!NAV_LABELS.contains(&"Clipboard"));
+        assert!(!NAV_LABELS.contains(&"Desktop"));
+        assert!(!NAV_LABELS.contains(&"Secrets"));
+        assert!(!NAV_LABELS.contains(&"Health"));
+    }
 }

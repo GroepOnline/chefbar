@@ -1,0 +1,26 @@
+{
+  "should_trigger": [
+    {
+      "id": "poll-ms",
+      "prompt": "VAULT_POLL_MS",
+      "must_match_description": ["VAULT_POLL_MS", "state.rs"]
+    },
+    {
+      "id": "fanout",
+      "prompt": "fetch_all",
+      "must_match_description": ["fetch_all", "fanout"]
+    },
+    {
+      "id": "stale",
+      "prompt": "last-good",
+      "must_match_description": ["last-good", "Snapshot"]
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "css",
+      "prompt": "css inset",
+      "must_not_all_match": ["860x880", "gtk::Window"]
+    }
+  ]
+}

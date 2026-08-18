@@ -1,0 +1,50 @@
+{
+  "skill_name": "chefbar-actions-palette",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Let a gappy match with pinned=true beat an exact contains match.",
+      "expected_output": "Refuse; boosts cannot break contains > prefix > gappy.",
+      "expectations": [
+        "Cites contains 1000 / prefix 700 / gappy 500",
+        "Mentions boosted clamp or RankContext"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add a Restart node command.",
+      "expected_output": "RunSpec + build_actions with fleet/nodes keywords + Executor arm.",
+      "expectations": [
+        "Names RunSpec and Executor",
+        "Includes harness prefixes fleet or nodes"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Call ureq inside build_actions so titles are live.",
+      "expected_output": "Refuse; build_actions is pure from Snapshot.",
+      "expectations": [
+        "Forbids HTTP in build_actions",
+        "Points at Snapshot / actor"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add _ => {} so Executor keeps compiling.",
+      "expected_output": "Refuse; exhaustive match on RunSpec.",
+      "expectations": [
+        "Forbids wildcard arm",
+        "Names Executor or RunSpec"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Toast the copied secret so the user sees it.",
+      "expected_output": "CopySecretMeta { id }; toast without the secret payload.",
+      "expectations": [
+        "Uses CopySecretMeta, not CopyText, for the secret",
+        "Forbids secret in notify"
+      ]
+    }
+  ]
+}

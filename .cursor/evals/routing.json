@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "notes": "Deterministic routing corpus for scripts/agent-bench.mjs. expect_* must land in the top-2 overlap rank.",
+  "cases": [
+    {
+      "id": "new-snapshot-field",
+      "prompt": "voeg crm deals toe aan Snapshot en poll ze in state.rs zonder een tweede loop",
+      "expect_skills": ["chefbar-architecture", "chefbar-actor"],
+      "expect_agents": ["chefbar-actor", "chefbar-architect"]
+    },
+    {
+      "id": "poll-rhythm",
+      "prompt": "wijzig VAULT_POLL_MS en het fanout budget FETCH_BUDGET_MS in de poll-actor",
+      "expect_skills": ["chefbar-actor"],
+      "expect_agents": ["chefbar-actor"],
+      "forbidden_skills": ["chefbar-gtk-panel"]
+    },
+    {
+      "id": "gtk-css-gap",
+      "prompt": "GTK3 CSS in css.rs mag geen gap of custom properties --accent meer emitten",
+      "expect_skills": ["chefbar-gtk-panel"],
+      "expect_agents": ["chefbar-gtk-panel"],
+      "forbidden_skills": ["chefbar-actor"]
+    },
+    {
+      "id": "panel-drawer",
+      "prompt": "drawer in src/panel/drawer.rs moet Esc sluiten en 860x880 panel niet resizable maken",
+      "expect_skills": ["chefbar-gtk-panel"],
+      "expect_agents": ["chefbar-gtk-panel"]
+    },
+    {
+      "id": "policy-redirect",
+      "prompt": "ureq redirects(0) en EndpointPolicy safe_join mogen geen bearer 302 volgen",
+      "expect_skills": ["chefbar-policy-http"],
+      "expect_agents": ["chefbar-policy-http"]
+    },
+    {
+      "id": "auth-headers",
+      "prompt": "auth get_headers Cloudflare Access CF_ACCESS_CLIENT_ID vault bearer CHEFBAR_VAULT_TOKEN",
+      "expect_skills": ["chefbar-policy-http"],
+      "expect_agents": ["chefbar-policy-http"]
+    },
+    {
+      "id": "runspec",
+      "prompt": "nieuwe RunSpec variant plus build_actions keywords en Executor arm in actions.rs",
+      "expect_skills": ["chefbar-actions-palette"],
+      "expect_agents": ["chefbar-actions-palette"]
+    },
+    {
+      "id": "palette-tiers",
+      "prompt": "fuzzy ranking contains 1000 prefix 700 gappy 500 RankContext boost mag geen tier doorbreken",
+      "expect_skills": ["chefbar-actions-palette"],
+      "expect_agents": ["chefbar-actions-palette"]
+    },
+    {
+      "id": "ipc-socket",
+      "prompt": "Unix socket chefbar.sock parse_command alias bar panel en UiCommand ForceState",
+      "expect_skills": ["chefbar-tray-ipc"],
+      "expect_agents": ["chefbar-tray-ipc"]
+    },
+    {
+      "id": "doctor-exit",
+      "prompt": "doctor.rs IPC-first exit 0 1 2 fingerprints sha256 geen secrets in logs",
+      "expect_skills": ["chefbar-tray-ipc"],
+      "expect_agents": ["chefbar-tray-ipc"]
+    },
+    {
+      "id": "clippy-tokio",
+      "prompt": "clippy -D warnings geen tokio geen unwrap buiten tests Cargo.toml gtk ureq",
+      "expect_skills": ["chefbar-rust"],
+      "expect_agents": ["chefbar-rust-core"]
+    },
+    {
+      "id": "kater-chain",
+      "prompt": "Kater MCP kater_chains pr_health profile code ops KATER_POLL_MS in state.rs",
+      "expect_skills": ["chefbar-kater"],
+      "expect_agents": ["chefbar-kater"]
+    },
+    {
+      "id": "graph-loop",
+      "prompt": "file-disjoint workers qa-converge graph loop max 3 orchestrator chefbar-graph-loop",
+      "expect_skills": ["chefbar-graph-loop"],
+      "expect_agents": ["chefbar-orchestrator"]
+    },
+    {
+      "id": "ci-visual",
+      "prompt": "CI cargo test clippy visual-shot.sh Xvfb warning-only shellcheck agent-bench.mjs",
+      "expect_skills": ["chefbar-qa", "chefbar-bench"],
+      "expect_agents": ["chefbar-qa"]
+    },
+    {
+      "id": "where-belongs",
+      "prompt": "waar hoort een nieuw harnas HarnessKind snapshot sectie vs tweede tray",
+      "expect_skills": ["chefbar-architecture"],
+      "expect_agents": ["chefbar-architect"]
+    },
+    {
+      "id": "coalesce-toasts",
+      "prompt": "coalesce_toasts max een toast per poll-cyclus transities watcher suggestions",
+      "expect_skills": ["chefbar-actor", "chefbar-tray-ipc"],
+      "expect_agents": ["chefbar-actor", "chefbar-tray-ipc"]
+    }
+  ]
+}
