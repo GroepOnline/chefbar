@@ -62,9 +62,10 @@ pub fn is_muted(key: &str) -> bool {
     load().contains(key)
 }
 
-/// Toggle de demp voor één agent-key; geeft de nieuwe toestand terug.
-pub fn toggle(key: &str) -> bool {
-    let mut keys = load();
+/// Toggle de demp voor één agent-key op een expliciet pad; geeft
+/// `(nu_gedempt, opgeslagen)` terug zodat de caller een schrijffout kan melden.
+pub fn toggle_at(path: &Path, key: &str) -> (bool, bool) {
+    let mut keys = load_from(path);
     let now_muted = if keys.contains(key) {
         keys.remove(key);
         false
@@ -72,8 +73,13 @@ pub fn toggle(key: &str) -> bool {
         keys.insert(key.to_string());
         true
     };
-    save(&keys);
-    now_muted
+    let persisted = save_to(path, &keys);
+    (now_muted, persisted)
+}
+
+/// Toggle de demp voor één agent-key; geeft `(nu_gedempt, opgeslagen)` terug.
+pub fn toggle(key: &str) -> (bool, bool) {
+    toggle_at(&mutes_path(), key)
 }
 
 #[cfg(test)]
@@ -125,4 +131,28 @@ mod tests {
         assert!(!load_from(&path).contains("a::ws"));
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
+
+    #[test]
+    fn toggle_at_persisteert_en_geeft_toestand() {
+        let path = temp_path("toggle_at");
+        // Eerste toggle zet + slaat op → (gedempt, opgeslagen).
+        let (muted, ok) = toggle_at(&path, "cursor::commerce");
+        assert!(muted && ok);
+        assert!(load_from(&path).contains("cursor::commerce"));
+        // Tweede toggle verwijdert + slaat op → (niet gedempt, opgeslagen).
+        let (muted, ok) = toggle_at(&path, "cursor::commerce");
+        assert!(!muted && ok);
+        assert!(!load_from(&path).contains("cursor::commerce"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn toggle_at_meldt_schrijffout() {
+        // Schrijven naar een ongeldig pad (directory als bestand) faalt en
+        // `ok` is false, zodat de caller een foutmelding kan tonen.
+        let path = PathBuf::from("/this/path/is/not/creatable/as-a-file/muted-agents.json");
+        let (_muted, ok) = toggle_at(&path, "x::y");
+        assert!(!ok);
+    }
+
 }

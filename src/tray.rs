@@ -6,6 +6,7 @@
 use crate::models::Snapshot;
 use gtk::glib::ControlFlow;
 use ksni::menu::StandardItem;
+use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -465,13 +466,34 @@ impl ksni::Tray for ChefTray {
         // Per-agent mute: de state-poller filtert deze keys vóór toast/inbox.
         let mutes = crate::mutes::load();
         let mut mute_items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        let mut shown_keys: HashSet<String> = HashSet::new();
         for (key, agent, workspace) in mute_agents {
             let label = format!("{agent} · {workspace}");
             let checked = mutes.contains(key.as_str());
+            shown_keys.insert(key.clone());
             mute_items.push(ksni::MenuItem::Checkmark(
                 ksni::menu::CheckmarkItem::<Self> {
                     label,
                     checked,
+                    activate: Box::new(move |tray: &mut Self| {
+                        tray.send(UiCommand::ToggleMute(key.clone()));
+                    }),
+                    ..Default::default()
+                },
+            ));
+        }
+        // Gedempte agents die niet (meer) in de snapshot staan, blijven zo
+        // dempbaar via het menu — anders kan een verdwenen agent nooit meer
+        // worden gedemd (de-mute blijft mogelijk via dezelfde toggle).
+        for key in mutes.iter() {
+            if shown_keys.contains(key) {
+                continue;
+            }
+            let label = format!("{key} · (niet actief)");
+            mute_items.push(ksni::MenuItem::Checkmark(
+                ksni::menu::CheckmarkItem::<Self> {
+                    label,
+                    checked: true,
                     activate: Box::new(move |tray: &mut Self| {
                         tray.send(UiCommand::ToggleMute(key.clone()));
                     }),

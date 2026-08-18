@@ -703,9 +703,17 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
+    // Eén keer laden zodat de palette-rij de huidige demp-status toont (net als
+    // het tray-menu) — anders is "Demp" misleidend voor al gedempte agents.
+    let mutes = crate::mutes::load();
     for agent in &snap.agents {
+        let verb = if mutes.contains(&agent.key) {
+            "Ontdemp"
+        } else {
+            "Demp"
+        };
         actions.push(action(
-            format!("Demp {} · {}", agent.agent, agent.workspace),
+            format!("{verb} {} · {}", agent.agent, agent.workspace),
             "tray- en inboxmeldingen aan/uit",
             "STIL",
             format!("demp mute agent {} {}", agent.agent, agent.workspace),
@@ -1271,8 +1279,18 @@ impl Executor {
             RunSpec::ToggleMute(key) => {
                 let key = key.clone();
                 self.spawn_bg(move || {
-                    let _ = crate::mutes::toggle(&key);
+                    let (now_muted, ok) = crate::mutes::toggle(&key);
+                    if !ok {
+                        crate::notify::notify(
+                            "Dempen lukte niet",
+                            &format!("kon demp-lijst niet opslaan voor {key}"),
+                            "error",
+                        );
+                        return;
+                    }
                     crate::state::refresh_global();
+                    let state = if now_muted { "gedempt" } else { "gedemd" };
+                    crate::notify::notify("Dempen", &format!("{key} {state}"), "ok");
                 });
             }
             RunSpec::SendControlChat => {
