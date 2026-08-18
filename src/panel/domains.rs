@@ -775,7 +775,7 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Clipboard",
+        "Klembord",
         &format!("{} · klik om te kopiëren", count_sub(q, shown, total)),
     );
     if total == 0 {
@@ -839,7 +839,7 @@ fn render_desktop(content: &gtk::Box, snap: &Snapshot, q: &str) {
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
-    section_title(content, "Desktop", &count_sub(q, shown, total));
+    section_title(content, "Bureaublad", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
             &empty_state(
@@ -1065,7 +1065,7 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Secrets",
+        "Sleutels",
         &format!(
             "{} · alleen meta, nooit plaintext",
             count_sub(q, shown, total)
@@ -1074,8 +1074,8 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     if total == 0 {
         content.pack_start(
             &empty_state(
-                "Geen secrets gekoppeld",
-                "Vaultwarden-collecties verschijnen hier als meta — geen plaintext in de UI.",
+                "Geen sleutels gekoppeld",
+                "Vaultwarden-collecties verschijnen hier als meta, nooit plaintext.",
             ),
             false,
             false,

@@ -296,7 +296,7 @@ impl Panel {
         // hidden, zodat het canvas gewoon klikbaar blijft).
         overlay.widget().set_halign(gtk::Align::Center);
         overlay.widget().set_valign(gtk::Align::Start);
-        overlay.widget().set_margin_top(56);
+        overlay.widget().set_margin_top(88);
         overlay.widget().set_margin_start(96);
         overlay.widget().set_margin_end(96);
         window_overlay.add_overlay(overlay.widget());
@@ -881,7 +881,7 @@ fn render_doen_list(
         content,
         "Zoeken",
         &format!(
-            "in {} — {}",
+            "in {} \u{00b7} {}",
             harness_label.to_lowercase(),
             truncate_q(q, 24)
         ),
@@ -889,10 +889,10 @@ fn render_doen_list(
     let group = group_box();
     if actions_visible.is_empty() {
         let sub = format!(
-            "Pas je zoekterm \u{201c}{}\u{201d} aan of wissel van harnas.",
+            "Pas je zoekterm '{}' aan of wissel van harnas.",
             truncate_q(q, 24)
         );
-        group.pack_start(&empty_state("Niks gevonden", &sub), false, false, 0);
+        group.pack_start(&empty_state("Niets gevonden", &sub), false, false, 0);
         content.pack_start(&group, false, false, 0);
         return;
     }
@@ -901,6 +901,7 @@ fn render_doen_list(
         row.set_relief(gtk::ReliefStyle::None);
         row.style_context().add_class("chefbar-row-btn");
         let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
         let title = gtk::Label::new(Some(&action.title));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
@@ -908,7 +909,19 @@ fn render_doen_list(
         title.set_line_wrap(false);
         title.set_max_width_chars(48);
         title.style_context().add_class("chefbar-card-title");
-        row_box.pack_start(&title, true, true, 0);
+        text.pack_start(&title, false, false, 0);
+        if !action.meta.is_empty() {
+            let meta = gtk::Label::new(Some(&action.meta));
+            meta.set_halign(gtk::Align::Start);
+            meta.set_xalign(0.0);
+            meta.set_line_wrap(true);
+            meta.set_lines(1);
+            meta.set_ellipsize(pango::EllipsizeMode::End);
+            meta.set_max_width_chars(52);
+            meta.style_context().add_class("chefbar-card-meta");
+            text.pack_start(&meta, false, false, 0);
+        }
+        row_box.pack_start(&text, true, true, 0);
         let stamp = stamp_label(&action.stamp);
         row_box.pack_end(&stamp, false, false, 0);
         row.add(&row_box);
@@ -954,15 +967,13 @@ fn update_control_chrome(shared: &Shared, header_title: &gtk::Label, footer_labe
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .target_label();
     header_title.set_text("Control");
-    let footer_text = format!(
-        "v{} · {} · {} · {}",
-        crate::VERSION,
-        profile.name,
-        target,
-        fetched
-    );
+    let footer_text = format!("Control \u{00b7} {target} \u{00b7} {fetched}");
     footer_label.set_text(&footer_text);
-    footer_label.set_tooltip_text(Some(&footer_text));
+    footer_label.set_tooltip_text(Some(&format!(
+        "v{} \u{00b7} {} \u{00b7} {footer_text}",
+        crate::VERSION,
+        profile.name
+    )));
 }
 
 fn render_into(
@@ -1038,7 +1049,7 @@ fn render_into(
         rank_actions_with(&filtered, query, 40, Some(&rank_ctx))
     };
 
-    // ---- Signature: CG-statuslijn — verbinding + dringendste lijn --------
+    // ---- Worked-row: verbinding + dringendste lijn --------
     // v2 worked-row: rust = line-strong, live = accent, hulp = amber,
     // fout = rood, ok = groen.
     let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1074,11 +1085,18 @@ fn render_into(
     status_row.pack_end(&updated, false, false, 0);
     content.pack_start(&status_row, false, false, 0);
 
-    let harness_label = harnesses
-        .iter()
-        .find(|h| h.id == active_id)
-        .map(|h| h.label.clone())
-        .unwrap_or_else(|| active_id.clone());
+    let harness_label = {
+        let nav = sidebar::label_for(&active_id);
+        if nav.is_empty() {
+            harnesses
+                .iter()
+                .find(|h| h.id == active_id)
+                .map(|h| h.label.clone())
+                .unwrap_or_else(|| active_id.clone())
+        } else {
+            nav.to_string()
+        }
+    };
     header_title.set_text(&harness_label);
     let view_kind = active_kind.clone().unwrap_or(HarnessKind::Health);
     let searching = !q.is_empty();
@@ -1127,7 +1145,7 @@ fn render_into(
                 let tip = if suggestion.meta.is_empty() {
                     suggestion.title.clone()
                 } else {
-                    format!("{} — {}", suggestion.title, suggestion.meta)
+                    format!("{} \u{00b7} {}", suggestion.title, suggestion.meta)
                 };
                 row_btn.set_tooltip_text(Some(tip.as_str()));
                 let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1165,9 +1183,9 @@ fn render_into(
                 }
                 row.pack_start(&text, true, true, 0);
                 let cta_text = if suggestion.action_label.is_empty() {
-                    "OPEN".to_string()
+                    "Open".to_string()
                 } else {
-                    suggestion.action_label.to_uppercase()
+                    suggestion.action_label.clone()
                 };
                 let cta = stamp_label(&cta_text);
                 cta.style_context()
@@ -1240,7 +1258,7 @@ fn render_into(
                     format!("{} · {} · {}", session.source, session.title, session.state)
                 } else {
                     format!(
-                        "{} · {} — {}",
+                        "{} \u{00b7} {} \u{00b7} {}",
                         session.source, session.title, session.summary
                     )
                 };
@@ -1282,14 +1300,14 @@ fn render_into(
                     .as_ref()
                     .map(|(l, _)| l.as_str())
                     .unwrap_or("Open");
-                let pill = stamp_label(match session.state.as_str() {
+                let stamp = stamp_label(match session.state.as_str() {
                     "failed" => "FOUT",
                     _ => "HULP",
                 });
                 if cta_label != "Open" {
-                    pill.set_text(&format!("{} · {}", pill.text(), cta_label));
+                    stamp.set_text(&format!("{} \u{00b7} {}", stamp.text(), cta_label));
                 }
-                inner.pack_end(&pill, false, false, 0);
+                inner.pack_end(&stamp, false, false, 0);
                 row_btn.add(&inner);
                 let inner_child = row_btn.child().unwrap();
                 inner_child.set_margin_start(10);
@@ -1314,7 +1332,7 @@ fn render_into(
             }
             if attention.len() > 4 {
                 let more = gtk::Label::new(Some(&format!(
-                    "+{} meer — zoek om te filteren",
+                    "+{} meer \u{00b7} zoek om te filteren",
                     attention.len() - 4
                 )));
                 more.set_halign(gtk::Align::Start);
@@ -1337,24 +1355,20 @@ fn render_into(
     let running_n = snap.agents.iter().filter(|a| a.running).count();
     let footer_text = if attention_n > 0 {
         format!(
-            "v{} · {} · {} wacht · {} bezig · {}",
-            crate::VERSION,
-            profile.name,
-            attention_n,
-            running_n,
-            fetched
+            "{} wachten op jou \u{00b7} {} bezig \u{00b7} {}",
+            attention_n, running_n, fetched
         )
+    } else if running_n > 0 {
+        format!("{} bezig \u{00b7} {}", running_n, fetched)
     } else {
-        format!(
-            "v{} · {} · {} bezig · {}",
-            crate::VERSION,
-            profile.name,
-            running_n,
-            fetched
-        )
+        format!("Klaar voor instructies \u{00b7} {}", fetched)
     };
     footer_label.set_text(&footer_text);
-    footer_label.set_tooltip_text(Some(&footer_text));
+    footer_label.set_tooltip_text(Some(&format!(
+        "v{} \u{00b7} {} \u{00b7} {footer_text}",
+        crate::VERSION,
+        profile.name
+    )));
 
     content.show_all();
 }
@@ -1383,7 +1397,7 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
             if btn.label().as_deref() != Some(text.as_str()) {
                 btn.set_label(&text);
             }
-            btn.set_tooltip_text(Some(&format!("{} — {}", h.id, h.status.label())));
+            btn.set_tooltip_text(Some(&format!("{} \u{00b7} {}", h.id, h.status.label())));
         }
         if id == active {
             btn.style_context().add_class("active");
@@ -1453,13 +1467,22 @@ fn suggestion_spec(
 
 fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
     let dialog = gtk::Window::new(gtk::WindowType::Toplevel);
+    dialog.set_title(&action.title);
     dialog.set_decorated(false);
     dialog.set_keep_above(true);
+    dialog.set_transient_for(Some(window));
+    dialog.set_destroy_with_parent(true);
+    dialog.set_skip_taskbar_hint(true);
+    dialog.set_type_hint(gdk::WindowTypeHint::Dialog);
+    dialog.set_resizable(false);
+    dialog.set_default_size(420, -1);
     dialog.set_position(gtk::WindowPosition::CenterOnParent);
+    dialog.style_context().add_class("chefbar-app");
+    dialog.style_context().add_class("chefbar-dialog-window");
 
     let box_ = gtk::Box::new(gtk::Orientation::Vertical, 10);
     box_.set_margin_top(16);
-    box_.set_margin_bottom(16);
+    box_.set_margin_bottom(14);
     box_.set_margin_start(16);
     box_.set_margin_end(16);
     box_.style_context().add_class("chefbar-dialog");
@@ -1469,13 +1492,29 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.set_ellipsize(pango::EllipsizeMode::End);
-    title.style_context().add_class("chefbar-card-title");
+    title.style_context().add_class("chefbar-dialog-title");
     box_.pack_start(&title, false, false, 0);
 
+    if !action.meta.is_empty() {
+        let meta = gtk::Label::new(Some(&action.meta));
+        meta.set_halign(gtk::Align::Start);
+        meta.set_xalign(0.0);
+        meta.set_line_wrap(true);
+        meta.style_context().add_class("chefbar-card-meta");
+        box_.pack_start(&meta, false, false, 0);
+    }
+
     let entry = gtk::Entry::new();
-    entry.set_placeholder_text(Some(&action.meta));
+    entry.set_placeholder_text(Some("Typ hier\u{2026}"));
+    entry.style_context().add_class("chefbar-dialog-entry");
     entry.set_activates_default(true);
     box_.pack_start(&entry, false, false, 0);
+
+    let hint = gtk::Label::new(Some("enter voert uit \u{00b7} esc sluit"));
+    hint.set_halign(gtk::Align::Start);
+    hint.set_xalign(0.0);
+    hint.style_context().add_class("chefbar-dialog-hint");
+    box_.pack_start(&hint, false, false, 0);
 
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     buttons.set_halign(gtk::Align::End);
@@ -1521,8 +1560,6 @@ fn prompt_for(executor: &Executor, window: &gtk::Window, action: &Action) {
         gtk::glib::Propagation::Proceed
     });
 
-    let (x, y) = window.position();
-    dialog.move_(x + 24, y + 24);
     dialog.show_all();
     entry.grab_focus();
 }

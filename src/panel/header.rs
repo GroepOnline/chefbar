@@ -14,7 +14,7 @@ const COMPAT_IDS: [&str; 2] = ["eval", "sync"];
 /// Aantal live domeinen, afgeleid van `HarnessKind` zodat de subtitel niet
 /// scheefloopt zodra er een domein bijkomt (stond hardcoded op 15, terwijl
 /// het er 16 zijn).
-fn live_domain_count() -> usize {
+pub(crate) fn live_domain_count() -> usize {
     HarnessKind::all()
         .iter()
         .filter(|kind| !COMPAT_IDS.contains(&kind.id()))
@@ -62,7 +62,7 @@ pub fn build_header() -> (
     )));
     title.set_attributes(Some(&attrs));
     title_block.pack_start(&title, false, false, 0);
-    let subtitle = format!("chefgroep-online \u{00b7} {} domeinen", live_domain_count());
+    let subtitle = format!("ChefGroep \u{00b7} {} domeinen", live_domain_count());
     let title_sub = gtk::Label::new(Some(subtitle.as_str()));
     title_sub.set_halign(gtk::Align::Start);
     title_sub.set_xalign(0.0);
@@ -72,7 +72,7 @@ pub fn build_header() -> (
     header.pack_start(&title_block, false, false, 0);
 
     let search = gtk::SearchEntry::new();
-    search.set_placeholder_text(Some("Zoek in alles \u{00b7} / of Ctrl+K"));
+    search.set_placeholder_text(Some(super::overlay::OVERLAY_PLACEHOLDER));
     search.style_context().add_class("chefbar-search");
     search.set_hexpand(true);
     search.set_halign(gtk::Align::Fill);

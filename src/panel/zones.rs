@@ -98,6 +98,7 @@ pub fn section_title(content: &gtk::Box, title: &str, sub: &str) {
 pub fn group_box() -> gtk::Box {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
     group.style_context().add_class("chefbar-group");
+    group.style_context().add_class("chefbar-list");
     group
 }
 
