@@ -185,7 +185,7 @@ CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
 
 ## Development
 
-ChefBar bouwt niet lokaal op de laptop. CI is notify-first en draait op de self-hosted runner. Zie `.github/workflows/ci.yml`.
+ChefBar bouwt niet lokaal op de laptop. CI is notify-first: full lane op self-hosted GHA (`.github/workflows/ci.yml`); optionele snelle Rust-lane op Buildkite (`.buildkite/`, niet required).
 
 ```yaml
 # PR → pr-isolated; push/main → heavy (niet alleen company-control)

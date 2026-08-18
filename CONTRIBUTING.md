@@ -26,8 +26,10 @@ scp chef@chef-runner-01-1:/home/chef/chefbar-check/target/release/chefbar /tmp/c
 ./install.sh --systemd /tmp/chefbar.bin
 ```
 
-CI is notify-first (geen poll-loops) en draait op de self-hosted runner;
-release-artifact heet `chefbar-release`.
+CI is notify-first (geen poll-loops). Full lane = self-hosted GHA
+(`.github/workflows/ci.yml`, artifact `chefbar-release`). Optionele snelle
+Rust check/fmt/clippy/test = Buildkite `onlinechef/chefbar` (`.buildkite/`;
+niet required — zie `.buildkite/README.md`).
 
 ## Gates
 

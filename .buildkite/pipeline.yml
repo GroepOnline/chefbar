@@ -1,0 +1,55 @@
+# ChefBar / ChefApp Rust CI on Buildkite (org onlinechef, pipeline chefbar).
+#
+# Origin rule (hard): this pipeline must build GroepOnline/chefbar at the
+# triggering SHA only. Never reuse onlinechef/herdr against a chefbar SHA —
+# that yields "The CI Origin was built on …" and wrong-repo status checks.
+#
+# Not a GitHub required check. GHA (.github/workflows/ci.yml) stays the
+# existing merge-gate surface (fmt/clippy/test/visual/artifacts).
+#
+# Agent: any Buildkite agent with Rust stable + GTK3 build deps (same as
+# chef-runner-01 user chef, PATH=$HOME/.cargo/bin:$PATH). Prefer the same
+# agent cluster/queue as onlinechef/herdr once known; default queue is fine
+# if that agent is registered there.
+
+env:
+  CARGO_TERM_COLOR: always
+
+steps:
+  - label: ":shield: origin guard"
+    key: origin-guard
+    command: |
+      set -euo pipefail
+      echo "BUILDKITE_PIPELINE_SLUG=${BUILDKITE_PIPELINE_SLUG:-}"
+      echo "BUILDKITE_REPO=${BUILDKITE_REPO:-}"
+      echo "BUILDKITE_COMMIT=${BUILDKITE_COMMIT:-}"
+      echo "BUILDKITE_BRANCH=${BUILDKITE_BRANCH:-}"
+      case "${BUILDKITE_PIPELINE_SLUG:-}" in
+        chefbar) ;;
+        *)
+          echo "Refusing: expected pipeline slug chefbar, got '${BUILDKITE_PIPELINE_SLUG:-}'"
+          exit 1
+          ;;
+      esac
+      case "${BUILDKITE_REPO:-}" in
+        *github.com*GroepOnline/chefbar*|*github.com*groeponline/chefbar*) ;;
+        *)
+          echo "Refusing: pipeline must use GroepOnline/chefbar git origin (CI Origin mismatch)."
+          echo "Got BUILDKITE_REPO=${BUILDKITE_REPO:-empty}"
+          exit 1
+          ;;
+      esac
+
+  - label: ":rust: check + fmt + clippy + test"
+    key: rust-ci
+    depends_on: origin-guard
+    command: |
+      set -euo pipefail
+      export PATH="${HOME}/.cargo/bin:${PATH}"
+      command -v cargo
+      cargo --version
+      rustc --version
+      cargo check --all-targets
+      cargo fmt --all -- --check
+      cargo clippy --all-targets -- -D warnings
+      cargo test --all-targets
