@@ -489,6 +489,7 @@ impl ksni::Tray for ChefTray {
             if shown_keys.contains(key) {
                 continue;
             }
+            let key = key.clone();
             let label = format!("{key} · (niet actief)");
             mute_items.push(ksni::MenuItem::Checkmark(
                 ksni::menu::CheckmarkItem::<Self> {
