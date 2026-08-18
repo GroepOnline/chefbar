@@ -11,8 +11,7 @@ use std::rc::Rc;
 type OverlayActivate = Rc<dyn Fn(crate::palette::Action)>;
 
 pub(crate) const OVERLAY_PLACEHOLDER: &str = "Zoek of typ een opdracht\u{2026}";
-pub(crate) const OVERLAY_IDLE_HINT: &str =
-    "Typ om te filteren. Enter voert de eerste treffer uit.";
+pub(crate) const OVERLAY_IDLE_HINT: &str = "Typ om te filteren. Enter voert de eerste treffer uit.";
 pub(crate) const OVERLAY_EMPTY: &str = "Niets gevonden. Probeer een domein of /.";
 pub(crate) const OVERLAY_SECTION: &str = "Acties";
 
@@ -114,11 +113,7 @@ impl Overlay {
             self.results.show_all();
             return;
         }
-        let cap = gtk::Label::new(Some(&format!(
-            "{} · {}",
-            OVERLAY_SECTION,
-            actions.len()
-        )));
+        let cap = gtk::Label::new(Some(&format!("{} · {}", OVERLAY_SECTION, actions.len())));
         cap.set_halign(gtk::Align::Start);
         cap.set_xalign(0.0);
         cap.style_context().add_class("chefbar-palette-section");
@@ -218,8 +213,7 @@ fn overlay_foot() -> gtk::Box {
     foot.pack_start(&spacer, true, true, 0);
     let hint = gtk::Label::new(Some("/ of ctrl+k zoekt overal"));
     hint.set_halign(gtk::Align::End);
-    hint.style_context()
-        .add_class("chefbar-overlay-foot-label");
+    hint.style_context().add_class("chefbar-overlay-foot-label");
     foot.pack_end(&hint, false, false, 0);
     foot
 }

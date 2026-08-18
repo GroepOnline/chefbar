@@ -1245,10 +1245,7 @@ mod tests {
     #[test]
     fn stamps_zijn_geen_pillen() {
         let css = styles_css(THEME_LIGHT);
-        let stamp = css
-            .split(".chefbar-stamp {")
-            .nth(1)
-            .expect("stamp-blok");
+        let stamp = css.split(".chefbar-stamp {").nth(1).expect("stamp-blok");
         let block = stamp.split('}').next().expect("stamp body");
         assert!(
             block.contains("border-radius: 6px"),
