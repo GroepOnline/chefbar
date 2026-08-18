@@ -154,5 +154,4 @@ mod tests {
         let (_muted, ok) = toggle_at(&path, "x::y");
         assert!(!ok);
     }
-
 }

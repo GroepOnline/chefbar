@@ -683,11 +683,14 @@ pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
 // ---------------------------------------------------------------------------
 
 /// Bouw de catalogus uit de laatste snapshots (pure functie, geen I/O).
+/// `mutes` is de gedempte agent-set, buiten meegegeven zodat deze functie
+/// geen bestand leest (en deterministisch blijft voor tests/per-keystroke).
 pub fn build_actions(
     ops: &OpsSnapshot,
     snap: &Snapshot,
     profile: &EndpointProfile,
     sessions: Vec<crate::sessions::Session>,
+    mutes: &HashSet<String>,
 ) -> Vec<Action> {
     let mut actions: Vec<Action> = Vec::new();
     let home = crate::home_dir();
@@ -703,9 +706,8 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
-    // Eén keer laden zodat de palette-rij de huidige demp-status toont (net als
-    // het tray-menu) — anders is "Demp" misleidend voor al gedempte agents.
-    let mutes = crate::mutes::load();
+    // `mutes` wordt buiten meegegeven (eenmaal geladen per render/keystroke),
+    // zodat de palette-rij de huidige demp-status toont zonder I/O hierbinnen.
     for agent in &snap.agents {
         let verb = if mutes.contains(&agent.key) {
             "Ontdemp"
@@ -1289,7 +1291,7 @@ impl Executor {
                         return;
                     }
                     crate::state::refresh_global();
-                    let state = if now_muted { "gedempt" } else { "gedemd" };
+                    let state = if now_muted { "gedempt" } else { "ontdempt" };
                     crate::notify::notify("Dempen", &format!("{key} {state}"), "ok");
                 });
             }
@@ -1367,6 +1369,7 @@ mod tests {
             snap,
             &EndpointProfile::default(),
             Vec::new(),
+            &HashSet::new(),
         )
     }
 
