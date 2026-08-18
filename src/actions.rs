@@ -49,6 +49,7 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
+    ToggleMute(String),
 }
 
 fn action(
@@ -500,6 +501,15 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
+    for agent in &snap.agents {
+        actions.push(action(
+            format!("Demp {} · {}", agent.agent, agent.workspace),
+            "tray- en inboxmeldingen aan/uit",
+            "STIL",
+            format!("demp mute agent {} {}", agent.agent, agent.workspace),
+            RunSpec::ToggleMute(agent.key.clone()),
+        ));
+    }
 
     // Bestaand: herdr focus/send
     for agent in &ops.agents {
@@ -1039,6 +1049,13 @@ impl Executor {
             }
             RunSpec::TogglePalette => {
                 crate::notify::notify("Palette", "toggle — Super+Space", "ok");
+            }
+            RunSpec::ToggleMute(key) => {
+                let key = key.clone();
+                self.spawn_bg(move || {
+                    let _ = crate::mutes::toggle(&key);
+                    crate::state::refresh_global();
+                });
             }
         }
     }

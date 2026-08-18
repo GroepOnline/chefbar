@@ -249,8 +249,7 @@ fn run_app(cli: &Cli, ipc_listener: Option<std::os::unix::net::UnixListener>) {
                 executor.run(&chefbar::actions::RunSpec::DesktopAction(verb), "");
             }
             chefbar::tray::UiCommand::ToggleMute(key) => {
-                let _ = chefbar::mutes::toggle(&key);
-                chefbar::state::refresh_global();
+                executor.run(&chefbar::actions::RunSpec::ToggleMute(key), "");
             }
             chefbar::tray::UiCommand::ForceState(state) => {
                 chefbar::tray::force_state(&state);
