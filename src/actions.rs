@@ -52,6 +52,7 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
+    ToggleMute(String),
     SendControlChat,
 }
 
@@ -96,6 +97,7 @@ impl RunSpec {
             RunSpec::PrunePreview => "PrunePreview".into(),
             RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
             RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::ToggleMute(key) => format!("ToggleMute:{key}"),
             RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
             RunSpec::SendControlChat => "SendControlChat".into(),
         }
@@ -701,6 +703,15 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
+    for agent in &snap.agents {
+        actions.push(action(
+            format!("Demp {} · {}", agent.agent, agent.workspace),
+            "tray- en inboxmeldingen aan/uit",
+            "STIL",
+            format!("demp mute agent {} {}", agent.agent, agent.workspace),
+            RunSpec::ToggleMute(agent.key.clone()),
+        ));
+    }
     if snap.brain.ok || !snap.brain.skills.is_empty() {
         let counts = snap.brain.counts.clone().unwrap_or_default();
         actions.push(action(
@@ -1256,6 +1267,13 @@ impl Executor {
                 if !crate::tray::send_ui(crate::tray::UiCommand::TogglePalette) {
                     crate::notify::notify("Palette", "toggle — Super+Space", "ok");
                 }
+            }
+            RunSpec::ToggleMute(key) => {
+                let key = key.clone();
+                self.spawn_bg(move || {
+                    let _ = crate::mutes::toggle(&key);
+                    crate::state::refresh_global();
+                });
             }
             RunSpec::SendControlChat => {
                 let text = query.trim();

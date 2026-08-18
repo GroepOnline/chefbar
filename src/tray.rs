@@ -341,19 +341,32 @@ impl ksni::Tray for ChefTray {
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
 
-        // Live eventregels — uitgebreid van 3 naar 5 (spec Lane E).
-        let snap = self.shared.read().ok();
-        let events = snap.as_ref().map(|s| s.events.clone()).unwrap_or_default();
-        let sessions = crate::sessions::load_tray_events(&events);
-        let inbox_n = snap
-            .as_ref()
-            .map(|s| {
-                s.suggestions
+        // Kopieer menu-invoer binnen een korte read-lock; callbacks houden
+        // daarna geen snapshot-guard vast terwijl het menu wordt opgebouwd.
+        let (events, inbox_n, mute_agents) = self
+            .shared
+            .read()
+            .map(|snapshot| {
+                let inbox_n = snapshot
+                    .suggestions
                     .iter()
                     .filter(|sg| sg.fresh(crate::models::SUGGESTION_TTL_SECONDS))
-                    .count()
+                    .count();
+                let mute_agents: Vec<(String, String, String)> = snapshot
+                    .agents
+                    .iter()
+                    .map(|agent| {
+                        (
+                            agent.key.clone(),
+                            agent.agent.clone(),
+                            agent.workspace.clone(),
+                        )
+                    })
+                    .collect();
+                (snapshot.events.clone(), inbox_n, mute_agents)
             })
-            .unwrap_or(0);
+            .unwrap_or_default();
+        let sessions = crate::sessions::load_tray_events(&events);
         // Inbox-count regel bovenaan indien non-empty: "3 om aandacht".
         if inbox_n > 0 {
             let label = if inbox_n == 1 {
@@ -452,22 +465,19 @@ impl ksni::Tray for ChefTray {
         // Per-agent mute: de state-poller filtert deze keys vóór toast/inbox.
         let mutes = crate::mutes::load();
         let mut mute_items: Vec<ksni::MenuItem<Self>> = Vec::new();
-        if let Some(snapshot) = snap.as_ref() {
-            for agent in &snapshot.agents {
-                let key = agent.key.clone();
-                let label = format!("{} · {}", agent.agent, agent.workspace);
-                let checked = mutes.contains(&key);
-                mute_items.push(ksni::MenuItem::Checkmark(
-                    ksni::menu::CheckmarkItem::<Self> {
-                        label,
-                        checked,
-                        activate: Box::new(move |tray: &mut Self| {
-                            tray.send(UiCommand::ToggleMute(key.clone()));
-                        }),
-                        ..Default::default()
-                    },
-                ));
-            }
+        for (key, agent, workspace) in mute_agents {
+            let label = format!("{agent} · {workspace}");
+            let checked = mutes.contains(key.as_str());
+            mute_items.push(ksni::MenuItem::Checkmark(
+                ksni::menu::CheckmarkItem::<Self> {
+                    label,
+                    checked,
+                    activate: Box::new(move |tray: &mut Self| {
+                        tray.send(UiCommand::ToggleMute(key.clone()));
+                    }),
+                    ..Default::default()
+                },
+            ));
         }
         if mute_items.is_empty() {
             items.push(ksni::MenuItem::Standard(StandardItem::<Self> {
