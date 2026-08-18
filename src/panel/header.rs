@@ -29,7 +29,8 @@ fn live_domain_count() -> usize {
 /// (≈ −0.001em) en leverde dus geen v2-kop op.
 pub fn heading_tracking_units(font_px: f64) -> i32 {
     const TRACKING_EM: f64 = -0.02;
-    (TRACKING_EM * font_px * pango::SCALE as f64).round() as i32
+    let units = TRACKING_EM * font_px * pango::SCALE as f64;
+    units.round() as i32
 }
 
 /// Bouwt de header en geeft `(header_box, title_label, search_entry,
@@ -56,7 +57,9 @@ pub fn build_header() -> (
     title.style_context().add_class("chefbar-title");
     // v2-heading tracking: −0.02em bij 18px (zie heading_tracking_units).
     let attrs = pango::AttrList::new();
-    attrs.insert(pango::AttrInt::new_letter_spacing(heading_tracking_units(18.0)));
+    attrs.insert(pango::AttrInt::new_letter_spacing(heading_tracking_units(
+        18.0,
+    )));
     title.set_attributes(Some(&attrs));
     title_block.pack_start(&title, false, false, 0);
     let subtitle = format!("chefgroep-online \u{00b7} {} domeinen", live_domain_count());
