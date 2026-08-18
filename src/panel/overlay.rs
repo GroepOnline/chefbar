@@ -1,13 +1,20 @@
 //! Palette-overlay voor het ChefApp-panel (Super+Space fast-path).
 //!
 //! Zelfde venster, zelfde snapshot, zelfde ranking als de hoofdzoekbalk.
-//! Geen tweede socket, poll-loop of dataset.
+//! Geen tweede socket, poll-loop of dataset. Chrome: Devin v2 palette
+//! (560px, r-10, hairline, kbd-hints).
 
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 type OverlayActivate = Rc<dyn Fn(crate::palette::Action)>;
+
+pub(crate) const OVERLAY_PLACEHOLDER: &str = "Zoek of typ een opdracht\u{2026}";
+pub(crate) const OVERLAY_IDLE_HINT: &str =
+    "Typ om te filteren. Enter voert de eerste treffer uit.";
+pub(crate) const OVERLAY_EMPTY: &str = "Niets gevonden. Probeer een domein of /.";
+pub(crate) const OVERLAY_SECTION: &str = "Acties";
 
 pub struct Overlay {
     pub container: gtk::Box,
@@ -20,7 +27,7 @@ pub struct Overlay {
 
 impl Overlay {
     pub fn new() -> Self {
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         container.style_context().add_class("chefbar-overlay");
         container
             .style_context()
@@ -29,19 +36,22 @@ impl Overlay {
         container.set_no_show_all(true);
 
         let entry = gtk::SearchEntry::new();
-        entry.set_placeholder_text(Some("Zoek in alle 15 domeinen"));
+        entry.set_placeholder_text(Some(OVERLAY_PLACEHOLDER));
         entry.style_context().add_class("chefbar-palette-entry");
         container.pack_start(&entry, false, false, 0);
 
         let results = gtk::Box::new(gtk::Orientation::Vertical, 2);
         results.style_context().add_class("chefbar-palette-results");
-        let hint = gtk::Label::new(Some("Typ om te filteren \u{00b7} esc sluit"));
+        let hint = gtk::Label::new(Some(OVERLAY_IDLE_HINT));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
+        hint.set_line_wrap(true);
         hint.set_ellipsize(pango::EllipsizeMode::End);
         hint.style_context().add_class("chefbar-card-meta");
         results.pack_start(&hint, false, false, 0);
         container.pack_start(&results, false, false, 0);
+
+        container.pack_start(&overlay_foot(), false, false, 0);
 
         let revealed = Rc::new(Cell::new(false));
         let first_action = Rc::new(RefCell::new(None));
@@ -95,15 +105,20 @@ impl Overlay {
         *self.on_enter.borrow_mut() = Some(callback.clone());
         *self.first_action.borrow_mut() = actions.first().cloned();
         if actions.is_empty() {
-            let empty = gtk::Label::new(Some("Geen actie gevonden · probeer een domein of /"));
+            let empty = gtk::Label::new(Some(OVERLAY_EMPTY));
             empty.set_halign(gtk::Align::Start);
             empty.set_xalign(0.0);
+            empty.set_line_wrap(true);
             empty.style_context().add_class("chefbar-card-meta");
             self.results.pack_start(&empty, false, false, 0);
             self.results.show_all();
             return;
         }
-        let cap = gtk::Label::new(Some(&format!("ACTIES · {}", actions.len())));
+        let cap = gtk::Label::new(Some(&format!(
+            "{} · {}",
+            OVERLAY_SECTION,
+            actions.len()
+        )));
         cap.set_halign(gtk::Align::Start);
         cap.set_xalign(0.0);
         cap.style_context().add_class("chefbar-palette-section");
@@ -116,8 +131,6 @@ impl Overlay {
             button.set_tooltip_text(Some(&action.meta));
             button.style_context().add_class("chefbar-palette-row");
             if idx == 0 {
-                // Eerste rij is de default-selectie (Enter voert hem uit) —
-                // v2-selectie-streak in accent.
                 button.style_context().add_class("selected");
             }
             let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -185,6 +198,38 @@ impl Default for Overlay {
     }
 }
 
+fn overlay_foot() -> gtk::Box {
+    let foot = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    foot.style_context().add_class("chefbar-overlay-foot");
+    foot.pack_start(&kbd_chip("enter"), false, false, 0);
+    let enter_l = gtk::Label::new(Some("voert uit"));
+    enter_l
+        .style_context()
+        .add_class("chefbar-overlay-foot-label");
+    foot.pack_start(&enter_l, false, false, 0);
+    foot.pack_start(&kbd_chip("esc"), false, false, 0);
+    let esc_l = gtk::Label::new(Some("sluit"));
+    esc_l
+        .style_context()
+        .add_class("chefbar-overlay-foot-label");
+    foot.pack_start(&esc_l, false, false, 0);
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    foot.pack_start(&spacer, true, true, 0);
+    let hint = gtk::Label::new(Some("/ of ctrl+k zoekt overal"));
+    hint.set_halign(gtk::Align::End);
+    hint.style_context()
+        .add_class("chefbar-overlay-foot-label");
+    foot.pack_end(&hint, false, false, 0);
+    foot
+}
+
+fn kbd_chip(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.style_context().add_class("chefbar-kbd");
+    label
+}
+
 fn activate_first(
     first: &RefCell<Option<crate::palette::Action>>,
     on_enter: &RefCell<Option<OverlayActivate>>,
@@ -201,4 +246,22 @@ fn activate_first(
 
 pub fn build_overlay() -> Overlay {
     Overlay::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_copy_is_warm_nederlands() {
+        assert!(OVERLAY_PLACEHOLDER.contains("Zoek"));
+        assert!(OVERLAY_IDLE_HINT.contains("Enter"));
+        assert!(OVERLAY_EMPTY.starts_with("Niets gevonden"));
+        assert_eq!(OVERLAY_SECTION, "Acties");
+        for text in [OVERLAY_PLACEHOLDER, OVERLAY_IDLE_HINT, OVERLAY_EMPTY] {
+            assert!(!text.contains('\u{2014}'), "geen em-dash in {text}");
+            assert!(!text.contains("System"), "{text}");
+            assert!(!text.contains("Idle"), "{text}");
+        }
+    }
 }

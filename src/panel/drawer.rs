@@ -4,8 +4,9 @@ use gtk::prelude::*;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use crate::motion::DRAWER_MS;
+
 pub const DRAWER_WIDTH: i32 = 300;
-pub const DRAWER_SLIDE_MS: u32 = 160;
 
 /// Eén drawer-instantie, gekoppeld als derde kolom naast de main-canvas.
 pub struct Drawer {
@@ -22,7 +23,7 @@ impl Drawer {
     pub fn new() -> Self {
         let revealer = gtk::Revealer::new();
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideLeft);
-        revealer.set_transition_duration(DRAWER_SLIDE_MS);
+        revealer.set_transition_duration(DRAWER_MS);
         revealer.set_reveal_child(false);
         revealer.set_halign(gtk::Align::End);
         revealer.set_valign(gtk::Align::Fill);
@@ -37,14 +38,13 @@ impl Drawer {
         header.set_margin_top(12);
         header.set_margin_start(12);
         header.set_margin_end(12);
-        // CG-statusstreak: de kleur volgt de stamp van de actie (v2-signature
-        // doorgetrokken in de detailpane).
+        // v2 worked-row-streep: kleur volgt de stamp van de actie.
         let streak = gtk::Box::new(gtk::Orientation::Vertical, 0);
         streak.set_size_request(2, -1);
         streak.set_valign(gtk::Align::Fill);
         streak.style_context().add_class("chefbar-signature");
         header.pack_start(&streak, false, false, 0);
-        let title = gtk::Label::new(Some("\u{2014}"));
+        let title = gtk::Label::new(Some("Detail"));
         title.set_halign(gtk::Align::Start);
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
@@ -76,7 +76,7 @@ impl Drawer {
         actions.set_margin_bottom(6);
         inner.pack_start(&actions, false, false, 0);
 
-        let hint = gtk::Label::new(Some("\u{21b5} uitvoeren \u{00b7} esc sluit"));
+        let hint = gtk::Label::new(Some("enter voert uit \u{00b7} esc sluit"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
         hint.style_context().add_class("chefbar-drawer-hint");

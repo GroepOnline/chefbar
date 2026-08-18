@@ -51,12 +51,12 @@ pub const NAV_LABELS: &[&str] = &[
     "Accounts",
     "CRM",
     "Share",
-    "Clipboard",
-    "Desktop",
+    "Klembord",
+    "Bureaublad",
     "Sync",
-    "Secrets",
+    "Sleutels",
     "Kater",
-    "Health",
+    "Gezondheid",
     "Evaluatie",
 ];
 
@@ -96,7 +96,7 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     title_attrs.insert(pango::AttrInt::new_letter_spacing(tracking));
     title.set_attributes(Some(&title_attrs));
     title_wrap.pack_start(&title, false, false, 0);
-    let sub = gtk::Label::new(Some("chefgroep-online"));
+    let sub = gtk::Label::new(Some("ChefGroep"));
     sub.set_halign(gtk::Align::Start);
     sub.set_xalign(0.0);
     sub.style_context().add_class("chefbar-sidebar-sub");
@@ -168,7 +168,7 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
         .style_context()
         .add_class("chefbar-sidebar-footer-title");
     footer.pack_start(&footer_title, false, false, 0);
-    let footer_meta = gtk::Label::new(Some("online \u{00b7} signaal v2"));
+    let footer_meta = gtk::Label::new(Some("online \u{00b7} klaar voor instructies"));
     footer_meta.set_halign(gtk::Align::Start);
     footer_meta.set_xalign(0.0);
     footer_meta
@@ -178,4 +178,26 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     sidebar.pack_end(&footer, false, false, 0);
 
     (sidebar, nav_buttons)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nav_ids_en_labels_zelfde_lengte() {
+        assert_eq!(NAV_IDS.len(), NAV_LABELS.len());
+    }
+
+    #[test]
+    fn nav_labels_zijn_warm_nederlands() {
+        assert!(NAV_LABELS.contains(&"Klembord"));
+        assert!(NAV_LABELS.contains(&"Bureaublad"));
+        assert!(NAV_LABELS.contains(&"Sleutels"));
+        assert!(NAV_LABELS.contains(&"Gezondheid"));
+        assert!(!NAV_LABELS.contains(&"Clipboard"));
+        assert!(!NAV_LABELS.contains(&"Desktop"));
+        assert!(!NAV_LABELS.contains(&"Secrets"));
+        assert!(!NAV_LABELS.contains(&"Health"));
+    }
 }
