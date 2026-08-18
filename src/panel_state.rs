@@ -18,7 +18,8 @@ use std::sync::Mutex;
 pub const DENSITY_COMFORTABLE: &str = "comfortable";
 pub const DENSITY_COMPACT: &str = "compact";
 
-/// Thema-keuze voor de skin (Signaal v2: donker default).
+/// Thema-keuze voor de skin (Signaal v2: light-first Devin).
+/// System-dark volgt GTK prefer-dark in `css::detect_theme`; `CHEFBAR_THEME` wint.
 pub const THEME_DARK: &str = "dark";
 pub const THEME_LIGHT: &str = "light";
 
@@ -27,7 +28,7 @@ fn default_density() -> String {
 }
 
 fn default_theme() -> String {
-    THEME_DARK.to_string()
+    THEME_LIGHT.to_string()
 }
 
 static STATE_LOCK: Mutex<()> = Mutex::new(());
@@ -39,11 +40,12 @@ fn with_state_lock<T>(f: impl FnOnce() -> T) -> T {
 }
 
 /// Normaliseert theme naar één van de twee toegestane waarden.
+/// Alleen expliciet `dark` blijft donker; onbekend valt terug op light-first.
 pub fn normalize_theme(raw: &str) -> String {
-    if raw.trim() == THEME_LIGHT {
-        THEME_LIGHT.to_string()
-    } else {
+    if raw.trim() == THEME_DARK {
         THEME_DARK.to_string()
+    } else {
+        THEME_LIGHT.to_string()
     }
 }
 
@@ -88,7 +90,7 @@ pub struct PanelState {
     #[serde(default = "default_density")]
     pub density: String,
 
-    /// `dark` | `light` (Signaal v2 skin).
+    /// `light` | `dark` (Signaal v2, light-first).
     #[serde(default = "default_theme")]
     pub theme: String,
 
@@ -441,14 +443,26 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, r#"{"theme":"light"}"#).unwrap();
         assert_eq!(load_from(&path).theme, THEME_LIGHT);
-        std::fs::write(&path, r#"{"theme":"onzin"}"#).unwrap();
+        std::fs::write(&path, r#"{"theme":"dark"}"#).unwrap();
         assert_eq!(load_from(&path).theme, THEME_DARK);
+        std::fs::write(&path, r#"{"theme":"onzin"}"#).unwrap();
+        assert_eq!(load_from(&path).theme, THEME_LIGHT);
         let state = PanelState {
-            theme: THEME_LIGHT.into(),
+            theme: THEME_DARK.into(),
             ..Default::default()
         };
         assert!(save_to(&path, &state));
+        assert_eq!(load_from(&path).theme, THEME_DARK);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn ontbrekende_theme_is_light_first() {
+        let path = temp_path("theme-default");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"active_group":"fleet"}"#).unwrap();
         assert_eq!(load_from(&path).theme, THEME_LIGHT);
+        assert_eq!(PanelState::default().theme, THEME_LIGHT);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
