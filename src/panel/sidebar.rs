@@ -1,6 +1,6 @@
 //! Sidebar voor het ChefApp-panel (240 px, groepen, dots).
 //!
-//! Canonieke 5.0-navigatie: 15 live-domeinen + compat-ids `eval`/`sync`.
+//! Canonieke 5.0-navigatie: 16 live-domeinen + compat-ids `eval`/`sync`.
 //! Groepen komen uit `HarnessKind::group()`; de scroller houdt de kolom
 //! binnen 880 px zonder een tweede venster.
 
@@ -10,7 +10,14 @@ use crate::harness::{HarnessGroup, HarnessKind};
 
 pub const SIDEBAR_WIDTH: i32 = 240;
 
-/// Canonieke nav-ids (15 domeinen + eval/sync compat), gegroepeerd per
+/// Linkerrail van de sidebar. Nav-labels landen op 8 (nav_box) + 2 (border-left)
+/// + 10 (padding) = 20px; titel en footer volgen diezelfde rail zodat er één
+/// optische kantlijn is in plaats van drie.
+const RAIL_START: i32 = 20;
+/// Rechter-inzet, gelijk aan de 16px van de header-padding.
+const RAIL_END: i32 = 16;
+
+/// Canonieke nav-ids (16 domeinen + eval/sync compat), gegroepeerd per
 /// HarnessGroup zodat de hairlines in de sidebar schone secties vormen.
 pub const NAV_IDS: &[&str] = &[
     "inbox",
@@ -76,13 +83,18 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     // App-titel
     let title_wrap = gtk::Box::new(gtk::Orientation::Vertical, 2);
     title_wrap.set_margin_top(14);
-    title_wrap.set_margin_start(14);
-    title_wrap.set_margin_end(14);
+    title_wrap.set_margin_start(RAIL_START);
+    title_wrap.set_margin_end(RAIL_END);
     title_wrap.set_margin_bottom(10);
     let title = gtk::Label::new(Some("ChefBar"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.style_context().add_class("chefbar-sidebar-title");
+    // Zelfde v2-heading tracking als de paneeltitel, op 14px.
+    let title_attrs = pango::AttrList::new();
+    let tracking = super::header::heading_tracking_units(14.0);
+    title_attrs.insert(pango::AttrInt::new_letter_spacing(tracking));
+    title.set_attributes(Some(&title_attrs));
     title_wrap.pack_start(&title, false, false, 0);
     let sub = gtk::Label::new(Some("chefgroep-online"));
     sub.set_halign(gtk::Align::Start);
@@ -110,18 +122,14 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
                 if last_group.is_some() {
                     let hairline = gtk::Separator::new(gtk::Orientation::Horizontal);
                     hairline.style_context().add_class("chefbar-nav-sep");
-                    hairline.set_margin_top(6);
-                    hairline.set_margin_bottom(4);
                     nav_box.pack_start(&hairline, false, false, 0);
                 }
                 let group_label = gtk::Label::new(Some(group.label()));
                 group_label.set_halign(gtk::Align::Start);
                 group_label.set_xalign(0.0);
-                group_label.set_margin_start(6);
-                group_label.set_margin_top(4);
                 group_label
                     .style_context()
-                    .add_class("chefbar-sidebar-footer-title");
+                    .add_class("chefbar-sidebar-group-title");
                 nav_box.pack_start(&group_label, false, false, 0);
                 last_group = Some(group);
             }
@@ -149,8 +157,8 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     // Status-footer
     let footer = gtk::Box::new(gtk::Orientation::Vertical, 4);
     footer.style_context().add_class("chefbar-sidebar-footer");
-    footer.set_margin_start(12);
-    footer.set_margin_end(12);
+    footer.set_margin_start(RAIL_START);
+    footer.set_margin_end(RAIL_END);
     footer.set_margin_top(10);
     footer.set_margin_bottom(12);
     let footer_title = gtk::Label::new(Some("Status"));
