@@ -5,3 +5,5 @@ __pycache__/
 /.idea/
 /qodana.yaml
 .cursor/evals/last-report.json
+src.zip
+

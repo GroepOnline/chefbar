@@ -486,7 +486,8 @@ impl Panel {
         };
         let profile = crate::config::global_profile().clone();
         let sessions = crate::sessions::load_ranked_sessions(&snap.events);
-        let actions = build_actions(&ops, &snap, &profile, sessions);
+        let mutes = crate::mutes::load();
+        let actions = build_actions(&ops, &snap, &profile, sessions, &mutes);
         if let Some(action) = actions.first() {
             self.drawer.show_for(action);
         }
@@ -545,7 +546,8 @@ impl Panel {
                 // `?term` is lexical brain-search; fuzzy ranking zou de `?` opeten.
                 build_brain_search_actions(&snap, &query)
             } else {
-                let actions = build_actions(&ops, &snap, &profile, sessions);
+                let mutes = crate::mutes::load();
+                let actions = build_actions(&ops, &snap, &profile, sessions, &mutes);
                 let rank_ctx = RankContext::local();
                 rank_actions_with(&actions, &query, 8, Some(&rank_ctx))
             };
@@ -1027,7 +1029,8 @@ fn render_into(
     let ranked = if query.starts_with('?') {
         build_brain_search_actions(&snap, query)
     } else {
-        let all_actions = build_actions(&ops, &snap, &profile, sessions.clone());
+        let mutes = crate::mutes::load();
+        let all_actions = build_actions(&ops, &snap, &profile, sessions.clone(), &mutes);
         let filtered = filter_actions_by_harness(all_actions, active_kind.as_ref());
         let mut boost_terms: Vec<String> = Vec::new();
         for session in sessions.iter().filter(|s| s.needs_attention()).take(4) {

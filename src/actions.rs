@@ -52,6 +52,7 @@ pub enum RunSpec {
     PrunePreview,
     FocusDomain(String),
     TogglePalette,
+    ToggleMute(String),
     SendControlChat,
 }
 
@@ -96,6 +97,7 @@ impl RunSpec {
             RunSpec::PrunePreview => "PrunePreview".into(),
             RunSpec::FocusDomain(domain) => format!("FocusDomain:{domain}"),
             RunSpec::TogglePalette => "TogglePalette".into(),
+            RunSpec::ToggleMute(key) => format!("ToggleMute:{key}"),
             RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
             RunSpec::SendControlChat => "SendControlChat".into(),
         }
@@ -681,11 +683,14 @@ pub fn build_brain_search_actions(snap: &Snapshot, query: &str) -> Vec<Action> {
 // ---------------------------------------------------------------------------
 
 /// Bouw de catalogus uit de laatste snapshots (pure functie, geen I/O).
+/// `mutes` is de gedempte agent-set, buiten meegegeven zodat deze functie
+/// geen bestand leest (en deterministisch blijft voor tests/per-keystroke).
 pub fn build_actions(
     ops: &OpsSnapshot,
     snap: &Snapshot,
     profile: &EndpointProfile,
     sessions: Vec<crate::sessions::Session>,
+    mutes: &HashSet<String>,
 ) -> Vec<Action> {
     let mut actions: Vec<Action> = Vec::new();
     let home = crate::home_dir();
@@ -701,6 +706,22 @@ pub fn build_actions(
     actions.extend(build_linear_actions(snap, profile));
     actions.extend(build_kater_actions(snap, profile));
     actions.extend(build_health_actions(snap, profile));
+    // `mutes` wordt buiten meegegeven (eenmaal geladen per render/keystroke),
+    // zodat de palette-rij de huidige demp-status toont zonder I/O hierbinnen.
+    for agent in &snap.agents {
+        let verb = if mutes.contains(&agent.key) {
+            "Ontdemp"
+        } else {
+            "Demp"
+        };
+        actions.push(action(
+            format!("{verb} {} · {}", agent.agent, agent.workspace),
+            "tray- en inboxmeldingen aan/uit",
+            "STIL",
+            format!("demp mute agent {} {}", agent.agent, agent.workspace),
+            RunSpec::ToggleMute(agent.key.clone()),
+        ));
+    }
     if snap.brain.ok || !snap.brain.skills.is_empty() {
         let counts = snap.brain.counts.clone().unwrap_or_default();
         actions.push(action(
@@ -1257,6 +1278,23 @@ impl Executor {
                     crate::notify::notify("Palette", "toggle — Super+Space", "ok");
                 }
             }
+            RunSpec::ToggleMute(key) => {
+                let key = key.clone();
+                self.spawn_bg(move || {
+                    let (now_muted, ok) = crate::mutes::toggle(&key);
+                    if !ok {
+                        crate::notify::notify(
+                            "Dempen lukte niet",
+                            &format!("kon demp-lijst niet opslaan voor {key}"),
+                            "error",
+                        );
+                        return;
+                    }
+                    crate::state::refresh_global();
+                    let state = if now_muted { "gedempt" } else { "ontdempt" };
+                    crate::notify::notify("Dempen", &format!("{key} {state}"), "ok");
+                });
+            }
             RunSpec::SendControlChat => {
                 let text = query.trim();
                 if text.is_empty() {
@@ -1331,6 +1369,7 @@ mod tests {
             snap,
             &EndpointProfile::default(),
             Vec::new(),
+            &HashSet::new(),
         )
     }
 
