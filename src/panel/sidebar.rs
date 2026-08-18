@@ -10,9 +10,9 @@ use crate::harness::{HarnessGroup, HarnessKind};
 
 pub const SIDEBAR_WIDTH: i32 = 240;
 
-/// Linkerrail van de sidebar. Nav-labels landen op 8 (nav_box) + 2 (border-left)
-/// + 10 (padding) = 20px; titel en footer volgen diezelfde rail zodat er één
-/// optische kantlijn is in plaats van drie.
+/// Linkerrail van de sidebar. Nav-labels landen op 20px: 8 (nav_box) plus
+/// 2 (border-left) plus 10 (padding). Titel en footer volgen diezelfde rail
+/// zodat er één optische kantlijn is in plaats van drie.
 const RAIL_START: i32 = 20;
 /// Rechter-inzet, gelijk aan de 16px van de header-padding.
 const RAIL_END: i32 = 16;

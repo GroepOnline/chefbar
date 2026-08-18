@@ -23,10 +23,10 @@ fn live_domain_count() -> usize {
 
 /// Devin v2 heading-tracking (−0.02em) omgerekend naar Pango-units.
 ///
-/// Pango rekent letter-spacing in Pango-units: 1 device-unit (px op scherm)
-/// = `pango::SCALE` (1024) units. Voor een kop van 18px is −0.02em dus
-/// −0.02 × 18 × 1024 ≈ −369 units. De eerdere −20 was effectief nul tracking
-/// (≈ −0.001em) en leverde dus geen v2-kop op.
+/// Pango rekent letter-spacing in Pango-units, waarbij 1 device-unit (px op
+/// scherm) gelijk is aan `pango::SCALE` (1024) units. Voor een kop van 18px
+/// is −0.02em dus −0.02 × 18 × 1024 ≈ −369 units. De eerdere −20 was
+/// effectief nul tracking (≈ −0.001em) en leverde dus geen v2-kop op.
 pub fn heading_tracking_units(font_px: f64) -> i32 {
     const TRACKING_EM: f64 = -0.02;
     let units = TRACKING_EM * font_px * pango::SCALE as f64;
