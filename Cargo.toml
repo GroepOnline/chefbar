@@ -2,7 +2,7 @@
 name = "chefbar"
 version = "4.0.0-dev"
 edition = "2021"
-description = "ChefBar — ChefGroep assistent-app (Rust native, Signaal · Huly)"
+description = "ChefBar — ChefGroep assistent-app (Rust native, Signaal v2 · Devin-richting)"
 license = "MIT"
 default-run = "chefbar"
 

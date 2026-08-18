@@ -1,13 +1,17 @@
 //! Signaal v2 (Devin-richting) CSS voor ChefBar — tokens uit
 //! `GroepOnline/design-system` (`DESIGN.md` v2 + `tokens.css`, skin `devin`),
 //! gemapt op de GTK3-CSS subset. Migratiebeslissing: Joep, 2026-08-12
-//! (ChefBar volgt OpenCodex, dat per PR #26 op v2 zit).
+//! (ChefBar volgt OpenCodex, dat per PR #26 op v2 zit). Joep, 2026-08-18:
+//! de ChefBar-frontend volgt deze design-system, geen tweede dialect.
 //!
-//! v2-meetwaarden: warm off-white canvas #F7F6F5 / basalt-warm donker
-//! #121111, één accent #317CFF (licht) / #5C97FF (donker), General Sans
-//! interface + IBM Plex Mono data (geen serif in product-UI), radius
-//! 6/10/200, hairlines, geen glow/gradients. Signature blijft de verticale
-//! CG-statuslijn (v2 worked-row-streep: line-strong in rust, accent live).
+//! v2-meetwaarden: light-first warm off-white canvas #F7F6F5, donker
+//! basalt-warm #121111 met volledige pariteit, één accent #317CFF (licht) /
+//! #5C97FF (donker), General Sans interface + IBM Plex Mono data (geen serif
+//! en geen Inter in product-UI), radius 6 (controls) / 10 (cards, composer,
+//! overlay, dialog) / 200 (badges). Scheiding komt van hairlines, niet van
+//! elevation: geen shadow, geen glow, geen gradients. De 2px verticale streep
+//! is de v2 worked-row-streep (line-strong in rust, accent tijdens een run),
+//! geen tweede signatuurmotief.
 //! Groen blijft gereserveerd voor git/PR/toestemming; amber = wacht-op-jou.
 
 use std::cell::RefCell;
@@ -28,20 +32,21 @@ static ACTIVE: OnceLock<Mutex<String>> = OnceLock::new();
 
 fn set_active(theme: &str) {
     if let Ok(mut active) = ACTIVE
-        .get_or_init(|| Mutex::new(THEME_DARK.to_string()))
+        .get_or_init(|| Mutex::new(THEME_LIGHT.to_string()))
         .lock()
     {
         *active = theme.to_string();
     }
 }
 
-/// Het nu actieve thema (voor footer-toggle en state-persist).
+/// Het nu actieve thema (voor footer-toggle en state-persist). Valt terug op
+/// licht: v2 is light-first.
 pub fn active_theme() -> String {
     ACTIVE
-        .get_or_init(|| Mutex::new(THEME_DARK.to_string()))
+        .get_or_init(|| Mutex::new(THEME_LIGHT.to_string()))
         .lock()
         .map(|s| s.clone())
-        .unwrap_or_else(|_| THEME_DARK.to_string())
+        .unwrap_or_else(|_| THEME_LIGHT.to_string())
 }
 
 /// Laadt de stylesheet voor `theme` en geeft de provider voor
@@ -137,13 +142,14 @@ button, entry {{
   color: {brand};
 }}
 
-/* Zoek-input — pill affordance, focus-ring in accent */
+/* Zoek-input — v2 .input: r-6 control, focus = accent border + soft ring.
+   Geen pill: pillen zijn in v2 alleen voor badges. */
 .chefbar-search, .chefbar-search entry,
 .chefbar-palette-entry, .chefbar-palette-entry entry {{
   background-color: {surface};
   background-image: none;
   border: 1px solid {control_border};
-  border-radius: 999px;
+  border-radius: 6px;
   color: {text};
   font-size: 13px;
   padding: 7px 14px;
@@ -311,13 +317,13 @@ button, entry {{
   background-color: {error_soft};
 }}
 
-/* kbd-chips — toetsen in mono, hairline */
+/* kbd-chips — toetsen in mono, hairline (v2 .btn kbd: r-3) */
 .chefbar-kbd {{
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   color: {text_muted};
   border: 1px solid {control_border};
-  border-radius: 4px;
+  border-radius: 3px;
   padding: 1px 5px;
 }}
 
@@ -499,14 +505,15 @@ button, entry {{
   padding: 4px 12px 12px 12px;
 }}
 
-/* ============ Overlay (palette, center, 560px, radius 10, shadow) ============ */
+/* ============ Overlay (palette, center, 560px, r-10, hairline) ============ */
+/* v2 kent geen elevation in product-UI: de overlay staat op de surface-kleur en
+   scheidt zich met een sterkere hairline van het canvas. Geen shadow. */
 .chefbar-overlay,
 .chefbar-palette-overlay {{
   min-width: 560px;
   background-color: {surface};
-  border: 1px solid {line};
+  border: 1px solid {control_border};
   border-radius: 10px;
-  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
   padding: 12px;
 }}
 .chefbar-palette-entry {{
@@ -554,22 +561,25 @@ button, entry {{
   padding: 8px 12px;
 }}
 
-/* ============ Textdialog (acties met needs_text) — radius 12 ============ */
+/* ============ Textdialog (acties met needs_text) — r-10, hairline ============ */
+/* Zelfde regel als de overlay: hairline in plaats van shadow. De entry is een
+   control, dus r-6 met de accent-ring op focus. */
 .chefbar-dialog {{
   background-color: {canvas};
-  border: 1px solid {line};
-  border-radius: 12px;
-  box-shadow: 0 14px 20px rgba(0, 0, 0, 0.50);
+  border: 1px solid {control_border};
+  border-radius: 10px;
 }}
 .chefbar-dialog entry {{
   background-color: {surface};
+  background-image: none;
   border: 1px solid {control_border};
-  border-radius: 8px;
+  border-radius: 6px;
   color: {text};
   padding: 8px 10px;
 }}
 .chefbar-dialog entry:focus {{
   border-color: {focus};
+  box-shadow: 0 0 0 3px {focus_soft};
 }}
 
 /* ============ Density token ============ */
@@ -757,7 +767,7 @@ struct Tokens {
 }
 
 impl Tokens {
-    /// Donker (v2 devin-skin dark — standaard).
+    /// Donker (v2 devin-skin dark — volgt system-dark, volledige pariteit).
     fn dark() -> Self {
         Self {
             canvas: "#121111",
@@ -785,7 +795,7 @@ impl Tokens {
         }
     }
 
-    /// Licht (v2 devin-skin light — volledige pariteit).
+    /// Licht (v2 devin-skin light — de light-first standaard).
     fn light() -> Self {
         Self {
             canvas: "#F7F6F5",
@@ -814,13 +824,18 @@ impl Tokens {
     }
 }
 
-/// Welk thema actief is. Signaal v2: donker (basalt-warm) is de standaard
-/// voor ChefBar, zoals bij de Huly-lock was afgesproken. `gtk-application-prefer-dark-theme` is op GNOME vrijwel
-/// altijd false (GTK3 krijgt dark-pref niet door), dus daarop defaulten zou
-/// de app onbedoeld licht maken. Licht heeft pariteit en is bereikbaar via
-/// CHEFBAR_THEME=light (dev/parity-checks); donker kan expliciet met
-/// CHEFBAR_THEME=dark.
-pub fn detect_theme(_settings: &gtk::Settings) -> String {
+/// Welk thema actief is. Signaal v2 is light-first: het warme off-white canvas
+/// (#F7F6F5) is de standaard, donker basalt-warm (#121111) volgt het systeem en
+/// houdt volledige pariteit.
+///
+/// Volgorde: `CHEFBAR_THEME=light|dark` wint altijd; daarna de GTK-dark-pref;
+/// daarna de themanaam. Die tweede aanwijzing is er omdat GNOME
+/// `gtk-application-prefer-dark-theme` op GTK3 niet altijd doorzet, terwijl het
+/// GTK-thema dan wel op een `-dark`-variant staat.
+///
+/// Het opstartthema van de app zelf komt uit de persisted panel-state; die
+/// default hoort bij `panel_state` en valt buiten deze CSS-laag.
+pub fn detect_theme(settings: &gtk::Settings) -> String {
     if let Ok(force) = std::env::var("CHEFBAR_THEME") {
         match force.trim().to_ascii_lowercase().as_str() {
             THEME_LIGHT => return THEME_LIGHT.into(),
@@ -828,5 +843,14 @@ pub fn detect_theme(_settings: &gtk::Settings) -> String {
             _ => {}
         }
     }
-    THEME_DARK.into()
+    if settings.is_gtk_application_prefer_dark_theme() {
+        return THEME_DARK.into();
+    }
+    let theme_name_is_dark = settings
+        .gtk_theme_name()
+        .is_some_and(|name| name.to_lowercase().ends_with("-dark"));
+    if theme_name_is_dark {
+        return THEME_DARK.into();
+    }
+    THEME_LIGHT.into()
 }
