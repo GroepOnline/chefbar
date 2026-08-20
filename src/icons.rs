@@ -130,7 +130,8 @@ pub fn for_action(keywords: &str, section: &str) -> &'static str {
     }
 }
 
-pub fn all_named() -> &'static [&'static str] {
+#[cfg(test)]
+fn all_named() -> &'static [&'static str] {
     &[
         "inbox",
         "list",
@@ -221,15 +222,6 @@ pub fn image_muted(name: &str, px: i32) -> gtk::Image {
 /// Rasterized glyph for `.chefbar-solid` (canvas ink on text fill).
 pub fn image_on_solid(name: &str, px: i32) -> gtk::Image {
     from_kind(name, px, InkKind::Canvas)
-}
-
-/// Compatibility wrapper: treat explicit canvas hex as solid, otherwise muted.
-pub fn image_ink(name: &str, px: i32, color: &str) -> gtk::Image {
-    if color.eq_ignore_ascii_case(crate::css::canvas_hex()) {
-        image_on_solid(name, px)
-    } else {
-        image_muted(name, px)
-    }
 }
 
 /// Rebuild tracked pixbufs after a live theme switch (CSS cannot recolor rasters).
