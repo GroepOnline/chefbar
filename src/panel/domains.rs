@@ -879,6 +879,14 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Share
 // ---------------------------------------------------------------------------
 
+fn share_sync_row_action(key: &str) -> Option<&'static str> {
+    match key.to_lowercase().as_str() {
+        "pull" | "lastpull" => Some("pull"),
+        "push" | "lastpush" => Some("push"),
+        _ => None,
+    }
+}
+
 fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
     let ql = q.to_lowercase();
     let mut entries: Vec<_> = snap
@@ -911,10 +919,9 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
         let inner = info_row(k, Some(v));
-        let key = k.to_lowercase();
-        if key == "pull" || key == "push" {
+        if let Some(action) = share_sync_row_action(k) {
             group.pack_start(
-                &clickable_row(inner, RunSpec::ShareSync(key), executor),
+                &clickable_row(inner, RunSpec::ShareSync(action.to_string()), executor),
                 false,
                 false,
                 0,
@@ -1484,7 +1491,9 @@ fn render_eval(content: &gtk::Box, snap: &Snapshot, q: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{inbox_bucket, linear_row_open_target, status_bucket, sync_stamp};
+    use super::{
+        inbox_bucket, linear_row_open_target, share_sync_row_action, status_bucket, sync_stamp,
+    };
     use crate::models::LinearIssue;
 
     #[test]
@@ -1526,6 +1535,16 @@ mod tests {
             ..Default::default()
         };
         assert!(linear_row_open_target(&issue).is_none());
+    }
+
+    #[test]
+    fn share_sync_row_action_matches_camel_case_keys() {
+        assert_eq!(share_sync_row_action("lastPull"), Some("pull"));
+        assert_eq!(share_sync_row_action("lastPush"), Some("push"));
+        assert_eq!(share_sync_row_action("pull"), Some("pull"));
+        assert_eq!(share_sync_row_action("push"), Some("push"));
+        assert!(share_sync_row_action("last_sync").is_none());
+        assert!(share_sync_row_action("status").is_none());
     }
 
     #[test]
