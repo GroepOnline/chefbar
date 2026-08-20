@@ -8,8 +8,8 @@ alwaysApply: false
 - GTK 3.24 via `gtk 0.18`. No GTK4, no relm4, no webview, no Electron.
 - Panel geometry is fixed 860×880, `set_resizable(false)`, undecorated, `keep_above`, centered (`src/panel/mod.rs`).
 - Three surfaces, one snapshot: tray · palette overlay · panel. Overlay reuses `palette.rs` ranking. No second search pipeline.
-- CSS is a GTK3 subset generated from Rust tokens in `src/css.rs`. Forbidden in emitted CSS: custom properties (`--*`), `gap`, `inset`, `grid-gap`, `place-items`, gradients, `box-shadow` glow, `filter`.
+- CSS is a GTK3 subset generated from Rust tokens in `src/css.rs`. Forbidden in emitted CSS: custom properties (`--*`), `gap`, `inset`, `grid-gap`, `place-items`, `text-transform`, gradients, `box-shadow` glow, `filter`. Caps eyebrows use Rust `zones::caps` because GTK3 rejects `text-transform`.
 - Tokens: dark canvas `#121111`, light `#F7F6F5`, accent `#317CFF` / `#5C97FF`, radius 6/10/200, hairlines, General Sans + IBM Plex Mono. Green is reserved for git/PR/consent; amber = wait-on-you.
-- Motion: fades 120 ms (`PANEL_MS`) only for open/close/drawer. No animation during poll-render.
+- Motion: fades 280 ms (`PANEL_MS`) only for open/close. Drawer 160 ms, overlay 100 ms. No animation during poll-render.
 - Density is a padding-token swap (`comfortable` / `compact`), not two layouts.
 - UI thread does not call `http::Client`. Refresh reads `Shared` and rebuilds widgets from data.

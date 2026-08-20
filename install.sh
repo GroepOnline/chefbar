@@ -65,6 +65,28 @@ fi
 install -m 755 "$BINARY" "$BIN_DIR/chefbar"
 echo "binary    $BIN_DIR/chefbar"
 
+# Signaal v2 type: General Sans (UI) + IBM Plex Mono (data). No CDN.
+# Missing faces fall back visibly — never silently to Cantarell-only.
+if command -v fc-list >/dev/null 2>&1; then
+  if fc-list : family | grep -Fqi "General Sans"; then
+    echo "font      General Sans aanwezig"
+  else
+    echo "font      ONTBREEKT: General Sans — CSS noemt de face eerst; zonder installatie zie je system-ui/Cantarell. Fontshare-licentie: niet bundelen. Optioneel: $APP_DIR/config/fonts-signaal.conf → ~/.config/fontconfig/conf.d/" >&2
+  fi
+  if fc-list : family | grep -Fqi "IBM Plex Mono"; then
+    echo "font      IBM Plex Mono aanwezig"
+  else
+    echo "font      ONTBREEKT: IBM Plex Mono — OFL, mag gebundeld of via distro. Zonder deze face valt data-mono terug." >&2
+  fi
+fi
+if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
+  if gdk-pixbuf-query-loaders 2>/dev/null | grep -Fqi svg; then
+    echo "pixbuf   SVG-loader aanwezig"
+  else
+    echo "pixbuf   ONTBREEKT: SVG-loader (librsvg) — Lucide-iconen vallen terug op image-missing. Pakket: librsvg2-common" >&2
+  fi
+fi
+
 # Waarschuw als BIN_DIR niet in PATH staat (on-click draait wel, terminal niet).
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;

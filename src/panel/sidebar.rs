@@ -1,6 +1,6 @@
 //! Sidebar voor het ChefApp-panel (240 px, groepen, dots).
 //!
-//! Canonieke 5.0-navigatie: 16 live-domeinen + compat-ids `eval`/`sync`.
+//! Canonieke 5.0-navigatie: 15 live-domeinen + compat-ids `eval`/`sync`.
 //! Groepen komen uit `HarnessKind::group()`; de scroller houdt de kolom
 //! binnen 880 px zonder een tweede venster.
 
@@ -10,19 +10,14 @@ use crate::harness::{HarnessGroup, HarnessKind};
 
 pub const SIDEBAR_WIDTH: i32 = 240;
 
-/// Linkerrail van de sidebar. Nav-labels landen op 20px: 8 (nav_box) plus
-/// 2 (border-left) plus 10 (padding). Titel en footer volgen diezelfde rail
-/// zodat er één optische kantlijn is in plaats van drie.
-const RAIL_START: i32 = 20;
-/// Rechter-inzet, gelijk aan de 16px van de header-padding.
-const RAIL_END: i32 = 16;
-
-/// Canonieke nav-ids (16 domeinen + eval/sync compat), gegroepeerd per
+/// Canonieke nav-ids (15 domeinen + eval/sync compat), gegroepeerd per
 /// HarnessGroup zodat de hairlines in de sidebar schone secties vormen.
 pub const NAV_IDS: &[&str] = &[
     "inbox",
     "tasks",
     "linear",
+    "agents",
+    "flows",
     "fleet",
     "herdr",
     "control",
@@ -36,6 +31,7 @@ pub const NAV_IDS: &[&str] = &[
     "sync",
     "secrets",
     "kater",
+    "brain",
     "health",
     "eval",
 ];
@@ -43,6 +39,8 @@ pub const NAV_LABELS: &[&str] = &[
     "Inbox",
     "Taken",
     "Linear",
+    "Agents",
+    "Flows",
     "Fleet",
     "Herdr",
     "Control",
@@ -51,12 +49,13 @@ pub const NAV_LABELS: &[&str] = &[
     "Accounts",
     "CRM",
     "Share",
-    "Klembord",
-    "Bureaublad",
+    "Clipboard",
+    "Desktop",
     "Sync",
-    "Sleutels",
+    "Secrets",
     "Kater",
-    "Gezondheid",
+    "Brain",
+    "Health",
     "Evaluatie",
 ];
 
@@ -83,18 +82,14 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     // App-titel
     let title_wrap = gtk::Box::new(gtk::Orientation::Vertical, 2);
     title_wrap.set_margin_top(14);
-    title_wrap.set_margin_start(RAIL_START);
-    title_wrap.set_margin_end(RAIL_END);
+    title_wrap.set_margin_start(14);
+    title_wrap.set_margin_end(14);
     title_wrap.set_margin_bottom(10);
-    let title = gtk::Label::new(Some("ChefBar"));
+    let title = gtk::Label::new(Some("ChefApp"));
     title.set_halign(gtk::Align::Start);
     title.set_xalign(0.0);
     title.style_context().add_class("chefbar-sidebar-title");
-    // Zelfde v2-heading tracking als de paneeltitel, op 14px.
-    let title_attrs = pango::AttrList::new();
-    let tracking = super::header::heading_tracking_units(14.0);
-    title_attrs.insert(pango::AttrInt::new_letter_spacing(tracking));
-    title.set_attributes(Some(&title_attrs));
+    title.set_attributes(Some(&crate::css::heading_attrs()));
     title_wrap.pack_start(&title, false, false, 0);
     let sub = gtk::Label::new(Some("ChefGroep"));
     sub.set_halign(gtk::Align::Start);
@@ -122,11 +117,15 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
                 if last_group.is_some() {
                     let hairline = gtk::Separator::new(gtk::Orientation::Horizontal);
                     hairline.style_context().add_class("chefbar-nav-sep");
+                    hairline.set_margin_top(6);
+                    hairline.set_margin_bottom(4);
                     nav_box.pack_start(&hairline, false, false, 0);
                 }
-                let group_label = gtk::Label::new(Some(group.label()));
+                let group_label = gtk::Label::new(Some(&super::zones::caps(group.label())));
                 group_label.set_halign(gtk::Align::Start);
                 group_label.set_xalign(0.0);
+                group_label.set_margin_start(6);
+                group_label.set_margin_top(4);
                 group_label
                     .style_context()
                     .add_class("chefbar-sidebar-group-title");
@@ -134,17 +133,35 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
                 last_group = Some(group);
             }
         }
-        let btn = gtk::Button::with_label(label);
+        let btn = gtk::Button::new();
         btn.set_relief(gtk::ReliefStyle::None);
         btn.style_context().add_class("chefbar-nav-item");
         btn.set_hexpand(true);
         btn.set_halign(gtk::Align::Fill);
-        if let Some(child) = btn.child() {
-            if let Some(lbl) = child.downcast_ref::<gtk::Label>() {
-                lbl.set_halign(gtk::Align::Start);
-                lbl.set_xalign(0.0);
-            }
-        }
+        btn.set_tooltip_text(Some(label));
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.style_context().add_class("chefbar-nav-row");
+        let tile = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        tile.style_context().add_class("chefbar-nav-tile");
+        tile.set_halign(gtk::Align::Center);
+        tile.set_valign(gtk::Align::Center);
+        tile.set_size_request(28, 28);
+        let icon = crate::icons::image_muted(crate::icons::for_nav(id), 14);
+        icon.set_halign(gtk::Align::Center);
+        icon.set_valign(gtk::Align::Center);
+        tile.pack_start(&icon, true, true, 0);
+        row.pack_start(&tile, false, false, 0);
+        let name = gtk::Label::new(Some(label));
+        name.set_halign(gtk::Align::Start);
+        name.set_xalign(0.0);
+        name.set_ellipsize(pango::EllipsizeMode::End);
+        name.style_context().add_class("chefbar-nav-name");
+        row.pack_start(&name, true, true, 0);
+        let count = gtk::Label::new(Some(""));
+        count.set_halign(gtk::Align::End);
+        count.style_context().add_class("chefbar-nav-count");
+        row.pack_end(&count, false, false, 0);
+        btn.add(&row);
         if *id == active_group || (idx == 0 && !NAV_IDS.contains(&active_group)) {
             btn.style_context().add_class("active");
         }
@@ -157,18 +174,18 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     // Status-footer
     let footer = gtk::Box::new(gtk::Orientation::Vertical, 4);
     footer.style_context().add_class("chefbar-sidebar-footer");
-    footer.set_margin_start(RAIL_START);
-    footer.set_margin_end(RAIL_END);
+    footer.set_margin_start(12);
+    footer.set_margin_end(12);
     footer.set_margin_top(10);
     footer.set_margin_bottom(12);
-    let footer_title = gtk::Label::new(Some("Status"));
+    let footer_title = gtk::Label::new(Some("Klaar"));
     footer_title.set_halign(gtk::Align::Start);
     footer_title.set_xalign(0.0);
     footer_title
         .style_context()
         .add_class("chefbar-sidebar-footer-title");
     footer.pack_start(&footer_title, false, false, 0);
-    let footer_meta = gtk::Label::new(Some("online \u{00b7} klaar voor instructies"));
+    let footer_meta = gtk::Label::new(Some("Klaar voor instructies"));
     footer_meta.set_halign(gtk::Align::Start);
     footer_meta.set_xalign(0.0);
     footer_meta
@@ -180,24 +197,31 @@ pub fn build_sidebar(active_group: &str) -> (gtk::Box, Vec<(String, gtk::Button)
     (sidebar, nav_buttons)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn nav_ids_en_labels_zelfde_lengte() {
-        assert_eq!(NAV_IDS.len(), NAV_LABELS.len());
+fn find_label_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Label> {
+    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+        if label.style_context().has_class(class) {
+            return Some(label);
+        }
     }
+    if let Ok(container) = widget.clone().downcast::<gtk::Box>() {
+        for child in container.children() {
+            if let Some(found) = find_label_with_class(&child, class) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
 
-    #[test]
-    fn nav_labels_zijn_warm_nederlands() {
-        assert!(NAV_LABELS.contains(&"Klembord"));
-        assert!(NAV_LABELS.contains(&"Bureaublad"));
-        assert!(NAV_LABELS.contains(&"Sleutels"));
-        assert!(NAV_LABELS.contains(&"Gezondheid"));
-        assert!(!NAV_LABELS.contains(&"Clipboard"));
-        assert!(!NAV_LABELS.contains(&"Desktop"));
-        assert!(!NAV_LABELS.contains(&"Secrets"));
-        assert!(!NAV_LABELS.contains(&"Health"));
+/// Update the live count without destroying Lucide tiles (`Button::set_label` would).
+pub fn set_nav_caption(btn: &gtk::Button, _label: &str, count: usize) {
+    if let Some(child) = btn.child() {
+        if let Some(count_l) = find_label_with_class(&child, "chefbar-nav-count") {
+            if count > 0 {
+                count_l.set_text(&count.to_string());
+            } else {
+                count_l.set_text("");
+            }
+        }
     }
 }

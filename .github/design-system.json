@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "source": {
+    "repository": "GroepOnline/design-system",
+    "commit_sha": "1ab8f0015540c2b438124dfe9d15f071b2c530bd"
+  },
+  "tier": "gold",
+  "applicability": ["chefapp-gtk"],
+  "commands": [],
+  "notes": "GTK3 consumer. Tokens interpolated in src/css.rs; snapshot at assets/design-tokens.snapshot.css. Do not copy web CSS (gap/inset/custom properties) into the GTK stylesheet."
+}

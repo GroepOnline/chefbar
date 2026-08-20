@@ -35,7 +35,7 @@ Skill: `chefbar-gtk-panel`.
    - `overlay.rs` — palette; **same** `palette::rank_actions_with` as the header
 3. Rebuild from `Shared` on a glib timeout. **No HTTP.** Run user actions with `executor.run(&spec, query)`.
 4. CSS in `src/css.rs`: interpolate `Tokens` into GTK3 properties. Forbidden in the emitted string: custom properties (`--accent`), `gap`, `inset`, `grid-gap`, gradients, glow filters. `box-shadow` is already used for focus/overlay — do not add blur glow. Child `margin`/`padding` instead of `gap`.
-5. Motion: `PANEL_MS` 120ms fade on **open/close/drawer only**. Poll rebuilds are instant (fades on poll = flicker).
+5. Motion: `PANEL_MS` 280ms fade on **open/close only**. Drawer 160ms, overlay 100ms. Poll rebuilds are instant (fades on poll = flicker).
 6. Density: `comfortable` | `compact` via padding token (`panel_state.rs`). One widget tree, not two layouts.
 7. Persist only UI prefs in `panel_state.rs` (group, query, density, drawer, recent_domains cap 20). Atomic write, dirty-flag. `CHEFBAR_PANEL_STATE` for tests. **No secrets.**
 8. Surfaces: tray = glance, overlay = speed (`Super+Space`), panel = control. All three consume one snapshot.

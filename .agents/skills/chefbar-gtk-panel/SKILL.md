@@ -19,7 +19,7 @@ GTK 3.24 (`gtk 0.18`). No GTK4, relm4, webview, Electron.
    - `overlay.rs` palette; **same** `palette::rank_actions_with`
 3. Rebuild from `Shared` on a glib timeout. **No `http::Client` on this thread.** Run actions with `executor.run(&spec, query)`.
 4. CSS: interpolate `Tokens` in `src/css.rs` into GTK3 properties. Forbidden in the emitted string: `--custom-properties`, `gap`, `inset`, `grid-gap`, gradients, glow filters. `box-shadow` is used for focus ring / overlay only (already in file) — do not add blur glow.
-5. Motion: `PANEL_MS` 120ms fade on open/close/drawer only. Poll rebuilds are instant.
+5. Motion: `PANEL_MS` 280ms fade on open/close only. Drawer 160ms, overlay 100ms. Poll rebuilds are instant.
 6. Density: `comfortable` | `compact` via padding token (`panel_state.rs`). One widget tree.
 7. Persist only UI prefs in `panel_state.rs` (group, query, density, drawer, recent_domains cap 20). Atomic write, dirty-flag. `CHEFBAR_PANEL_STATE` for tests. No secrets.
 8. Visual: `scripts/visual-shot.sh` (owned by qa). Dark accent assert `#5C97FF`. Exit 2 = no Xvfb.
@@ -74,7 +74,7 @@ See [references/invariants.md](references/invariants.md). Short form:
 - 860×880, not resizable, one window. Detail in `drawer.rs`.
 - GTK3 CSS: no `--vars`, `gap`, `inset`, glow. Tokens interpolated in `src/css.rs`.
 - No HTTP on this thread. Overlay and header share `rank_actions_with`.
-- Fades only on open/close/drawer (`PANEL_MS` 120). Poll rebuilds are instant.
+- Fades only on open/close (`PANEL_MS` 280). Drawer 160ms, overlay 100ms. Poll rebuilds are instant.
 - No tokio, reqwest, webview, or Electron.
 
 ## Next

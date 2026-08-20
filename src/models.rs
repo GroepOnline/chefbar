@@ -746,6 +746,25 @@ pub struct LinearIssue {
     pub project: Option<String>,
 }
 
+/// Team issue id (bijv. GRO-1425): 2–10 letters, dash, digits.
+pub fn is_linear_team_identifier(s: &str) -> bool {
+    let s = s.trim();
+    let Some(dash) = s.find('-') else {
+        return false;
+    };
+    if dash == 0 || dash == s.len() - 1 {
+        return false;
+    }
+    let (prefix, suffix) = s.split_at(dash);
+    if prefix.len() < 2 || prefix.len() > 10 {
+        return false;
+    }
+    if !prefix.chars().all(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    !suffix[1..].is_empty() && suffix[1..].chars().all(|c| c.is_ascii_digit())
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct KaterStatus {
     pub online: bool,
@@ -1035,8 +1054,8 @@ pub fn build_linear_issues(data: Option<&Value>) -> Vec<LinearIssue> {
 }
 fn parse_linear_issue(v: &Value) -> LinearIssue {
     LinearIssue {
-        id: opt_str_field(v, "id")
-            .or_else(|| opt_str_field(v, "identifier"))
+        id: opt_str_field(v, "identifier")
+            .or_else(|| opt_str_field(v, "id"))
             .unwrap_or_default(),
         title: opt_str_field(v, "title").unwrap_or_else(|| str_field(v, "id")),
         meta: opt_str_field(v, "project")
@@ -1686,6 +1705,33 @@ mod chefapp_tolerant_tests {
         assert!(build_linear_issues(None).is_empty());
         let v = json!({"issues":[{"id":"CHE-1","title":"Fix bug"}]});
         assert_eq!(build_linear_issues(Some(&v))[0].id, "CHE-1");
+    }
+
+    #[test]
+    fn linear_issues_prefer_identifier_over_uuid_id() {
+        let v = json!({
+            "issues":[{
+                "id":"550e8400-e29b-41d4-a716-446655440000",
+                "identifier":"GRO-1425",
+                "title":"Fix panel"
+            }]
+        });
+        assert_eq!(build_linear_issues(Some(&v))[0].id, "GRO-1425");
+    }
+
+    #[test]
+    fn linear_team_identifier_matcher() {
+        assert!(is_linear_team_identifier("GRO-1425"));
+        assert!(is_linear_team_identifier("CHE-1"));
+        assert!(is_linear_team_identifier("AB-99"));
+        assert!(!is_linear_team_identifier("A-1"));
+        assert!(!is_linear_team_identifier("GRO-"));
+        assert!(!is_linear_team_identifier(
+            "550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(!is_linear_team_identifier(
+            "https://linear.app/chefgroepp/issue/GRO-1"
+        ));
     }
 
     #[test]

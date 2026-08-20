@@ -19,6 +19,7 @@ sha2 = "0.10"
 libc = "0.2"
 pango = "0.18"
 gdk = "0.18"
+gdk-pixbuf = "0.18"
 
 [profile.release]
 lto = true

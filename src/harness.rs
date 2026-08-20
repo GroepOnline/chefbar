@@ -51,6 +51,7 @@ pub enum HarnessKind {
     Commerce,
     Sync,
     Eval,
+    Brain,
     // Nieuw in 4.0 — minstens 9 distinct ids
     Inbox,
     Herdr,
@@ -61,6 +62,8 @@ pub enum HarnessKind {
     Desktop,
     Tasks,
     Linear,
+    Agents,
+    Flows,
     Containers,
     Secrets,
     Kater,
@@ -76,6 +79,7 @@ impl HarnessKind {
             HarnessKind::Commerce => "commerce",
             HarnessKind::Sync => "sync",
             HarnessKind::Eval => "eval",
+            HarnessKind::Brain => "brain",
             HarnessKind::Inbox => "inbox",
             HarnessKind::Herdr => "herdr",
             HarnessKind::Vault => "vault",
@@ -85,6 +89,8 @@ impl HarnessKind {
             HarnessKind::Desktop => "desktop",
             HarnessKind::Tasks => "tasks",
             HarnessKind::Linear => "linear",
+            HarnessKind::Agents => "agents",
+            HarnessKind::Flows => "flows",
             HarnessKind::Containers => "containers",
             HarnessKind::Secrets => "secrets",
             HarnessKind::Kater => "kater",
@@ -107,11 +113,14 @@ impl HarnessKind {
             "desktop" => Some(Self::Desktop),
             "tasks" | "taken" => Some(Self::Tasks),
             "linear" => Some(Self::Linear),
+            "agents" | "acp" => Some(Self::Agents),
+            "flows" => Some(Self::Flows),
             "containers" => Some(Self::Containers),
             "secrets" => Some(Self::Secrets),
             "kater" => Some(Self::Kater),
             "health" | "instellingen" | "settings" => Some(Self::Health),
             "eval" => Some(Self::Eval),
+            "brain" | "geheugen" => Some(Self::Brain),
             "sync" => Some(Self::Sync),
             "control" | "chat" => Some(Self::Control),
             _ => None,
@@ -125,6 +134,7 @@ impl HarnessKind {
             HarnessKind::Commerce => "Commerce",
             HarnessKind::Sync => "Sync",
             HarnessKind::Eval => "Evaluatie",
+            HarnessKind::Brain => "Brain",
             HarnessKind::Inbox => "Inbox",
             HarnessKind::Herdr => "Herdr",
             HarnessKind::Vault => "Vault",
@@ -134,6 +144,8 @@ impl HarnessKind {
             HarnessKind::Desktop => "Desktop",
             HarnessKind::Tasks => "Taken",
             HarnessKind::Linear => "Linear",
+            HarnessKind::Agents => "Agents",
+            HarnessKind::Flows => "Flows",
             HarnessKind::Containers => "Containers",
             HarnessKind::Secrets => "Secrets",
             HarnessKind::Kater => "Kater",
@@ -149,6 +161,7 @@ impl HarnessKind {
             HarnessKind::Commerce => "#d97706",
             HarnessKind::Sync => "#059669",
             HarnessKind::Eval => "#7c3aed",
+            HarnessKind::Brain => "#317CFF",
             HarnessKind::Inbox => "#e11d48",
             HarnessKind::Herdr => "#0ea5e9",
             HarnessKind::Vault => "#f59e0b",
@@ -158,6 +171,8 @@ impl HarnessKind {
             HarnessKind::Desktop => "#06b6d4",
             HarnessKind::Tasks => "#8b5cf6",
             HarnessKind::Linear => "#ec4899",
+            HarnessKind::Agents => "#317CFF",
+            HarnessKind::Flows => "#317CFF",
             HarnessKind::Containers => "#64748b",
             HarnessKind::Secrets => "#f97316",
             HarnessKind::Kater => "#14b8a6",
@@ -175,6 +190,7 @@ impl HarnessKind {
             HarnessKind::Commerce => vec!["commerce", "vault", "account", "commander", "clipboard"],
             HarnessKind::Sync => vec!["share", "sync", "desktop", "pull", "push"],
             HarnessKind::Eval => vec!["eval", "health", "dagscore", "dashboard", "score"],
+            HarnessKind::Brain => vec!["brain", "memory", "geheugen", "retrieval", "learning"],
             HarnessKind::Inbox => vec!["inbox", "melding", "attention", "blocked", "hulp"],
             HarnessKind::Herdr => vec!["herdr", "fleet", "workspace", "pane", "agent"],
             HarnessKind::Vault => vec!["vault", "account", "provider", "rekening"],
@@ -184,6 +200,8 @@ impl HarnessKind {
             HarnessKind::Desktop => vec!["desktop", "webtop", "share", "sync"],
             HarnessKind::Tasks => vec!["tasks", "taken", "commander", "job", "taak"],
             HarnessKind::Linear => vec!["linear", "taken", "issues", "tickets", "ticket"],
+            HarnessKind::Agents => vec!["agents", "acp", "run"],
+            HarnessKind::Flows => vec!["flows", "flow", "pipeline"],
             HarnessKind::Containers => vec!["containers", "docker", "image", "prune", "drift"],
             HarnessKind::Secrets => {
                 vec!["secrets", "vaultwarden", "wachtwoord", "password", "geheim"]
@@ -206,10 +224,16 @@ impl HarnessKind {
             | HarnessKind::Clipboard
             | HarnessKind::Desktop
             | HarnessKind::Sync => HarnessGroup::Sync,
-            HarnessKind::Inbox | HarnessKind::Tasks | HarnessKind::Linear => HarnessGroup::Work,
-            HarnessKind::Secrets | HarnessKind::Kater | HarnessKind::Health | HarnessKind::Eval => {
-                HarnessGroup::System
-            }
+            HarnessKind::Inbox
+            | HarnessKind::Tasks
+            | HarnessKind::Linear
+            | HarnessKind::Agents
+            | HarnessKind::Flows => HarnessGroup::Work,
+            HarnessKind::Secrets
+            | HarnessKind::Kater
+            | HarnessKind::Health
+            | HarnessKind::Eval
+            | HarnessKind::Brain => HarnessGroup::System,
         }
     }
 
@@ -228,9 +252,12 @@ impl HarnessKind {
             HarnessKind::Desktop,
             HarnessKind::Tasks,
             HarnessKind::Linear,
+            HarnessKind::Agents,
+            HarnessKind::Flows,
             HarnessKind::Containers,
             HarnessKind::Secrets,
             HarnessKind::Kater,
+            HarnessKind::Brain,
             HarnessKind::Health,
             // Eval kept for compat, after Health
             HarnessKind::Eval,
@@ -325,7 +352,7 @@ impl Harness {
 /// Geen nieuwe netwerk-calls; alles komt uit `snapshot` en `ops`.
 /// Nieuwe kinds tonen 0 items als snapshot leeg is (tolerant).
 pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
-    let mut out: Vec<Harness> = Vec::with_capacity(17);
+    let mut out: Vec<Harness> = Vec::with_capacity(21);
 
     // ---- Fleet harnas -----------------------------------------------------
     let fleet = &snapshot.fleet;
@@ -393,6 +420,34 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         commerce_queue,
         commerce_active,
         vault_provider_label.clone(),
+    ));
+
+    // ---- ChefGroep Brain --------------------------------------------------
+    let vault_brain = &snapshot.brain;
+    let digest_n = snapshot.brain_digest.chunks.len();
+    let counts = vault_brain.counts.clone().unwrap_or_default();
+    let brain_status =
+        if (vault_brain.error.is_some() && !vault_brain.ok) || vault_brain.stale == Some(true) {
+            HarnessStatus::Blocked
+        } else {
+            HarnessStatus::Idle
+        };
+    let skill_n = usize::try_from(counts.skills.max(0)).unwrap_or(0);
+    let brain_active = vault_brain.source.clone().or_else(|| {
+        if digest_n > 0 {
+            Some(format!("{digest_n} digest"))
+        } else {
+            None
+        }
+    });
+    out.push(Harness::new(
+        HarnessKind::Brain.id(),
+        "Brain",
+        HarnessKind::Brain,
+        brain_status,
+        skill_n.max(digest_n),
+        brain_active,
+        vault_brain.source.clone(),
     ));
 
     // ---- Eval harnas (compat) ---------------------------------------------
@@ -663,6 +718,25 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
         None,
     ));
 
+    out.push(Harness::new(
+        HarnessKind::Agents.id(),
+        "Agents",
+        HarnessKind::Agents,
+        HarnessStatus::Idle,
+        0,
+        None,
+        None,
+    ));
+    out.push(Harness::new(
+        HarnessKind::Flows.id(),
+        "Flows",
+        HarnessKind::Flows,
+        HarnessStatus::Idle,
+        0,
+        None,
+        None,
+    ));
+
     // ---- Containers harnas (D4) -------------------------------------------
     let container_queue = snapshot
         .containers
@@ -742,15 +816,9 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
 mod tests {
     use super::*;
     use crate::models::{FleetInfo, HealthInfo, HerdrAgent, OpsSnapshot, Snapshot};
-    use crate::test_env::EnvGuard;
 
     fn empty_snapshot() -> Snapshot {
         Snapshot::default()
-    }
-
-    fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
-        let _g = EnvGuard::acquire();
-        super::build_harnesses(snapshot, ops)
     }
 
     #[test]
@@ -778,6 +846,14 @@ mod tests {
         assert_eq!(
             HarnessKind::from_alias("control").map(|k| k.id()),
             Some("control")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("agents").map(|k| k.id()),
+            Some("agents")
+        );
+        assert_eq!(
+            HarnessKind::from_alias("flows").map(|k| k.id()),
+            Some("flows")
         );
         assert_eq!(
             HarnessKind::from_alias("chat").map(|k| k.id()),
@@ -814,6 +890,8 @@ mod tests {
         for kind in [
             HarnessKind::Inbox,
             HarnessKind::Linear,
+            HarnessKind::Agents,
+            HarnessKind::Flows,
             HarnessKind::Containers,
             HarnessKind::Secrets,
             HarnessKind::Kater,
@@ -950,6 +1028,8 @@ mod tests {
         assert_eq!(HarnessKind::Inbox.group(), HarnessGroup::Work);
         assert_eq!(HarnessKind::Tasks.group(), HarnessGroup::Work);
         assert_eq!(HarnessKind::Linear.group(), HarnessGroup::Work);
+        assert_eq!(HarnessKind::Agents.group(), HarnessGroup::Work);
+        assert_eq!(HarnessKind::Flows.group(), HarnessGroup::Work);
         assert_eq!(HarnessKind::Containers.group(), HarnessGroup::Fleet);
         // Containers currently Fleet group — if later System, update test accordingly
         // For now we follow Fleet grouping for containers as infra; assert flexibility:

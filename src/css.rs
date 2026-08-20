@@ -1,15 +1,16 @@
-//! Signaal v2 (Devin-richting) CSS voor ChefBar.
+//! Signaal v2 (Devin-richting) CSS voor ChefApp — tokens uit
+//! `GroepOnline/design-system` (`DESIGN.md` v2 + `tokens.css`, skin `devin`),
+//! gemapt op de GTK3-CSS subset. Joep, 2026-08-18: ChefBar/tray/ChefApp
+//! volgen deze design-system, geen Huly en geen tweede dialect.
 //!
-//! Tokens 1-op-1 uit `GroepOnline/design-system` (`DESIGN.md` v2 + `tokens.css`,
-//! skin `devin`), gemapt op de GTK3-subset. Joep, 2026-08-18: ChefBar volgt
-//! deze taal, niet Huly/`.ulpi`.
-//!
-//! Canvas light-first `#F7F6F5`, donker basalt-warm `#121111`. Eén accent
-//! `#317CFF` / `#5C97FF`. General Sans UI + IBM Plex Mono data. Radius 6
-//! (controls) / 10 (cards, overlay, dialog, composer). Hairlines, geen
-//! elevation, geen pillen, geen thema-gradients. De 2px-streep is de
-//! v2 worked-row (line-strong in rust, accent tijdens een run).
+//! Light-first warm off-white canvas, donker basalt-warm met volledige
+//! pariteit, één accent, General Sans interface + IBM Plex Mono data,
+//! radius 6 / 10 / 200. Scheiding via hairlines. De 2px verticale streep
+//! is de v2 worked-row-streep (line-strong in rust, accent tijdens een run).
 //! Groen = git/PR/toestemming; amber = wacht-op-jou; rood = fout/destructive.
+//!
+//! GTK3-subset: geen custom properties, geen `gap`, geen `inset`, geen
+//! gradients, geen glow. Tokens worden in Rust geïnterpoleerd.
 
 use std::cell::RefCell;
 use std::sync::{Mutex, OnceLock};
@@ -33,14 +34,54 @@ fn set_active(theme: &str) {
     }
 }
 
-/// Het nu actieve thema (voor footer-toggle en state-persist). Valt terug op
-/// licht: v2 is light-first.
+/// Het nu actieve thema (voor footer-toggle). Valt terug op licht: v2 is light-first.
 pub fn active_theme() -> String {
     ACTIVE
         .get_or_init(|| Mutex::new(THEME_LIGHT.to_string()))
         .lock()
         .map(|s| s.clone())
         .unwrap_or_else(|_| THEME_LIGHT.to_string())
+}
+
+/// Solid ink for Lucide pixbufs (GTK3 SVG has no currentColor inheritance).
+pub fn ink_hex() -> &'static str {
+    if active_theme() == THEME_DARK {
+        "#F0EEEB"
+    } else {
+        "#191919"
+    }
+}
+
+/// Contrasting canvas color for rasterized icons on solid ink controls.
+pub fn canvas_hex() -> &'static str {
+    if active_theme() == THEME_DARK {
+        "#121111"
+    } else {
+        "#F7F6F5"
+    }
+}
+
+pub fn muted_hex() -> &'static str {
+    if active_theme() == THEME_DARK {
+        "#8A8886"
+    } else {
+        "#707070"
+    }
+}
+
+pub fn accent_hex() -> &'static str {
+    if active_theme() == THEME_DARK {
+        "#5C97FF"
+    } else {
+        "#317CFF"
+    }
+}
+
+/// Koppen in product-UI: tracking −0.02em. 18px ≈ 13.5pt → 276 pango-units.
+pub fn heading_attrs() -> pango::AttrList {
+    let attrs = pango::AttrList::new();
+    attrs.insert(pango::AttrInt::new_letter_spacing(-276));
+    attrs
 }
 
 /// Laadt de stylesheet voor `theme` en geeft de provider voor
@@ -77,395 +118,199 @@ pub fn set_theme(theme: &str) {
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
 pub fn styles_css(theme: &str) -> String {
-    let t = Tokens::for_theme(theme);
-    format!(
-        r#"
-/* ============ GTK3-thema reset (hele widget-set) ============ */
-/* Standaard GTK-thema's zetten gradients, text-shadows en elevation op
-   bijna elk control. v2 is mat + hairline: overal uit, daarna onze klassen. */
-window, .background, .titlebar, headerbar, dialog, messagedialog,
-button, entry, combobox, combobox > box, combobox button, combobox button.combo,
-combobox arrow, spinbutton, spinbutton entry, textview, textview > text,
-list, list row, treeview, treeview.view, iconview, flowbox, flowboxchild,
-notebook, notebook > header, notebook > header tabs, notebook > header tab,
-frame, frame > border, viewport, scrolledwindow, scrollbar, scrollbar trough,
-scale, scale trough, progressbar, progressbar trough, switch, checkbutton,
-radiobutton, calendar, menu, .menu, menuitem, popover, .popover, tooltip,
-.search-bar, actionbar, infobar, separator, .separator {{
+    let t = if theme == THEME_DARK {
+        Tokens::dark()
+    } else {
+        Tokens::light()
+    };
+    t.stylesheet()
+}
+
+/// v2-tokenwaarden per thema (`tokens.css`, skin `devin`).
+struct Tokens {
+    canvas: &'static str,
+    surface: &'static str,
+    sunk: &'static str,
+    hover: &'static str,
+    line: &'static str,
+    line_strong: &'static str,
+    text: &'static str,
+    text_muted: &'static str,
+    text_faint: &'static str,
+    accent: &'static str,
+    accent_ink: &'static str,
+    accent_soft: &'static str,
+    green: &'static str,
+    green_soft: &'static str,
+    red: &'static str,
+    red_soft: &'static str,
+    amber: &'static str,
+    amber_soft: &'static str,
+    font_ui: &'static str,
+    font_mono: &'static str,
+    t_2xs: &'static str,
+    t_xs: &'static str,
+    t_sm: &'static str,
+    t_md: &'static str,
+    t_lg: &'static str,
+    t_xl: &'static str,
+    r_md: &'static str,
+    r_lg: &'static str,
+    r_pill: &'static str,
+    r_micro: &'static str,
+    dur: &'static str,
+}
+
+impl Tokens {
+    fn dark() -> Self {
+        Self {
+            canvas: "#121111",
+            surface: "#1B1A19",
+            sunk: "#242322",
+            hover: "rgba(255,255,255,0.05)",
+            line: "rgba(255,255,255,0.09)",
+            line_strong: "rgba(255,255,255,0.16)",
+            text: "#F0EEEB",
+            text_muted: "rgba(240,238,235,0.55)",
+            text_faint: "rgba(240,238,235,0.35)",
+            accent: "#5C97FF",
+            accent_ink: "#8AB4FF",
+            accent_soft: "rgba(92,151,255,0.12)",
+            green: "#3FB950",
+            green_soft: "rgba(63,185,80,0.12)",
+            red: "#F85149",
+            red_soft: "rgba(248,81,73,0.12)",
+            amber: "#D9A038",
+            amber_soft: "rgba(217,160,56,0.08)",
+            font_ui: r#""General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif"#,
+            font_mono: r#""IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace"#,
+            t_2xs: "10.5px",
+            t_xs: "11.5px",
+            t_sm: "12.5px",
+            t_md: "13.5px",
+            t_lg: "15px",
+            t_xl: "18px",
+            r_md: "6px",
+            r_lg: "10px",
+            r_pill: "200px",
+            r_micro: "3px",
+            dur: "140ms",
+        }
+    }
+
+    fn light() -> Self {
+        Self {
+            canvas: "#F7F6F5",
+            surface: "#FFFFFF",
+            sunk: "#EFEFEF",
+            hover: "rgba(0,0,0,0.045)",
+            line: "rgba(0,0,0,0.08)",
+            line_strong: "rgba(0,0,0,0.14)",
+            text: "#191919",
+            text_muted: "rgba(0,0,0,0.55)",
+            text_faint: "rgba(0,0,0,0.38)",
+            accent: "#317CFF",
+            accent_ink: "#1D5FD6",
+            accent_soft: "rgba(49,124,255,0.09)",
+            green: "#1F883D",
+            green_soft: "rgba(31,136,61,0.10)",
+            red: "#CF222E",
+            red_soft: "rgba(207,34,46,0.10)",
+            amber: "#BF5B00",
+            amber_soft: "rgba(191,91,0,0.06)",
+            font_ui: r#""General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif"#,
+            font_mono: r#""IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace"#,
+            t_2xs: "10.5px",
+            t_xs: "11.5px",
+            t_sm: "12.5px",
+            t_md: "13.5px",
+            t_lg: "15px",
+            t_xl: "18px",
+            r_md: "6px",
+            r_lg: "10px",
+            r_pill: "200px",
+            r_micro: "3px",
+            dur: "140ms",
+        }
+    }
+
+    fn stylesheet(&self) -> String {
+        format!(
+            r#"
+/* ============ Kill Adwaita chrome ============ */
+* {{
+  outline-color: transparent;
+  -gtk-icon-shadow: none;
+}}
+window, .chefbar-app {{
+  background-color: {canvas};
+  color: {text};
+  font-family: {font_ui};
+  font-size: {t_md};
+}}
+button, entry, searchentry, combobox, combobox button, combobox button.combo,
+combobox arrow, combobox cellview, combobox header, headerbar, notebook,
+scrollbar, scrollbar contents, scrollbar trough, menu, menuitem, tooltip,
+.combo, spinbutton, checkbutton, radiobutton {{
   background-image: none;
   box-shadow: none;
   text-shadow: none;
   -gtk-icon-shadow: none;
 }}
-overshoot, undershoot, junction {{
+undershoot.top, undershoot.right, undershoot.bottom, undershoot.left,
+overshoot.top, overshoot.right, overshoot.bottom, overshoot.left {{
   background-image: none;
   background-color: transparent;
-  border: none;
-  box-shadow: none;
 }}
-window, .background {{
-  background-color: {canvas};
-  color: {text};
-}}
-*:disabled {{
-  opacity: 0.38;
-}}
-selection, entry selection, textview selection {{
-  background-color: {accent_soft};
-  color: {text};
-}}
-
-/* ============ Primitives: button / entry / combo / menu ============ */
-button {{
-  background-color: {surface};
-  background-image: none;
-  border: 1px solid {line_strong};
-  border-radius: 6px;
-  color: {text};
-  font-family: "General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  min-height: 32px;
-  padding: 6px 13px;
-  outline: none;
-  box-shadow: none;
-  text-shadow: none;
-  -gtk-icon-shadow: none;
-  transition: background-color 140ms, border-color 140ms, color 140ms;
-}}
-button:hover {{
-  background-color: {sunk};
-}}
-button:active {{
-  background-color: {sunk};
-}}
-button:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
-}}
-button.flat, button.image-button {{
-  background-color: transparent;
-  border-color: transparent;
-  min-height: 28px;
-  min-width: 28px;
-  padding: 2px 6px;
-}}
-button.flat:hover, button.image-button:hover {{
-  background-color: {hover};
-}}
-button.suggested-action {{
-  background-color: {text};
-  border-color: {text};
-  color: {canvas};
-}}
-button.destructive-action {{
-  background-color: {hold_bg};
-  border-color: {red};
-  color: {red};
-}}
-
-entry, spinbutton, spinbutton entry {{
-  background-color: {surface};
-  background-image: none;
-  border: 1px solid {line_strong};
-  border-radius: 6px;
-  color: {text};
-  caret-color: {text};
-  font-family: "General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif;
-  font-size: 13px;
-  min-height: 28px;
-  padding: 4px 10px;
-  box-shadow: none;
-  outline: none;
-}}
-entry:focus, spinbutton:focus, spinbutton entry:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
-}}
-entry image {{
-  color: {text_faint};
-  margin-left: 6px;
-  margin-right: 4px;
-}}
-entry progress {{
-  background-color: {accent_soft};
-  border: none;
-  box-shadow: none;
-}}
-
-combobox, combobox > box {{
+scrolledwindow, viewport {{
   background-color: transparent;
   border: none;
-  box-shadow: none;
 }}
-combobox button, combobox button.combo {{
-  background-color: {surface};
-  background-image: none;
-  border: 1px solid {line_strong};
-  border-radius: 6px;
-  color: {text};
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 400;
-  min-height: 28px;
-  padding: 2px 10px;
-  box-shadow: none;
-}}
-combobox button:hover, combobox button.combo:hover {{
-  background-color: {sunk};
-}}
-combobox button:focus, combobox button.combo:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
-}}
-combobox arrow {{
-  color: {text_muted};
-  min-width: 12px;
-}}
-
-textview, textview > text {{
-  background-color: {surface};
-  color: {text};
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
-}}
-
-list, list row {{
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
-  color: {text};
-}}
-list row {{
-  border-radius: 6px;
-  min-height: 28px;
-  padding: 4px 8px;
-}}
-list row:hover {{
-  background-color: {hover};
-}}
-list row:selected, list row:selected:hover {{
-  background-color: {accent_soft};
-  color: {text};
-}}
-
-treeview, treeview.view, iconview {{
-  background-color: {surface};
-  color: {text};
-  border: 1px solid {line};
-  border-radius: 10px;
-}}
-treeview.view:selected {{
-  background-color: {accent_soft};
-  color: {text};
-}}
-
-notebook, notebook > header, notebook > header tabs {{
-  background-color: {canvas};
-  border: none;
-  box-shadow: none;
-}}
-notebook > header tab {{
-  background-color: transparent;
-  border: none;
-  border-radius: 6px;
-  color: {text_muted};
-  font-size: 13px;
-  font-weight: 500;
-  min-height: 28px;
-  padding: 4px 10px;
-}}
-notebook > header tab:hover {{
-  background-color: {hover};
-  color: {text};
-}}
-notebook > header tab:checked {{
-  background-color: {surface};
-  color: {text};
-}}
-
-frame, frame > border {{
-  background-color: {surface};
-  border: 1px solid {line};
-  border-radius: 10px;
-  box-shadow: none;
-}}
-
-switch {{
-  background-color: {sunk};
-  border: 1px solid {line_strong};
-  border-radius: 10px;
-  min-width: 36px;
-  min-height: 20px;
-  box-shadow: none;
-}}
-switch:checked {{
-  background-color: {accent};
-  border-color: {accent};
-}}
-switch slider {{
-  background-color: {text_muted};
-  border: none;
-  border-radius: 10px;
-  box-shadow: none;
-  min-width: 14px;
-  min-height: 14px;
-}}
-switch:checked slider {{
-  background-color: {surface};
-}}
-
-checkbutton, radiobutton {{
-  background-color: transparent;
-  border: none;
-  color: {text};
-  font-size: 13px;
-  min-height: 28px;
-  padding: 2px 0;
-}}
-checkbutton check, radiobutton radio {{
-  background-color: {surface};
-  background-image: none;
-  border: 1px solid {line_strong};
-  border-radius: 6px;
-  box-shadow: none;
-  min-width: 14px;
-  min-height: 14px;
-}}
-radiobutton radio {{
-  border-radius: 10px;
-}}
-checkbutton check:checked, radiobutton radio:checked {{
-  background-color: {accent};
-  border-color: {accent};
-}}
-
-scale, scale trough {{
-  background-color: {sunk};
-  border: none;
-  border-radius: 6px;
-  min-height: 4px;
-  box-shadow: none;
-}}
-scale highlight {{
-  background-color: {accent};
-  border-radius: 6px;
-}}
-scale slider {{
-  background-color: {text};
-  border: none;
-  border-radius: 10px;
-  box-shadow: none;
-  min-width: 12px;
-  min-height: 12px;
-}}
-
-progressbar, progressbar trough {{
-  background-color: {sunk};
-  border: none;
-  border-radius: 6px;
-  min-height: 4px;
-  box-shadow: none;
-}}
-progressbar progress {{
-  background-color: {accent};
-  border: none;
-  border-radius: 6px;
-}}
-
-menu, .menu, popover, .popover {{
-  background-color: {surface};
-  background-image: none;
-  border: 1px solid {line_strong};
-  border-radius: 10px;
-  box-shadow: none;
-  padding: 4px;
-  color: {text};
-}}
-menuitem {{
-  background-color: transparent;
-  border: none;
-  border-radius: 6px;
-  color: {text};
-  font-size: 13px;
-  min-height: 28px;
-  padding: 4px 10px;
-}}
-menuitem:hover, menuitem:hover > label {{
-  background-color: {hover};
-  color: {text};
-}}
-
-separator, .separator {{
+separator {{
   background-color: {line};
-  border: none;
   min-height: 1px;
   min-width: 1px;
 }}
-
-tooltip, tooltip.background, tooltip * {{
-  background-color: {surface};
-  background-image: none;
+label {{
   color: {text};
-  border: 1px solid {line_strong};
-  border-radius: 6px;
-  box-shadow: none;
 }}
-
-scrollbar {{
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
+button:disabled, entry:disabled, combobox:disabled, .chefbar-btn:disabled,
+.chefbar-gbtn:disabled, .chefbar-nav-item:disabled {{
+  opacity: 0.38;
 }}
-scrollbar slider {{
-  background-color: {line_strong};
-  border: none;
-  border-radius: 6px;
-  min-width: 6px;
-  min-height: 6px;
-}}
-scrollbar slider:hover {{
-  background-color: {text_faint};
-}}
-
-/* ============ App-window ============ */
-.chefbar-app {{
-  background-color: {canvas};
+entry selection, label selection {{
+  background-color: {accent_soft};
   color: {text};
-  font-family: "General Sans", system-ui, "Cantarell", "Noto Sans", sans-serif;
-  font-size: 13px;
 }}
 
-/* ============ Header ============ */
+/* ============ Header — custom titlebar ============ */
 .chefbar-header {{
   background-color: {canvas};
-  padding: 14px 16px 12px 16px;
+  padding: 12px 16px 10px 16px;
   border-bottom: 1px solid {line};
 }}
 .chefbar-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 18px;
+  font-family: {font_ui};
+  font-size: {t_xl};
   font-weight: 500;
   color: {text};
 }}
 .chefbar-title-sub {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: {font_mono};
+  font-size: {t_2xs};
   color: {text_muted};
 }}
-
 .chefbar-gbtn {{
   background-color: transparent;
   background-image: none;
   border: none;
-  border-radius: 6px;
+  border-radius: {r_md};
   color: {text_muted};
   min-width: 28px;
   min-height: 28px;
   padding: 2px 6px;
-  font-size: 13px;
-  box-shadow: none;
-  transition: background-color 140ms, color 140ms;
+  font-size: {t_md};
+  transition: background-color {dur}, color {dur};
 }}
 .chefbar-gbtn:hover {{
   background-color: {hover};
@@ -475,38 +320,38 @@ scrollbar slider:hover {{
   color: {accent};
 }}
 .chefbar-gbtn:focus {{
-  border: 1px solid {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
+  box-shadow: 0 0 0 2px {accent};
 }}
 
-/* Zoek: r-6 control, geen pill. Focus = accent + soft ring. */
+/* Zoek-input: control r-6, focus = accent + soft ring. Pillen alleen badges. */
 .chefbar-search, .chefbar-search entry,
 .chefbar-palette-entry, .chefbar-palette-entry entry,
-.chefbar-dialog entry, .chefbar-dialog-entry, .chefbar-dialog-entry entry {{
+.chefbar-dialog entry {{
   background-color: {surface};
   background-image: none;
   border: 1px solid {line_strong};
-  border-radius: 6px;
+  border-radius: {r_md};
   color: {text};
-  caret-color: {text};
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   min-height: 28px;
-  padding: 6px 12px;
-  box-shadow: none;
+  padding: 6px 10px;
 }}
 .chefbar-search:focus,
 .chefbar-search entry:focus,
 .chefbar-palette-entry:focus,
 .chefbar-palette-entry entry:focus,
-.chefbar-dialog entry:focus,
-.chefbar-dialog-entry:focus,
-.chefbar-dialog-entry entry:focus {{
+.chefbar-dialog entry:focus {{
   border-color: {accent};
   box-shadow: 0 0 0 3px {accent_soft};
 }}
-.chefbar-search image,
-.chefbar-palette-entry image {{
+.chefbar-search placeholder,
+.chefbar-search entry placeholder,
+.chefbar-palette-entry placeholder,
+.chefbar-palette-entry entry placeholder,
+.chefbar-dialog entry placeholder,
+.chefbar-chat-entry placeholder,
+.chefbar-chat-entry entry placeholder {{
   color: {text_faint};
 }}
 
@@ -514,6 +359,7 @@ scrollbar slider:hover {{
 .chefbar-signature {{
   background-color: {line_strong};
   min-width: 2px;
+  min-height: 18px;
   border-radius: 1px;
 }}
 .chefbar-signature.ok       {{ background-color: {green}; }}
@@ -522,91 +368,110 @@ scrollbar slider:hover {{
 .chefbar-signature.info     {{ background-color: {accent_ink}; }}
 .chefbar-signature.running  {{ background-color: {accent}; }}
 .chefbar-statuslijn {{
-  background-color: {surface};
-  border: 1px solid {line};
-  border-radius: 10px;
-  padding: 8px 12px 8px 6px;
-  margin: 10px 16px 2px 16px;
+  background-color: {canvas};
+  border-bottom: 1px solid {line};
+  padding: 10px 16px 10px 16px;
+  margin: 0;
 }}
 .chefbar-statuslijn-text {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   font-weight: 500;
   color: {text};
 }}
 
-/* ============ Section eyebrows (caps) ============ */
+/* ============ Section eyebrows (.caps) ============ */
 .chefbar-section-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
+  font-family: {font_ui};
+  font-size: {t_2xs};
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.07em;
   color: {text_faint};
   padding: 14px 16px 4px 16px;
 }}
 .chefbar-section-sub {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 11px;
+  font-family: {font_ui};
+  font-size: {t_xs};
   font-weight: 400;
   color: {text_muted};
   padding: 0 16px 8px 16px;
 }}
 
-/* ============ Lists / grouped cards ============ */
-.chefbar-group, .chefbar-list {{
+/* ============ Zones / grouped cards ============ */
+.chefbar-zone {{
+  background-color: transparent;
+}}
+.chefbar-zone-header {{
+  font-family: {font_ui};
+  font-size: {t_2xs};
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  color: {text_faint};
+  padding: 10px 12px 4px 12px;
+}}
+.chefbar-card-grid {{
+  padding: 8px 12px;
+}}
+.chefbar-group {{
   background-color: {surface};
   border: 1px solid {line};
-  border-radius: 10px;
-  margin: 2px 16px 6px 16px;
+  border-radius: {r_lg};
+  margin: 2px 16px 8px 16px;
 }}
 .chefbar-row {{
   padding: 8px 2px;
   border-bottom: 1px solid {line};
-  margin: 0 12px;
+  margin: 0 14px;
 }}
 .chefbar-row:last-child {{ border-bottom: none; }}
 .chefbar-row:hover {{ background-color: {hover}; }}
 .chefbar-group-attention {{
   background-color: {surface};
-  border: 1px solid {hold_line};
+  border: 1px solid {line};
   border-left: 3px solid {amber};
-  border-radius: 10px;
-  margin: 2px 16px 6px 16px;
+  border-radius: {r_lg};
+  margin: 2px 16px 8px 16px;
 }}
-.chefbar-kpi {{
-  padding: 0;
-}}
-
 .chefbar-card-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   font-weight: 500;
   color: {text};
 }}
 .chefbar-card-meta {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: {font_mono};
+  font-size: {t_xs};
   color: {text_muted};
 }}
 .chefbar-empty {{
-  padding: 14px 16px;
+  padding: 16px 16px;
   margin: 0 12px;
 }}
 .chefbar-empty-title {{
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   font-weight: 500;
   color: {text};
 }}
 .chefbar-empty-sub {{
-  font-size: 12px;
+  font-family: {font_ui};
+  font-size: {t_sm};
   color: {text_muted};
   padding-top: 3px;
+}}
+.chefbar-kpi {{
+  background-color: transparent;
+}}
+.chefbar-kpi .chefbar-card-title {{
+  font-family: {font_mono};
+  font-size: {t_lg};
+  font-weight: 500;
 }}
 
 .chefbar-dot {{
   min-width: 8px;
   min-height: 8px;
-  border-radius: 999px;
+  border-radius: {r_pill};
   background-color: {line_strong};
 }}
 .chefbar-dot.ok    {{ background-color: {green}; }}
@@ -617,32 +482,30 @@ scrollbar slider:hover {{
 
 .chefbar-bar-track {{
   min-height: 4px;
-  border-radius: 3px;
+  border-radius: {r_micro};
   background-color: {sunk};
 }}
 .chefbar-bar-fill {{
-  border-radius: 3px;
+  border-radius: {r_micro};
   background-color: {accent};
 }}
 .chefbar-bar-fill.ok    {{ background-color: {green}; }}
 .chefbar-bar-fill.warn  {{ background-color: {amber}; }}
 .chefbar-bar-fill.down  {{ background-color: {red}; }}
 
-/* ============ Knoppen (v2 .btn: hairline, r-6, primary = inverse) ============ */
+/* ============ Knoppen (.btn) ============ */
 .chefbar-btn {{
   background-color: {surface};
   background-image: none;
   border: 1px solid {line_strong};
-  border-radius: 6px;
+  border-radius: {r_md};
   color: {text};
-  padding: 6px 13px;
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
+  padding: 0 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   font-weight: 500;
   min-height: 32px;
-  box-shadow: none;
-  text-shadow: none;
-  transition: background-color 140ms, border-color 140ms;
+  transition: background-color {dur}, border-color {dur};
 }}
 .chefbar-btn:hover {{
   background-color: {sunk};
@@ -663,95 +526,90 @@ scrollbar slider:hover {{
 .chefbar-btn.chefbar-danger {{
   border-color: {red};
   color: {red};
-  background-color: {hold_bg};
+  background-color: {red_soft};
 }}
-
 .chefbar-kbd {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: {font_mono};
+  font-size: {t_2xs};
   color: {text_muted};
   border: 1px solid {line_strong};
-  border-radius: 3px;
+  border-radius: {r_micro};
   padding: 1px 5px;
-  background-color: {sunk};
 }}
 
-/* Stamps: r-6 outline, geen pill. */
+/* ============ Stamps (badge-pill) ============ */
 .chefbar-stamp {{
-  border-radius: 6px;
-  padding: 2px 7px;
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
+  border-radius: {r_pill};
+  padding: 2.5px 10px;
+  font-family: {font_ui};
+  font-size: {t_2xs};
   font-weight: 600;
-  letter-spacing: 0.4px;
-  background-color: transparent;
-  border: 1px solid {line_strong};
+  letter-spacing: 0.07em;
+  background-color: {sunk};
   color: {text_muted};
 }}
-.chefbar-stamp.ok    {{ border-color: {green}; color: {green}; background-color: {green_bg}; }}
-.chefbar-stamp.warn  {{ border-color: {amber}; color: {amber}; background-color: {hold_bg}; }}
-.chefbar-stamp.error {{ border-color: {red}; color: {red}; background-color: {hold_bg}; }}
-.chefbar-stamp.info {{
-  border-color: {accent};
-  color: {accent_ink};
-  background-color: {accent_soft};
-}}
+.chefbar-stamp.ok    {{ background-color: {green_soft}; color: {green}; }}
+.chefbar-stamp.warn  {{ background-color: {amber_soft}; color: {amber}; }}
+.chefbar-stamp.error {{ background-color: {red_soft};    color: {red}; }}
+.chefbar-stamp.info  {{ background-color: {accent_soft}; color: {accent_ink}; }}
 
 .chefbar-row-btn {{
   background-color: transparent;
   background-image: none;
-  border: none;
+  border: 1px solid transparent;
   border-bottom: 1px solid {line};
   border-radius: 0;
   min-height: 0;
   padding: 0;
   box-shadow: none;
-  text-shadow: none;
-  transition: background-color 140ms;
+  transition: background-color {dur}, border-color {dur};
 }}
 .chefbar-group .chefbar-row-btn:last-child,
-.chefbar-list .chefbar-row-btn:last-child,
 .chefbar-group-attention .chefbar-row-btn:last-child {{
   border-bottom: none;
 }}
 .chefbar-row-btn:hover {{
   background-color: {hover};
+  border-color: {line_strong};
 }}
 .chefbar-row-btn:focus {{
   border-left: 2px solid {accent};
   box-shadow: inset 0 0 0 1px {accent_soft};
 }}
 
-/* ============ Sidebar ============ */
+/* ============ Sidebar + nav ============ */
 .chefbar-sidebar {{
-  background-color: {canvas};
+  background-color: {sunk};
   border-right: 1px solid {line};
 }}
 .chefbar-sidebar-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 14px;
+  font-family: {font_ui};
+  font-size: {t_lg};
   font-weight: 500;
   color: {text};
 }}
 .chefbar-sidebar-sub {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: {font_mono};
+  font-size: {t_2xs};
   color: {text_muted};
+}}
+.chefbar-nav {{
+  background-color: transparent;
 }}
 .chefbar-nav-item {{
   background-color: transparent;
   background-image: none;
   border: 1px solid transparent;
   border-left: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: {r_md};
   color: {text_muted};
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   font-weight: 500;
-  padding: 6px 10px;
+  padding: 5px 10px 5px 8px;
   min-height: 28px;
   box-shadow: none;
-  text-shadow: none;
-  transition: background-color 140ms, color 140ms;
+  transition: background-color {dur}, color {dur};
 }}
 .chefbar-nav-item:hover {{
   background-color: {hover};
@@ -775,10 +633,10 @@ scrollbar slider:hover {{
   margin: 4px 10px;
 }}
 .chefbar-sidebar-group-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
+  font-family: {font_ui};
+  font-size: {t_2xs};
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.07em;
   color: {text_faint};
   padding: 6px 12px 2px 12px;
 }}
@@ -787,62 +645,60 @@ scrollbar slider:hover {{
   padding-top: 10px;
 }}
 .chefbar-sidebar-footer-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
+  font-family: {font_ui};
+  font-size: {t_2xs};
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.07em;
   color: {text_faint};
 }}
 .chefbar-sidebar-footer-meta {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: {font_ui};
+  font-size: {t_xs};
   color: {text_muted};
 }}
 .chefbar-main {{
   background-color: {canvas};
 }}
 
-/* ============ Footer ============ */
+/* ============ Footer / modeline ============ */
 .chefbar-footer {{
   background-color: {canvas};
   border-top: 1px solid {line};
-  padding: 8px 16px;
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  padding: 6px 16px;
+  font-family: {font_mono};
+  font-size: {t_2xs};
   color: {text_muted};
 }}
 .chefbar-footer-label {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-family: {font_mono};
+  font-size: {t_2xs};
   color: {text_muted};
 }}
 .chefbar-footer-btn {{
   background-color: transparent;
   background-image: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 1px solid {line_strong};
+  border-radius: {r_md};
   color: {text_muted};
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 11px;
+  font-family: {font_ui};
+  font-size: {t_xs};
   font-weight: 500;
   min-height: 28px;
   padding: 2px 9px;
   box-shadow: none;
-  text-shadow: none;
-  transition: background-color 140ms, color 140ms, border-color 140ms;
+  transition: background-color {dur}, color {dur};
 }}
 .chefbar-footer-btn:hover {{
   background-color: {hover};
   color: {text};
 }}
-.chefbar-footer-btn:focus {{
-  border-color: {accent};
-  box-shadow: 0 0 0 3px {accent_soft};
-}}
 .chefbar-footer-btn.on {{
-  color: {accent_ink};
-  border-color: {line};
+  color: {accent};
+  border-color: {accent_soft};
   background-color: {accent_soft};
+}}
+.chefbar-footer-btn:focus {{
+  box-shadow: 0 0 0 2px {accent};
 }}
 
 /* ============ Drawer ============ */
@@ -852,8 +708,8 @@ scrollbar slider:hover {{
   border-left: 1px solid {line};
 }}
 .chefbar-drawer-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 15px;
+  font-family: {font_ui};
+  font-size: {t_lg};
   font-weight: 500;
   color: {text};
 }}
@@ -861,9 +717,9 @@ scrollbar slider:hover {{
   padding-top: 8px;
 }}
 .chefbar-drawer-hint {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  color: {text_muted};
+  font-family: {font_mono};
+  font-size: {t_2xs};
+  color: {text_faint};
   padding: 4px 12px 12px 12px;
 }}
 
@@ -873,8 +729,8 @@ scrollbar slider:hover {{
   min-width: 560px;
   background-color: {surface};
   border: 1px solid {line_strong};
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: {r_lg};
+  padding: 12px;
 }}
 .chefbar-palette-entry {{
   min-height: 36px;
@@ -883,10 +739,10 @@ scrollbar slider:hover {{
   padding-top: 6px;
 }}
 .chefbar-palette-section {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
+  font-family: {font_ui};
+  font-size: {t_2xs};
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.07em;
   color: {text_faint};
   padding: 6px 8px 4px 8px;
 }}
@@ -895,12 +751,10 @@ scrollbar slider:hover {{
   background-image: none;
   border: none;
   border-left: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: {r_md};
   padding: 6px 8px;
-  min-height: 0;
   box-shadow: none;
-  text-shadow: none;
-  transition: background-color 140ms;
+  transition: background-color {dur};
 }}
 .chefbar-palette-row:hover {{
   background-color: {hover};
@@ -912,102 +766,12 @@ scrollbar slider:hover {{
   border-left: 2px solid {accent};
   background-color: {accent_soft};
 }}
-.chefbar-overlay-foot {{
-  border-top: 1px solid {line};
-  padding: 8px 4px 2px 4px;
-}}
-.chefbar-overlay-foot-label {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 11px;
-  color: {text_muted};
-}}
 
-/* ============ Zone header + card grid ============ */
-.chefbar-zone-header {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  color: {text_faint};
-  padding: 10px 12px 6px 12px;
-}}
-.chefbar-card-grid {{
-  padding: 8px 12px;
-}}
-
-/* ============ Dialog (needs_text) ============ */
-.chefbar-dialog, .chefbar-dialog-window {{
+/* ============ Dialog ============ */
+.chefbar-dialog {{
   background-color: {canvas};
   border: 1px solid {line_strong};
-  border-radius: 10px;
-}}
-.chefbar-dialog-title {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 15px;
-  font-weight: 500;
-  color: {text};
-}}
-.chefbar-dialog-hint {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  color: {text_muted};
-}}
-
-/* ============ Density ============ */
-.chefbar-app.density-compact {{
-  font-size: 12px;
-}}
-.chefbar-app.density-compact .chefbar-header {{
-  padding: 8px 12px 8px 12px;
-}}
-.chefbar-app.density-compact .chefbar-title {{
-  font-size: 16px;
-}}
-.chefbar-app.density-compact .chefbar-statuslijn {{
-  padding: 6px 10px;
-  margin: 6px 16px 1px 16px;
-}}
-.chefbar-app.density-compact .chefbar-section-title {{
-  padding: 10px 16px 3px 16px;
-}}
-.chefbar-app.density-compact .chefbar-section-sub {{
-  padding-bottom: 4px;
-}}
-.chefbar-app.density-compact .chefbar-row {{
-  padding: 5px 2px;
-  margin: 0 12px;
-}}
-.chefbar-app.density-compact .chefbar-group,
-.chefbar-app.density-compact .chefbar-list,
-.chefbar-app.density-compact .chefbar-group-attention {{
-  margin: 1px 16px 4px 16px;
-}}
-.chefbar-app.density-compact .chefbar-card-title {{
-  font-size: 12px;
-}}
-.chefbar-app.density-compact .chefbar-card-meta {{
-  font-size: 10px;
-}}
-.chefbar-app.density-compact .chefbar-empty {{
-  padding: 8px 16px;
-}}
-.chefbar-app.density-compact .chefbar-nav-item {{
-  padding: 4px 10px;
-  min-height: 24px;
-}}
-.chefbar-app.density-compact .chefbar-stamp {{
-  font-size: 10px;
-  padding: 1px 6px;
-}}
-.chefbar-app.density-compact .chefbar-search,
-.chefbar-app.density-compact .chefbar-search entry {{
-  padding: 4px 12px;
-  font-size: 12px;
-}}
-.chefbar-app.density-compact .chefbar-footer {{
-  padding: 4px 16px;
-}}
-.chefbar-app.density-compact .chefbar-footer-btn {{
-  min-height: 24px;
+  border-radius: {r_lg};
 }}
 
 /* ============ Control-chat ============ */
@@ -1018,41 +782,64 @@ scrollbar slider:hover {{
   padding-top: 4px;
 }}
 .chefbar-chat-msg {{
-  background-color: {surface};
-  border: 1px solid {line};
-  border-radius: 10px;
-  padding: 8px 12px;
+  background-color: transparent;
+  border: none;
+  padding: 6px 0;
 }}
 .chefbar-chat-msg.operator {{
-  border-color: {accent};
+  background-color: {sunk};
+  border-radius: {r_lg};
+  padding: 8px 12px;
 }}
 .chefbar-chat-msg.system {{
-  background-color: {sunk};
+  background-color: transparent;
+}}
+.chefbar-chat-msg.agent {{
+  background-color: transparent;
 }}
 .chefbar-chat-who {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  color: {text_muted};
+  font-family: {font_mono};
+  font-size: {t_2xs};
+  color: {text_faint};
 }}
 .chefbar-chat-body {{
-  font-family: "General Sans", system-ui, sans-serif;
-  font-size: 13px;
+  font-family: {font_ui};
+  font-size: {t_md};
   color: {text};
 }}
 .chefbar-chat-composer {{
   padding-top: 4px;
 }}
-.chefbar-chat-combo {{
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+.chefbar-chat-combo,
+.chefbar-chat-combo button,
+.chefbar-chat-combo button.combo,
+combobox, combobox button, combobox button.combo {{
+  background-color: {surface};
+  background-image: none;
+  border: 1px solid {line_strong};
+  border-radius: {r_md};
+  color: {text};
+  font-family: {font_mono};
+  font-size: {t_xs};
   min-height: 28px;
-  border-radius: 6px;
+  box-shadow: none;
+  text-shadow: none;
+}}
+.chefbar-chat-combo:focus, combobox:focus, combobox button:focus {{
+  border-color: {accent};
+  box-shadow: 0 0 0 3px {accent_soft};
+}}
+combobox arrow {{
+  color: {text_muted};
 }}
 .chefbar-chat-entry, .chefbar-chat-entry entry {{
   background-color: {surface};
+  background-image: none;
   border: 1px solid {line_strong};
-  border-radius: 10px;
+  border-radius: {r_lg};
   color: {text};
+  font-family: {font_ui};
+  font-size: {t_md};
   min-height: 36px;
   padding: 6px 12px;
 }}
@@ -1061,117 +848,205 @@ scrollbar slider:hover {{
   border-color: {accent};
   box-shadow: 0 0 0 3px {accent_soft};
 }}
+
+/* ============ Menu / popup (combobox list) ============ */
+menu, .menu, window.popup, combobox window.popup {{
+  background-color: {surface};
+  background-image: none;
+  border: 1px solid {line_strong};
+  border-radius: {r_lg};
+  padding: 4px;
+  box-shadow: none;
+  color: {text};
+}}
+menuitem {{
+  background-image: none;
+  border-radius: {r_md};
+  min-height: 28px;
+  padding: 4px 10px;
+  color: {text};
+}}
+menuitem:hover, menuitem:hover cellview, menuitem:selected {{
+  background-color: {hover};
+  color: {text};
+}}
+
+/* ============ Scrollbars + tooltips ============ */
+scrollbar {{
+  background-color: transparent;
+  background-image: none;
+  border: none;
+}}
+scrollbar slider {{
+  background-color: {line_strong};
+  background-image: none;
+  border: none;
+  border-radius: {r_pill};
+  min-width: 6px;
+  min-height: 6px;
+}}
+scrollbar slider:hover {{
+  background-color: {text_faint};
+}}
+tooltip, tooltip.background, tooltip * {{
+  background-color: {sunk};
+  background-image: none;
+  color: {text};
+  border: 1px solid {line_strong};
+  border-radius: {r_md};
+  box-shadow: none;
+}}
+
+/* ============ Rail tiles + counts ============ */
+.chefbar-nav-row {{
+  background-color: transparent;
+}}
+.chefbar-nav-tile {{
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid {line};
+  border-radius: 7px;
+  background-color: {surface};
+}}
+.chefbar-nav-item.active .chefbar-nav-tile {{
+  border-color: {accent};
+}}
+.chefbar-nav-name {{
+  font-family: {font_ui};
+  font-size: {t_md};
+  font-weight: 500;
+  color: inherit;
+}}
+.chefbar-nav-count {{
+  font-family: {font_mono};
+  font-size: {t_2xs};
+  color: {text_faint};
+}}
+
+/* ============ Palette scrim + glyph ============ */
+.chefbar-palette-scrim {{
+  background-color: {canvas};
+}}
+.chefbar-overlay,
+.chefbar-palette-overlay {{
+  min-width: 560px;
+}}
+.chefbar-palette-glyph {{
+  min-width: 20px;
+  min-height: 20px;
+}}
+.chefbar-gbtn.chefbar-solid {{
+  background-color: {text};
+  color: {canvas};
+}}
+.chefbar-gbtn.chefbar-solid:hover {{
+  opacity: 0.87;
+}}
+.chefbar-row-btn:hover {{
+  border-color: {line_strong};
+}}
+.chefbar-empty-cta {{
+  margin-top: 8px;
+}}
+
+/* ============ Density (padding-token swap) ============ */
+.chefbar-app.density-compact {{
+  font-size: {t_sm};
+}}
+.chefbar-app.density-compact .chefbar-header {{
+  padding: 8px 12px 8px 12px;
+}}
+.chefbar-app.density-compact .chefbar-title {{
+  font-size: {t_lg};
+}}
+.chefbar-app.density-compact .chefbar-statuslijn {{
+  padding: 6px 12px;
+}}
+.chefbar-app.density-compact .chefbar-section-title {{
+  padding: 8px 16px 2px 16px;
+}}
+.chefbar-app.density-compact .chefbar-section-sub {{
+  padding-bottom: 4px;
+}}
+.chefbar-app.density-compact .chefbar-row {{
+  padding: 5px 2px;
+  margin: 0 12px;
+}}
+.chefbar-app.density-compact .chefbar-group,
+.chefbar-app.density-compact .chefbar-group-attention {{
+  margin: 1px 16px 4px 16px;
+}}
+.chefbar-app.density-compact .chefbar-card-title {{
+  font-size: {t_sm};
+}}
+.chefbar-app.density-compact .chefbar-card-meta {{
+  font-size: {t_2xs};
+}}
+.chefbar-app.density-compact .chefbar-empty {{
+  padding: 8px 16px;
+}}
+.chefbar-app.density-compact .chefbar-nav-item {{
+  padding: 3px 8px 3px 6px;
+  min-height: 24px;
+}}
+.chefbar-app.density-compact .chefbar-stamp {{
+  font-size: {t_2xs};
+  padding: 1px 7px;
+}}
+.chefbar-app.density-compact .chefbar-search,
+.chefbar-app.density-compact .chefbar-search entry {{
+  padding: 4px 10px;
+  min-height: 24px;
+  font-size: {t_sm};
+}}
+.chefbar-app.density-compact .chefbar-footer {{
+  padding: 4px 16px;
+}}
+.chefbar-app.density-compact .chefbar-footer-btn {{
+  min-height: 24px;
+}}
 "#,
-        canvas = t.canvas,
-        surface = t.surface,
-        sunk = t.sunk,
-        hover = t.hover,
-        line = t.line,
-        line_strong = t.line_strong,
-        text = t.text,
-        text_muted = t.text_muted,
-        text_faint = t.text_faint,
-        accent = t.accent,
-        accent_ink = t.accent_ink,
-        accent_soft = t.accent_soft,
-        green = t.green,
-        green_bg = t.green_bg,
-        red = t.red,
-        amber = t.amber,
-        hold_bg = t.hold_bg,
-        hold_line = t.hold_line,
-    )
-}
-
-/// v2-tokenwaarden per thema (`tokens.css`, skin `devin`).
-struct Tokens {
-    canvas: &'static str,
-    surface: &'static str,
-    sunk: &'static str,
-    hover: &'static str,
-    line: &'static str,
-    line_strong: &'static str,
-    text: &'static str,
-    text_muted: &'static str,
-    text_faint: &'static str,
-    accent: &'static str,
-    accent_ink: &'static str,
-    accent_soft: &'static str,
-    green: &'static str,
-    green_bg: &'static str,
-    red: &'static str,
-    amber: &'static str,
-    hold_bg: &'static str,
-    hold_line: &'static str,
-}
-
-impl Tokens {
-    fn for_theme(theme: &str) -> Self {
-        if theme == THEME_LIGHT {
-            Self::light()
-        } else {
-            Self::dark()
-        }
-    }
-
-    fn dark() -> Self {
-        Self {
-            canvas: "#121111",
-            surface: "#1B1A19",
-            sunk: "#242322",
-            hover: "rgba(255,255,255,0.05)",
-            line: "rgba(255,255,255,0.09)",
-            line_strong: "rgba(255,255,255,0.16)",
-            text: "#F0EEEB",
-            text_muted: "rgba(240,238,235,0.55)",
-            text_faint: "rgba(240,238,235,0.35)",
-            accent: "#5C97FF",
-            accent_ink: "#8AB4FF",
-            accent_soft: "rgba(92,151,255,0.12)",
-            green: "#3FB950",
-            green_bg: "rgba(63,185,80,0.12)",
-            red: "#F85149",
-            amber: "#D9A038",
-            hold_bg: "rgba(217,160,56,0.08)",
-            hold_line: "rgba(217,160,56,0.40)",
-        }
-    }
-
-    fn light() -> Self {
-        Self {
-            canvas: "#F7F6F5",
-            surface: "#FFFFFF",
-            sunk: "#EFEFEF",
-            hover: "rgba(0,0,0,0.045)",
-            line: "rgba(0,0,0,0.08)",
-            line_strong: "rgba(0,0,0,0.14)",
-            text: "#191919",
-            text_muted: "rgba(0,0,0,0.55)",
-            text_faint: "rgba(0,0,0,0.38)",
-            accent: "#317CFF",
-            accent_ink: "#1D5FD6",
-            accent_soft: "rgba(49,124,255,0.09)",
-            green: "#1F883D",
-            green_bg: "rgba(31,136,61,0.10)",
-            red: "#CF222E",
-            amber: "#BF5B00",
-            hold_bg: "rgba(191,91,0,0.06)",
-            hold_line: "rgba(191,91,0,0.35)",
-        }
+            canvas = self.canvas,
+            surface = self.surface,
+            sunk = self.sunk,
+            hover = self.hover,
+            line = self.line,
+            line_strong = self.line_strong,
+            text = self.text,
+            text_muted = self.text_muted,
+            text_faint = self.text_faint,
+            accent = self.accent,
+            accent_ink = self.accent_ink,
+            accent_soft = self.accent_soft,
+            green = self.green,
+            green_soft = self.green_soft,
+            red = self.red,
+            red_soft = self.red_soft,
+            amber = self.amber,
+            amber_soft = self.amber_soft,
+            font_ui = self.font_ui,
+            font_mono = self.font_mono,
+            t_2xs = self.t_2xs,
+            t_xs = self.t_xs,
+            t_sm = self.t_sm,
+            t_md = self.t_md,
+            t_lg = self.t_lg,
+            t_xl = self.t_xl,
+            r_md = self.r_md,
+            r_lg = self.r_lg,
+            r_pill = self.r_pill,
+            r_micro = self.r_micro,
+            dur = self.dur,
+        )
     }
 }
 
 /// Welk thema actief is. Signaal v2 is light-first: het warme off-white canvas
-/// (#F7F6F5) is de standaard, donker basalt-warm (#121111) volgt het systeem en
-/// houdt volledige pariteit.
+/// is de standaard, donker basalt-warm volgt het systeem en houdt pariteit.
 ///
 /// Volgorde: `CHEFBAR_THEME=light|dark` wint altijd; daarna de GTK-dark-pref;
-/// daarna de themanaam. Die tweede aanwijzing is er omdat GNOME
-/// `gtk-application-prefer-dark-theme` op GTK3 niet altijd doorzet, terwijl het
-/// GTK-thema dan wel op een `-dark`-variant staat.
-///
-/// Het opstartthema van de app zelf komt uit de persisted panel-state; die
-/// default hoort bij `panel_state` en valt buiten deze CSS-laag.
+/// daarna de themanaam. Het opstartthema van de app zelf komt uit de
+/// persisted panel-state.
 pub fn detect_theme(settings: &gtk::Settings) -> String {
     if let Ok(force) = std::env::var("CHEFBAR_THEME") {
         match force.trim().to_ascii_lowercase().as_str() {
@@ -1196,118 +1071,183 @@ pub fn detect_theme(settings: &gtk::Settings) -> String {
 mod tests {
     use super::*;
 
-    fn sheets() -> [String; 2] {
-        [styles_css(THEME_LIGHT), styles_css(THEME_DARK)]
+    fn has_prop(css: &str, name: &str) -> bool {
+        let needle = format!("{name}:");
+        css.split(['{', '}', ';']).any(|chunk| {
+            let t = chunk.trim_start();
+            t.starts_with(&needle) || t.starts_with(&format!("{name} :"))
+        })
+    }
+
+    fn illegal_hits(css: &str) -> Vec<&'static str> {
+        let mut hits = Vec::new();
+        if has_prop(css, "gap") || has_prop(css, "grid-gap") {
+            hits.push("gap");
+        }
+        if has_prop(css, "inset") {
+            hits.push("inset");
+        }
+        let has_custom = css.lines().any(|line| {
+            let t = line.trim();
+            t.starts_with("--") && t.contains(':')
+        });
+        if has_custom {
+            hits.push("custom-properties");
+        }
+        if css.contains("linear-gradient") || css.contains("radial-gradient") {
+            hits.push("gradient");
+        }
+        if css.contains("text-transform") {
+            hits.push("text-transform");
+        }
+        if css.contains("font-variant-numeric") {
+            hits.push("font-variant-numeric");
+        }
+        hits
     }
 
     #[test]
-    fn light_heeft_devin_canvas_en_accent() {
+    fn light_skin_matches_devin_tokens() {
         let css = styles_css(THEME_LIGHT);
         assert!(css.contains("#F7F6F5"));
-        assert!(css.contains("#FFFFFF"));
         assert!(css.contains("#191919"));
         assert!(css.contains("#317CFF"));
-        assert!(css.contains("#1D5FD6"));
         assert!(css.contains("#1F883D"));
         assert!(css.contains("#BF5B00"));
-        assert!(css.contains("#CF222E"));
+        assert!(css.contains("General Sans"));
+        assert!(css.contains("IBM Plex Mono"));
+        assert!(illegal_hits(&css).is_empty(), "{:?}", illegal_hits(&css));
     }
 
     #[test]
-    fn dark_heeft_basalt_en_accent() {
+    fn dark_skin_keeps_accent_for_visual_shot() {
         let css = styles_css(THEME_DARK);
         assert!(css.contains("#121111"));
-        assert!(css.contains("#1B1A19"));
         assert!(css.contains("#F0EEEB"));
         assert!(css.contains("#5C97FF"));
-        assert!(css.contains("#8AB4FF"));
         assert!(css.contains("#3FB950"));
-        assert!(css.contains("#D9A038"));
-        assert!(css.contains("#F85149"));
+        assert!(illegal_hits(&css).is_empty(), "{:?}", illegal_hits(&css));
     }
 
     #[test]
-    fn radius_is_6_en_10() {
-        for css in sheets() {
-            assert!(css.contains("border-radius: 6px"));
-            assert!(css.contains("border-radius: 10px"));
-            assert!(
-                !css.contains("border-radius: 12px"),
-                "cards blijven r-10, geen r-12"
-            );
-            assert!(
-                !css.contains("border-radius: 14px"),
-                "geen Huly-dialog radius"
-            );
-        }
-    }
-
-    #[test]
-    fn stamps_zijn_geen_pillen() {
+    fn widget_set_is_covered() {
         let css = styles_css(THEME_LIGHT);
-        let stamp = css.split(".chefbar-stamp {").nth(1).expect("stamp-blok");
-        let block = stamp.split('}').next().expect("stamp body");
-        assert!(
-            block.contains("border-radius: 6px"),
-            "stamp moet r-6 zijn, kreeg {block}"
-        );
-        assert!(
-            !block.contains("border-radius: 200px") && !block.contains("999px"),
-            "stamp mag geen pill zijn"
-        );
-    }
-
-    fn has_prop(css: &str, name: &str) -> bool {
-        css.contains(&format!("{name}:"))
-    }
-
-    #[test]
-    fn gtk3_subset_geen_verboden_properties() {
-        for css in sheets() {
-            assert!(!has_prop(&css, "gap"), "GTK3 weigert flex-gap");
-            assert!(!has_prop(&css, "inset"), "GTK3 weigert inset-shorthand");
-            assert!(!css.contains("grid-gap"));
-            assert!(!css.contains("place-items"));
-            for line in css.lines() {
-                let trimmed = line.trim();
-                assert!(
-                    !trimmed.starts_with("--"),
-                    "custom property in output: {trimmed}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn geen_huly_tokens_of_adwaita_in_sheet() {
-        for css in sheets() {
-            for banned in [
-                "#090A0C", "#5683DA", "#FF8964", "Archivo", "Inter,", "Adwaita",
-            ] {
-                assert!(
-                    !css.contains(banned),
-                    "verboden restant {banned} in stylesheet"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn widget_set_dekt_overlay_dialog_list_search_footer() {
-        let css = styles_css(THEME_LIGHT);
-        for needle in [
-            ".chefbar-overlay",
-            ".chefbar-dialog",
-            ".chefbar-group",
+        for class in [
+            ".chefbar-app",
+            ".chefbar-header",
+            ".chefbar-title",
+            ".chefbar-gbtn",
             ".chefbar-search",
+            ".chefbar-signature",
+            ".chefbar-statuslijn",
+            ".chefbar-section-title",
+            ".chefbar-group",
+            ".chefbar-row-btn",
+            ".chefbar-stamp",
+            ".chefbar-sidebar",
+            ".chefbar-nav-item",
+            ".chefbar-nav-item.active",
             ".chefbar-footer",
+            ".chefbar-drawer",
+            ".chefbar-overlay",
             ".chefbar-palette-row",
-            ".chefbar-list",
-            "combobox button",
+            ".chefbar-dialog",
+            ".chefbar-chat-msg",
+            ".chefbar-chat-combo",
+            ".chefbar-zone",
+            ".chefbar-kpi",
+            ".chefbar-nav-tile",
+            ".chefbar-nav-count",
+            ".chefbar-palette-scrim",
+            ".chefbar-gbtn.chefbar-solid",
+            ".chefbar-empty-cta",
+            ".density-compact",
+            "combobox",
             "menuitem",
-            "list row",
+            "scrollbar slider",
+            "tooltip",
+            "placeholder",
+            "button:disabled",
         ] {
-            assert!(css.contains(needle), "widget-set mist {needle}");
+            assert!(css.contains(class), "missing selector {class}");
         }
+    }
+
+    #[test]
+    fn skins_are_not_identical() {
+        assert_ne!(styles_css(THEME_LIGHT), styles_css(THEME_DARK));
+    }
+
+    fn snapshot_block(css: &str, header: &str) -> String {
+        let start = css
+            .find(header)
+            .unwrap_or_else(|| panic!("snapshot missing {header}"));
+        let rest = &css[start + header.len()..];
+        let end = rest.find('}').unwrap_or(rest.len());
+        rest[..end].to_string()
+    }
+
+    fn token_value(block: &str, name: &str) -> String {
+        for line in block.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix(&format!("{name}:")) {
+                return rest.trim().trim_end_matches(';').to_string();
+            }
+        }
+        panic!("token {name} missing in snapshot block");
+    }
+
+    #[test]
+    fn gtk_tokens_match_pinned_design_system_snapshot() {
+        const SNAP: &str = include_str!("../assets/design-tokens.snapshot.css");
+        let light_block = snapshot_block(SNAP, ":root {");
+        let dark_block = snapshot_block(SNAP, "[data-theme=\"dark\"] {");
+        let light = styles_css(THEME_LIGHT);
+        let dark = styles_css(THEME_DARK);
+        let check = |css: &str, block: &str, keys: &[&str]| {
+            for key in keys {
+                let value = token_value(block, key);
+                assert!(
+                    css.contains(&value),
+                    "theme css missing snapshot {key}={value}"
+                );
+            }
+        };
+        check(
+            &light,
+            &light_block,
+            &[
+                "--bg",
+                "--surface",
+                "--text",
+                "--accent",
+                "--accent-ink",
+                "--open-green",
+                "--red",
+                "--amber",
+                "--r-md",
+                "--r-lg",
+                "--text-md",
+                "--dur-fast",
+            ],
+        );
+        check(
+            &dark,
+            &dark_block,
+            &[
+                "--bg",
+                "--surface",
+                "--text",
+                "--accent",
+                "--accent-ink",
+                "--open-green",
+                "--red",
+                "--amber",
+            ],
+        );
+        assert!(light.contains("10.5px"));
+        assert!(light.contains("13.5px"));
+        assert!(light.contains("General Sans"));
+        assert!(light.contains("IBM Plex Mono"));
     }
 }

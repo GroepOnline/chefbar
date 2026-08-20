@@ -8,15 +8,24 @@
 use gtk::prelude::*;
 
 use super::zones::{
-    bucket_title, domain_row, empty_state, group_box, info_row, kpi_strip, section_title, short_ts,
-    state_label, status_dot_cls,
+    bucket_title, clickable_row, domain_row, empty_state, empty_state_cta, group_box, info_row,
+    kpi_strip, row_action_button, section_title, short_ts, state_label, status_dot_cls,
 };
-use crate::actions::Executor;
+use crate::actions::{Executor, RunSpec};
 use crate::harness::HarnessKind;
-use crate::models::Snapshot;
+use crate::models::{OpsSnapshot, Snapshot};
 
 /// Max rijen per domein-zone; de rest wordt "+n meer" in de sectie-sub.
 const MAX_ROWS: usize = 8;
+
+/// Gebundelde inputs voor domein-render (clippy: max 7 args).
+pub struct DomainRenderCtx<'a> {
+    pub snap: &'a Snapshot,
+    pub ops: &'a OpsSnapshot,
+    pub q: &'a str,
+    pub executor: &'a Executor,
+    pub window: &'a gtk::Window,
+}
 
 fn fleet_dot(online: usize, total: usize) -> &'static str {
     if total == 0 {
@@ -31,18 +40,18 @@ fn fleet_dot(online: usize, total: usize) -> &'static str {
 }
 
 /// Render de domein-sectie(s) voor `kind` in `content`.
-pub fn render_domain(
-    content: &gtk::Box,
-    kind: &HarnessKind,
-    snap: &Snapshot,
-    q: &str,
-    executor: &Executor,
-    window: &gtk::Window,
-) {
+pub fn render_domain(content: &gtk::Box, kind: &HarnessKind, ctx: &DomainRenderCtx<'_>) {
+    let DomainRenderCtx {
+        snap,
+        ops,
+        q,
+        executor,
+        window,
+    } = ctx;
     match kind {
         HarnessKind::Inbox => render_inbox(content, snap, q),
         HarnessKind::Fleet => render_fleet(content, snap, q),
-        HarnessKind::Herdr => render_herdr(content, snap, q),
+        HarnessKind::Herdr => render_herdr(content, snap, ops, q, executor),
         HarnessKind::Containers => render_containers(content, snap, q),
         HarnessKind::Vault => render_vault(content, snap, q),
         HarnessKind::Commerce => render_providers(content, snap, q),
@@ -53,13 +62,169 @@ pub fn render_domain(
         HarnessKind::Desktop => render_desktop(content, snap, q),
         HarnessKind::Tasks => render_taken(content, snap, q),
         HarnessKind::Linear => render_linear(content, snap, q, executor, window),
+        HarnessKind::Agents => render_agents(content),
+        HarnessKind::Flows => render_flows(content),
         HarnessKind::Secrets => render_secrets(content, snap, q),
         HarnessKind::Kater => render_kater(content, snap, q),
+        HarnessKind::Brain => render_brain(content, snap, q, executor),
         HarnessKind::Health => render_health(content, snap, q),
         HarnessKind::Eval => render_eval(content, snap, q),
         // Control is the persistent chat canvas, not an operate-view rebuild.
         HarnessKind::Control => {}
     }
+}
+
+fn render_brain(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
+    section_title(content, "Brain", "digest en vault-skills");
+    let vault = &snap.brain;
+    let counts = vault.counts.clone().unwrap_or_default();
+    let skills_n = if counts.skills > 0 {
+        counts.skills.to_string()
+    } else {
+        vault.skills.len().to_string()
+    };
+    let evals_n = if counts.evals > 0 {
+        counts.evals.to_string()
+    } else {
+        vault.evals.len().to_string()
+    };
+    if vault.ok || !vault.skills.is_empty() || vault.error.is_some() {
+        let status = if vault.stale == Some(true) {
+            "stale"
+        } else if vault.ok {
+            "ok"
+        } else {
+            "hulp"
+        };
+        content.pack_start(
+            &kpi_strip(&[
+                ("status", status),
+                ("skills", &skills_n),
+                ("evals", &evals_n),
+            ]),
+            false,
+            false,
+            0,
+        );
+        let group = group_box();
+        if let Some(src) = vault.source.as_deref() {
+            group.pack_start(&info_row("Bron", Some(src)), false, false, 0);
+        }
+        if vault.stale == Some(true) {
+            group.pack_start(
+                &info_row("Verversing", Some("data is verouderd")),
+                false,
+                false,
+                0,
+            );
+        }
+        if let Some(err) = vault.error.as_deref() {
+            group.pack_start(&info_row("Fout", Some(err)), false, false, 0);
+        }
+        content.pack_start(&group, false, false, 0);
+    }
+
+    bucket_title(content, "DAILY digest");
+    let digest = &snap.brain_digest;
+    let needle = q.to_lowercase();
+    let chunks: Vec<_> = digest
+        .chunks
+        .iter()
+        .filter(|chunk| {
+            needle.is_empty()
+                || chunk.title.to_lowercase().contains(&needle)
+                || chunk
+                    .excerpt
+                    .as_deref()
+                    .map(|excerpt| excerpt.to_lowercase().contains(&needle))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if chunks.is_empty() {
+        content.pack_start(
+            &empty_state(
+                "Geen digest-chunks",
+                "Evidence uit de operator-brain verschijnt hier zodra de digest beschikbaar is. Brain-body blijft geparkeerd tot mTLS.",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    let group = group_box();
+    for chunk in chunks.iter().take(MAX_ROWS) {
+        let meta = chunk.excerpt.as_deref().or(chunk.path.as_deref());
+        let inner = domain_row("ok", &chunk.title, meta, None);
+        let target = chunk
+            .url
+            .clone()
+            .or_else(|| chunk.path.clone())
+            .unwrap_or_default();
+        if target.is_empty() {
+            group.pack_start(&inner, false, false, 0);
+        } else {
+            group.pack_start(
+                &clickable_row(inner, RunSpec::BrainOpen(target), executor),
+                false,
+                false,
+                0,
+            );
+        }
+    }
+    content.pack_start(&group, false, false, 0);
+}
+
+fn render_agents(content: &gtk::Box) {
+    section_title(content, "Agents", "ACP · read-only tot de probe groen is");
+    if crate::config::global_profile().agents_api.is_none() {
+        content.pack_start(
+            &empty_state_cta(
+                "Agents wachten op ACP",
+                "Deze zone blijft leeg tot CHEFBAR_AGENTS_API een live ACP-endpoint is. Geen tweede poll, geen verzonnen runs.",
+                "Live panes blijven op hun eigen websocket",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    content.pack_start(
+        &empty_state(
+            "Geen runs in beeld",
+            "ACP is gezet. Runs verschijnen hier read-only; starten blijft geblokkeerd tot de probe bewijs levert.",
+        ),
+        false,
+        false,
+        0,
+    );
+}
+
+fn render_flows(content: &gtk::Box) {
+    section_title(content, "Flows", "na Agents read-only");
+    if crate::config::global_profile().flows_api.is_none() {
+        content.pack_start(
+            &empty_state_cta(
+                "Flows wachten op Agents",
+                "Flows blijven gated tot CHEFBAR_FLOWS_API gezet is en Agents read-only groen is.",
+                "Geen tweede venster, geen verzonnen pipelines",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    content.pack_start(
+        &empty_state(
+            "Geen flows in beeld",
+            "Het endpoint is gezet. Triggers blijven uit tot Agents hun gate haalt.",
+        ),
+        false,
+        false,
+        0,
+    );
 }
 
 /// Linear/taken-status → vaste bucket. Pure, GTK-vrij, getest.
@@ -145,6 +310,7 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
             false,
             0,
         );
+        pack_approvals_empty(content);
         return;
     }
     let total = all.len();
@@ -210,6 +376,21 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
+    pack_approvals_empty(content);
+}
+
+fn pack_approvals_empty(content: &gtk::Box) {
+    bucket_title(content, "Goedkeuringen");
+    content.pack_start(
+        &empty_state_cta(
+            "Geen goedkeuringen",
+            "Kater M2 levert hier wachtende toestemmingen. Tot die API live is blijft deze bak leeg — geen tweede dialoog, geen verzonnen items.",
+            "Eén toets in de drawer volgt zodra M2 groen is",
+        ),
+        false,
+        false,
+        0,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -273,17 +454,13 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         let group = group_box();
         let take_n = remaining.min(rows.len());
         for node in rows.iter().take(take_n) {
-            group.pack_start(
-                &domain_row(
-                    if node.online { "ok" } else { "down" },
-                    &node.title,
-                    node.host.as_deref(),
-                    Some((&node.status, status_dot_cls(&node.status))),
-                ),
-                false,
-                false,
-                0,
+            let inner = domain_row(
+                if node.online { "ok" } else { "down" },
+                &node.title,
+                node.host.as_deref(),
+                Some((&node.status, status_dot_cls(&node.status))),
             );
+            group.pack_start(&inner, false, false, 0);
         }
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
@@ -294,7 +471,13 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Herdr
 // ---------------------------------------------------------------------------
 
-fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
+fn render_herdr(
+    content: &gtk::Box,
+    snap: &Snapshot,
+    ops: &OpsSnapshot,
+    q: &str,
+    executor: &Executor,
+) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .herdr_workspaces
@@ -341,17 +524,32 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for ws in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&ws.status),
-                &ws.title,
-                ws.cwd.as_deref(),
-                Some((&ws.status, status_dot_cls(&ws.status))),
-            ),
-            false,
-            false,
-            0,
+        let inner = domain_row(
+            status_dot_cls(&ws.status),
+            &ws.title,
+            ws.cwd.as_deref(),
+            Some((&ws.status, status_dot_cls(&ws.status))),
         );
+        if ws.id.is_empty() {
+            group.pack_start(&inner, false, false, 0);
+        } else if let Some(agent) = ops
+            .agents
+            .iter()
+            .find(|agent| agent.workspace_id == ws.id && !agent.terminal_id.is_empty())
+        {
+            group.pack_start(
+                &clickable_row(
+                    inner,
+                    RunSpec::FocusAgent(agent.terminal_id.clone()),
+                    executor,
+                ),
+                false,
+                false,
+                0,
+            );
+        } else {
+            group.pack_start(&inner, false, false, 0);
+        }
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -660,6 +858,15 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Share
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
+fn share_sync_row_action(key: &str) -> Option<&'static str> {
+    match key.to_lowercase().as_str() {
+        "pull" | "lastpull" => Some("pull"),
+        "push" | "lastpush" => Some("push"),
+        _ => None,
+    }
+}
+
 fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
     let mut entries: Vec<_> = snap
@@ -691,7 +898,8 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        group.pack_start(&info_row(k, Some(v)), false, false, 0);
+        let inner = info_row(k, Some(v));
+        group.pack_start(&inner, false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -775,7 +983,7 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Klembord",
+        "Clipboard",
         &format!("{} · klik om te kopiëren", count_sub(q, shown, total)),
     );
     if total == 0 {
@@ -793,19 +1001,8 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let group = group_box();
     for entry in all.iter().take(MAX_ROWS) {
         let title: String = entry.text.chars().take(60).collect();
-        let row_btn = gtk::Button::new();
-        row_btn.set_relief(gtk::ReliefStyle::None);
-        row_btn.set_hexpand(true);
-        row_btn.set_halign(gtk::Align::Fill);
-        row_btn.style_context().add_class("chefbar-row-btn");
         let inner = domain_row("", &title, entry.created_at.as_deref(), None);
-        row_btn.add(&inner);
-        if let Some(child) = row_btn.child() {
-            child.set_margin_start(10);
-            child.set_margin_end(10);
-            child.set_margin_top(6);
-            child.set_margin_bottom(6);
-        }
+        let row_btn = row_action_button(inner);
         let text = entry.text.clone();
         let id = entry.id.clone();
         row_btn.connect_clicked(move |_| {
@@ -839,7 +1036,7 @@ fn render_desktop(content: &gtk::Box, snap: &Snapshot, q: &str) {
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
-    section_title(content, "Bureaublad", &count_sub(q, shown, total));
+    section_title(content, "Desktop", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
             &empty_state(
@@ -934,6 +1131,22 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Linear
 // ---------------------------------------------------------------------------
 
+fn linear_row_open_target(issue: &crate::models::LinearIssue) -> Option<String> {
+    let http_url = issue
+        .url
+        .as_deref()
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"));
+    let clickable = http_url.is_some() || crate::models::is_linear_team_identifier(&issue.id);
+    if !clickable {
+        return None;
+    }
+    Some(
+        http_url
+            .map(str::to_string)
+            .unwrap_or_else(|| issue.id.clone()),
+    )
+}
+
 fn render_linear(
     content: &gtk::Box,
     snap: &Snapshot,
@@ -1013,33 +1226,25 @@ fn render_linear(
                 (Some(p), true) => p.clone(),
                 (None, _) => issue.meta.clone(),
             };
-            let row_btn = gtk::Button::new();
-            row_btn.set_relief(gtk::ReliefStyle::None);
-            row_btn.set_hexpand(true);
-            row_btn.set_halign(gtk::Align::Fill);
-            row_btn.style_context().add_class("chefbar-row-btn");
             let inner = domain_row(
                 status_dot_cls(&issue.status),
                 &issue.title,
                 (!meta.is_empty()).then_some(meta.as_str()),
                 Some((&issue.status, status_dot_cls(&issue.status))),
             );
-            row_btn.add(&inner);
-            if let Some(child) = row_btn.child() {
-                child.set_margin_start(10);
-                child.set_margin_end(10);
-                child.set_margin_top(6);
-                child.set_margin_bottom(6);
-            }
-            if let Some(url) = issue.url.clone() {
-                let executor = executor.clone();
-                row_btn.connect_clicked(move |_| {
-                    executor.run_for_ui(&crate::actions::RunSpec::OpenUrl(url.clone()));
-                });
+            if let Some(target) = linear_row_open_target(issue) {
+                group.pack_start(
+                    &clickable_row(inner, RunSpec::OpenLinearIssue(target), executor),
+                    false,
+                    false,
+                    0,
+                );
+            } else if issue.id.is_empty() {
+                group.pack_start(&inner, false, false, 0);
             } else {
-                row_btn.set_sensitive(false);
+                inner.set_sensitive(false);
+                group.pack_start(&inner, false, false, 0);
             }
-            group.pack_start(&row_btn, false, false, 0);
         }
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
@@ -1065,7 +1270,7 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Sleutels",
+        "Secrets",
         &format!(
             "{} · alleen meta, nooit plaintext",
             count_sub(q, shown, total)
@@ -1074,8 +1279,8 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     if total == 0 {
         content.pack_start(
             &empty_state(
-                "Geen sleutels gekoppeld",
-                "Vaultwarden-collecties verschijnen hier als meta, nooit plaintext.",
+                "Geen secrets gekoppeld",
+                "Vaultwarden-collecties verschijnen hier als meta, nooit als plaintext.",
             ),
             false,
             false,
@@ -1085,17 +1290,13 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for secret in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&secret.status),
-                &secret.title,
-                (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
-                Some((&secret.status, status_dot_cls(&secret.status))),
-            ),
-            false,
-            false,
-            0,
+        let inner = domain_row(
+            status_dot_cls(&secret.status),
+            &secret.title,
+            (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
+            Some((&secret.status, status_dot_cls(&secret.status))),
         );
+        group.pack_start(&inner, false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -1246,7 +1447,10 @@ fn render_eval(content: &gtk::Box, snap: &Snapshot, q: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{inbox_bucket, status_bucket, sync_stamp};
+    use super::{
+        inbox_bucket, linear_row_open_target, share_sync_row_action, status_bucket, sync_stamp,
+    };
+    use crate::models::LinearIssue;
 
     #[test]
     fn status_bucket_groups_linear_states() {
@@ -1263,6 +1467,40 @@ mod tests {
         assert_eq!(inbox_bucket("hulp"), "Wacht op jou");
         assert_eq!(inbox_bucket("running"), "Bezig");
         assert_eq!(inbox_bucket("stil"), "Overig");
+    }
+
+    #[test]
+    fn linear_row_open_target_url_only_empty_id() {
+        let issue = LinearIssue {
+            id: String::new(),
+            title: "Via url only".into(),
+            url: Some("https://linear.app/chefgroepp/issue/GRO-1".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            linear_row_open_target(&issue),
+            Some("https://linear.app/chefgroepp/issue/GRO-1".into())
+        );
+    }
+
+    #[test]
+    fn linear_row_open_target_empty_id_no_url_is_plain() {
+        let issue = LinearIssue {
+            id: String::new(),
+            title: "No link".into(),
+            ..Default::default()
+        };
+        assert!(linear_row_open_target(&issue).is_none());
+    }
+
+    #[test]
+    fn share_sync_row_action_matches_camel_case_keys() {
+        assert_eq!(share_sync_row_action("lastPull"), Some("pull"));
+        assert_eq!(share_sync_row_action("lastPush"), Some("push"));
+        assert_eq!(share_sync_row_action("pull"), Some("pull"));
+        assert_eq!(share_sync_row_action("push"), Some("push"));
+        assert!(share_sync_row_action("last_sync").is_none());
+        assert!(share_sync_row_action("status").is_none());
     }
 
     #[test]

@@ -1,0 +1,48 @@
+/* Token snapshot of GroepOnline/design-system@1ab8f0015540c2b438124dfe9d15f071b2c530bd
+   Only :root / dark / type-ladder variables. Not a GTK stylesheet. */
+:root {
+  --bg: #F7F6F5;
+  --surface: #FFFFFF;
+  --surface-sunk: #EFEFEF;
+  --hover: rgba(0,0,0,0.045);
+  --line: rgba(0,0,0,0.08);
+  --line-strong: rgba(0,0,0,0.14);
+  --text: #191919;
+  --text-muted: rgba(0,0,0,0.55);
+  --text-faint: rgba(0,0,0,0.38);
+  --accent: #317CFF;
+  --accent-ink: #1D5FD6;
+  --accent-soft: rgba(49,124,255,0.09);
+  --open-green: #1F883D;
+  --open-green-bg: rgba(31,136,61,0.10);
+  --red: #CF222E;
+  --amber: #BF5B00;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-pill: 200px;
+  --dur-fast: 140ms;
+  --text-2xs: 10.5px;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+}
+[data-theme="dark"] {
+  --bg: #121111;
+  --surface: #1B1A19;
+  --surface-sunk: #242322;
+  --hover: rgba(255,255,255,0.05);
+  --line: rgba(255,255,255,0.09);
+  --line-strong: rgba(255,255,255,0.16);
+  --text: #F0EEEB;
+  --text-muted: rgba(240,238,235,0.55);
+  --text-faint: rgba(240,238,235,0.35);
+  --accent: #5C97FF;
+  --accent-ink: #8AB4FF;
+  --accent-soft: rgba(92,151,255,0.12);
+  --open-green: #3FB950;
+  --open-green-bg: rgba(63,185,80,0.12);
+  --red: #F85149;
+  --amber: #D9A038;
+}

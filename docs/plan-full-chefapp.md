@@ -234,7 +234,7 @@ Per domein één zone (herbruikbare `Zone`-component):
 
 ### 4.6 Beweging & density
 
-- Fades 120 ms (`motion.rs` `PANEL_MS`), alleen open/dicht/drawer. Geen animatie tijdens poll-render (bestaande regel blijft).
+- Fades 280 ms (`motion.rs` `PANEL_MS`), alleen open/dicht. Drawer 160 ms, overlay 100 ms. Geen animatie tijdens poll-render (bestaande regel blijft).
 - Density: default *comfortable* (bestaand). Compacte rij-modus (opt-in, setting) halveert card-padding voor power users — geen twee layouts onderhouden, alleen padding-token wisselt.
 
 ---
