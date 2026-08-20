@@ -64,7 +64,7 @@ pub fn render_domain(content: &gtk::Box, kind: &HarnessKind, ctx: &DomainRenderC
         HarnessKind::Linear => render_linear(content, snap, q, executor, window),
         HarnessKind::Agents => render_agents(content),
         HarnessKind::Flows => render_flows(content),
-        HarnessKind::Secrets => render_secrets(content, snap, q, executor),
+        HarnessKind::Secrets => render_secrets(content, snap, q),
         HarnessKind::Kater => render_kater(content, snap, q),
         HarnessKind::Brain => render_brain(content, snap, q, executor),
         HarnessKind::Health => render_health(content, snap, q),
@@ -397,7 +397,7 @@ fn pack_approvals_empty(content: &gtk::Box) {
 // Fleet
 // ---------------------------------------------------------------------------
 
-fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
+fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .fleet_nodes
@@ -858,6 +858,7 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Share
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn share_sync_row_action(key: &str) -> Option<&'static str> {
     match key.to_lowercase().as_str() {
         "pull" | "lastpull" => Some("pull"),
@@ -866,7 +867,7 @@ fn share_sync_row_action(key: &str) -> Option<&'static str> {
     }
 }
 
-fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
+fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
     let mut entries: Vec<_> = snap
         .share_sync
@@ -1254,7 +1255,7 @@ fn render_linear(
 // Secrets
 // ---------------------------------------------------------------------------
 
-fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
+fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .secrets_meta
