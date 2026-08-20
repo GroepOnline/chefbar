@@ -1153,6 +1153,22 @@ fn render_taken(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Linear
 // ---------------------------------------------------------------------------
 
+fn linear_row_open_target(issue: &crate::models::LinearIssue) -> Option<String> {
+    let http_url = issue
+        .url
+        .as_deref()
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"));
+    let clickable = http_url.is_some() || crate::models::is_linear_team_identifier(&issue.id);
+    if !clickable {
+        return None;
+    }
+    Some(
+        http_url
+            .map(str::to_string)
+            .unwrap_or_else(|| issue.id.clone()),
+    )
+}
+
 fn render_linear(
     content: &gtk::Box,
     snap: &Snapshot,
@@ -1238,29 +1254,18 @@ fn render_linear(
                 (!meta.is_empty()).then_some(meta.as_str()),
                 Some((&issue.status, status_dot_cls(&issue.status))),
             );
-            if issue.id.is_empty() {
+            if let Some(target) = linear_row_open_target(issue) {
+                group.pack_start(
+                    &clickable_row(inner, RunSpec::OpenLinearIssue(target), executor),
+                    false,
+                    false,
+                    0,
+                );
+            } else if issue.id.is_empty() {
                 group.pack_start(&inner, false, false, 0);
             } else {
-                let http_url = issue
-                    .url
-                    .as_deref()
-                    .filter(|u| u.starts_with("http://") || u.starts_with("https://"));
-                let clickable =
-                    http_url.is_some() || crate::models::is_linear_team_identifier(&issue.id);
-                if clickable {
-                    let target = http_url
-                        .map(str::to_string)
-                        .unwrap_or_else(|| issue.id.clone());
-                    group.pack_start(
-                        &clickable_row(inner, RunSpec::OpenLinearIssue(target), executor),
-                        false,
-                        false,
-                        0,
-                    );
-                } else {
-                    inner.set_sensitive(false);
-                    group.pack_start(&inner, false, false, 0);
-                }
+                inner.set_sensitive(false);
+                group.pack_start(&inner, false, false, 0);
             }
         }
         remaining -= take_n;
@@ -1479,7 +1484,8 @@ fn render_eval(content: &gtk::Box, snap: &Snapshot, q: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{inbox_bucket, status_bucket, sync_stamp};
+    use super::{inbox_bucket, linear_row_open_target, status_bucket, sync_stamp};
+    use crate::models::LinearIssue;
 
     #[test]
     fn status_bucket_groups_linear_states() {
@@ -1496,6 +1502,30 @@ mod tests {
         assert_eq!(inbox_bucket("hulp"), "Wacht op jou");
         assert_eq!(inbox_bucket("running"), "Bezig");
         assert_eq!(inbox_bucket("stil"), "Overig");
+    }
+
+    #[test]
+    fn linear_row_open_target_url_only_empty_id() {
+        let issue = LinearIssue {
+            id: String::new(),
+            title: "Via url only".into(),
+            url: Some("https://linear.app/chefgroepp/issue/GRO-1".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            linear_row_open_target(&issue),
+            Some("https://linear.app/chefgroepp/issue/GRO-1".into())
+        );
+    }
+
+    #[test]
+    fn linear_row_open_target_empty_id_no_url_is_plain() {
+        let issue = LinearIssue {
+            id: String::new(),
+            title: "No link".into(),
+            ..Default::default()
+        };
+        assert!(linear_row_open_target(&issue).is_none());
     }
 
     #[test]
