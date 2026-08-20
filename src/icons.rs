@@ -198,7 +198,9 @@ fn from_kind(name: &str, px: i32, kind: InkKind) -> gtk::Image {
         gtk::Image::from_icon_name(Some("image-missing"), gtk::IconSize::Button)
     };
     LIVE.with(|live| {
-        live.borrow_mut().push(LiveIcon {
+        let mut icons = live.borrow_mut();
+        icons.retain(|icon| icon.image.upgrade().is_some());
+        icons.push(LiveIcon {
             image: image.downgrade(),
             name: name.to_string(),
             px,

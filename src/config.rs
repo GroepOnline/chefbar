@@ -160,6 +160,13 @@ fn clean_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+fn env_optional_or(env_name: &str, raw: Option<String>) -> Option<String> {
+    clean_optional(match env::var(env_name) {
+        Ok(value) if !value.trim().is_empty() => Some(value),
+        _ => raw,
+    })
+}
+
 pub fn default_profile_path() -> PathBuf {
     match env::var("CHEFBAR_ENDPOINT_PROFILE") {
         Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
@@ -234,8 +241,8 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
                 .or(raw.vaultwarden_url),
         ),
         brain_api: clean_optional(env::var("CHEFBAR_BRAIN_API").ok().or(raw.brain_api)),
-        agents_api: clean_optional(env::var("CHEFBAR_AGENTS_API").ok().or(raw.agents_api)),
-        flows_api: clean_optional(env::var("CHEFBAR_FLOWS_API").ok().or(raw.flows_api)),
+        agents_api: env_optional_or("CHEFBAR_AGENTS_API", raw.agents_api),
+        flows_api: env_optional_or("CHEFBAR_FLOWS_API", raw.flows_api),
     }
 }
 
