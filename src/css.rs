@@ -293,7 +293,6 @@ entry selection, label selection {{
   font-family: {font_ui};
   font-size: {t_xl};
   font-weight: 500;
-  letter-spacing: -0.02em;
   color: {text};
 }}
 .chefbar-title-sub {{
@@ -587,7 +586,6 @@ entry selection, label selection {{
   font-family: {font_ui};
   font-size: {t_lg};
   font-weight: 500;
-  letter-spacing: -0.02em;
   color: {text};
 }}
 .chefbar-sidebar-sub {{
@@ -713,7 +711,6 @@ entry selection, label selection {{
   font-family: {font_ui};
   font-size: {t_lg};
   font-weight: 500;
-  letter-spacing: -0.02em;
   color: {text};
 }}
 .chefbar-drawer-actions {{

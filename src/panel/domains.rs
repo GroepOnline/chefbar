@@ -50,13 +50,13 @@ pub fn render_domain(content: &gtk::Box, kind: &HarnessKind, ctx: &DomainRenderC
     } = ctx;
     match kind {
         HarnessKind::Inbox => render_inbox(content, snap, q),
-        HarnessKind::Fleet => render_fleet(content, snap, q, executor),
+        HarnessKind::Fleet => render_fleet(content, snap, q),
         HarnessKind::Herdr => render_herdr(content, snap, ops, q, executor),
         HarnessKind::Containers => render_containers(content, snap, q),
         HarnessKind::Vault => render_vault(content, snap, q),
         HarnessKind::Commerce => render_providers(content, snap, q),
         HarnessKind::Crm => render_crm(content, snap, q),
-        HarnessKind::Share => render_share(content, snap, q, executor),
+        HarnessKind::Share => render_share(content, snap, q),
         HarnessKind::Sync => render_sync(content, snap, q),
         HarnessKind::Clipboard => render_clipboard(content, snap, q),
         HarnessKind::Desktop => render_desktop(content, snap, q),
@@ -460,28 +460,7 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
                 node.host.as_deref(),
                 Some((&node.status, status_dot_cls(&node.status))),
             );
-            let target = node
-                .host
-                .clone()
-                .filter(|host| !host.is_empty())
-                .unwrap_or_else(|| node.id.clone());
-            if target.is_empty() {
-                group.pack_start(&inner, false, false, 0);
-            } else {
-                group.pack_start(
-                    &clickable_row(
-                        inner,
-                        RunSpec::FleetExec {
-                            node: target,
-                            template: "status".into(),
-                        },
-                        executor,
-                    ),
-                    false,
-                    false,
-                    0,
-                );
-            }
+            group.pack_start(&inner, false, false, 0);
         }
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
@@ -919,16 +898,7 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
         let inner = info_row(k, Some(v));
-        if let Some(action) = share_sync_row_action(k) {
-            group.pack_start(
-                &clickable_row(inner, RunSpec::ShareSync(action.to_string()), executor),
-                false,
-                false,
-                0,
-            );
-        } else {
-            group.pack_start(&inner, false, false, 0);
-        }
+        group.pack_start(&inner, false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -1325,22 +1295,7 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Execu
             (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
             Some((&secret.status, status_dot_cls(&secret.status))),
         );
-        if secret.id.is_empty() {
-            group.pack_start(&inner, false, false, 0);
-        } else {
-            group.pack_start(
-                &clickable_row(
-                    inner,
-                    RunSpec::CopySecretMeta {
-                        id: secret.id.clone(),
-                    },
-                    executor,
-                ),
-                false,
-                false,
-                0,
-            );
-        }
+        group.pack_start(&inner, false, false, 0);
     }
     content.pack_start(&group, false, false, 0);
 }

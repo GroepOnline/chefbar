@@ -15,7 +15,7 @@ pub mod doctor;
 pub mod frecency;
 pub mod harness;
 pub mod http;
-pub mod icons;
+pub(crate) mod icons;
 pub mod ipc;
 pub mod log;
 pub mod models;
