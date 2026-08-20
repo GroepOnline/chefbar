@@ -494,18 +494,23 @@ pub fn build_clipboard_actions(snap: &Snapshot, _profile: &EndpointProfile) -> V
 }
 
 /// Linear: assigned-to-me — D7.
-pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<Action> {
+pub fn build_linear_actions(snap: &Snapshot, _profile: &EndpointProfile) -> Vec<Action> {
     let mut out = Vec::new();
     for issue in snap.linear_issues.iter().take(10) {
-        if issue.id.is_empty() {
+        let target = issue
+            .url
+            .clone()
+            .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+            .unwrap_or_else(|| issue.id.clone());
+        if target.is_empty() {
             continue;
         }
         out.push(action(
             format!("Linear · {}", issue.title),
-            issue.id.clone(),
+            target.clone(),
             "STIL",
-            format!("linear taken issues tickets {} {}", issue.title, issue.id),
-            RunSpec::OpenLinearIssue(issue.id.clone()),
+            format!("linear taken issues tickets {} {}", issue.title, target),
+            RunSpec::OpenLinearIssue(target),
         ));
     }
     let mut seen: HashSet<String> = out
@@ -517,31 +522,42 @@ pub fn build_linear_actions(snap: &Snapshot, profile: &EndpointProfile) -> Vec<A
         .collect();
     if let Some(issues) = snap.raw.get("linear_issues").and_then(|v| v.as_array()) {
         for issue in issues.iter().take(10) {
-            let id = issue.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() || !seen.insert(id.to_string()) {
+            let target = issue
+                .get("url")
+                .and_then(|v| v.as_str())
+                .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+                .map(str::to_string)
+                .or_else(|| {
+                    issue
+                        .get("identifier")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                })
+                .or_else(|| issue.get("id").and_then(|v| v.as_str()).map(str::to_string))
+                .unwrap_or_default();
+            if target.is_empty() || !seen.insert(target.clone()) {
                 continue;
             }
-            let title = issue.get("title").and_then(|v| v.as_str()).unwrap_or(id);
+            let title = issue
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&target);
             out.push(action(
                 format!("Linear · {title}"),
-                id.to_string(),
+                target.clone(),
                 "STIL",
-                format!("linear taken issues tickets {title} {id}"),
-                RunSpec::OpenLinearIssue(id.to_string()),
+                format!("linear taken issues tickets {title} {target}"),
+                RunSpec::OpenLinearIssue(target),
             ));
         }
     }
     if out.is_empty() {
-        // Fallback: open Linear via dashboard/workaround als er geen issues zijn
         out.push(action(
             "Open Linear",
             "taken · issues — read-only in 4.0",
             "STIL",
             "linear taken issues tickets open",
-            RunSpec::OpenUrl(format!(
-                "{}/linear",
-                profile.dashboard.trim_end_matches('/')
-            )),
+            RunSpec::OpenUrl("https://linear.app/chefgroepp".into()),
         ));
     }
     out
@@ -1213,15 +1229,14 @@ impl Executor {
             }
             RunSpec::OpenLinearIssue(issue_id) => {
                 let target = issue_id.trim();
-                if target.starts_with("http://") || target.starts_with("https://") {
-                    crate::notify::open_url(target);
-                } else {
-                    let url = format!(
-                        "{}/linear/{}",
-                        self.profile.dashboard.trim_end_matches('/'),
-                        urlencoding(target)
-                    );
+                if let Some(url) = linear_open_url_for_target(target) {
                     crate::notify::open_url(&url);
+                } else {
+                    crate::notify::notify(
+                        "Linear openen lukt niet",
+                        "Geen geldige issue-URL of team-id (bijv. GRO-1425).",
+                        "warn",
+                    );
                 }
             }
             RunSpec::CopySecretMeta { id } => {
@@ -1388,6 +1403,18 @@ fn urlencoding(input: &str) -> String {
         }
     }
     out
+}
+
+/// Resolveer een Linear-open target naar een https-URL (policy-check gebeurt in notify).
+pub fn linear_open_url_for_target(target: &str) -> Option<String> {
+    let target = target.trim();
+    if target.starts_with("http://") || target.starts_with("https://") {
+        Some(target.to_string())
+    } else if crate::models::is_linear_team_identifier(target) {
+        Some(format!("https://linear.app/chefgroepp/issue/{target}"))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -1702,6 +1729,48 @@ mod tests {
         assert!(actions
             .iter()
             .any(|a| matches!(a.run, RunSpec::OpenLinearIssue(_))));
+    }
+
+    #[test]
+    fn linear_empty_fallback_opens_linear_app() {
+        let snap = Snapshot::default();
+        let profile = EndpointProfile::default();
+        let actions = build_linear_actions(&snap, &profile);
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            actions[0].run,
+            RunSpec::OpenUrl(ref url) if url == "https://linear.app/chefgroepp"
+        ));
+    }
+
+    #[test]
+    fn linear_palette_prefers_issue_url() {
+        let mut snap = Snapshot::default();
+        snap.linear_issues.push(crate::models::LinearIssue {
+            id: "GRO-1".into(),
+            title: "Via url".into(),
+            url: Some("https://linear.app/chefgroepp/issue/GRO-1".into()),
+            ..Default::default()
+        });
+        let actions = build_linear_actions(&snap, &EndpointProfile::default());
+        assert!(actions.iter().any(|a| matches!(
+            &a.run,
+            RunSpec::OpenLinearIssue(url) if url == "https://linear.app/chefgroepp/issue/GRO-1"
+        )));
+    }
+
+    #[test]
+    fn linear_open_url_for_target_branches() {
+        assert_eq!(
+            linear_open_url_for_target("https://linear.app/chefgroepp/issue/GRO-9"),
+            Some("https://linear.app/chefgroepp/issue/GRO-9".into())
+        );
+        assert_eq!(
+            linear_open_url_for_target("GRO-1425"),
+            Some("https://linear.app/chefgroepp/issue/GRO-1425".into())
+        );
+        assert!(linear_open_url_for_target("not-an-issue").is_none());
+        assert!(linear_open_url_for_target("550e8400-e29b-41d4-a716-446655440000").is_none());
     }
 
     #[test]

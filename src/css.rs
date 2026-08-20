@@ -561,6 +561,7 @@ entry selection, label selection {{
   border-bottom: 1px solid {line};
   border-radius: 0;
   min-height: 0;
+  padding: 0;
   box-shadow: none;
   transition: background-color {dur}, border-color {dur};
 }}

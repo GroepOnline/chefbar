@@ -9,7 +9,7 @@ use gtk::prelude::*;
 
 use super::zones::{
     bucket_title, clickable_row, domain_row, empty_state, empty_state_cta, group_box, info_row,
-    kpi_strip, section_title, short_ts, state_label, status_dot_cls,
+    kpi_strip, row_action_button, section_title, short_ts, state_label, status_dot_cls,
 };
 use crate::actions::{Executor, RunSpec};
 use crate::harness::HarnessKind;
@@ -1023,19 +1023,8 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let group = group_box();
     for entry in all.iter().take(MAX_ROWS) {
         let title: String = entry.text.chars().take(60).collect();
-        let row_btn = gtk::Button::new();
-        row_btn.set_relief(gtk::ReliefStyle::None);
-        row_btn.set_hexpand(true);
-        row_btn.set_halign(gtk::Align::Fill);
-        row_btn.style_context().add_class("chefbar-row-btn");
         let inner = domain_row("", &title, entry.created_at.as_deref(), None);
-        row_btn.add(&inner);
-        if let Some(child) = row_btn.child() {
-            child.set_margin_start(10);
-            child.set_margin_end(10);
-            child.set_margin_top(6);
-            child.set_margin_bottom(6);
-        }
+        let row_btn = row_action_button(inner);
         let text = entry.text.clone();
         let id = entry.id.clone();
         row_btn.connect_clicked(move |_| {
@@ -1243,34 +1232,36 @@ fn render_linear(
                 (Some(p), true) => p.clone(),
                 (None, _) => issue.meta.clone(),
             };
-            let row_btn = gtk::Button::new();
-            row_btn.set_relief(gtk::ReliefStyle::None);
-            row_btn.set_hexpand(true);
-            row_btn.set_halign(gtk::Align::Fill);
-            row_btn.style_context().add_class("chefbar-row-btn");
             let inner = domain_row(
                 status_dot_cls(&issue.status),
                 &issue.title,
                 (!meta.is_empty()).then_some(meta.as_str()),
                 Some((&issue.status, status_dot_cls(&issue.status))),
             );
-            row_btn.add(&inner);
-            if let Some(child) = row_btn.child() {
-                child.set_margin_start(10);
-                child.set_margin_end(10);
-                child.set_margin_top(6);
-                child.set_margin_bottom(6);
-            }
-            if !issue.id.is_empty() {
-                let target = issue.id.clone();
-                let executor = executor.clone();
-                row_btn.connect_clicked(move |_| {
-                    executor.run_for_ui(&crate::actions::RunSpec::OpenLinearIssue(target.clone()));
-                });
+            if issue.id.is_empty() {
+                group.pack_start(&inner, false, false, 0);
             } else {
-                row_btn.set_sensitive(false);
+                let http_url = issue
+                    .url
+                    .as_deref()
+                    .filter(|u| u.starts_with("http://") || u.starts_with("https://"));
+                let clickable =
+                    http_url.is_some() || crate::models::is_linear_team_identifier(&issue.id);
+                if clickable {
+                    let target = http_url
+                        .map(str::to_string)
+                        .unwrap_or_else(|| issue.id.clone());
+                    group.pack_start(
+                        &clickable_row(inner, RunSpec::OpenLinearIssue(target), executor),
+                        false,
+                        false,
+                        0,
+                    );
+                } else {
+                    inner.set_sensitive(false);
+                    group.pack_start(&inner, false, false, 0);
+                }
             }
-            group.pack_start(&row_btn, false, false, 0);
         }
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);

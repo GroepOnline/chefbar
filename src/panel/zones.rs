@@ -210,17 +210,48 @@ pub fn domain_row(
     row_wrap(&row)
 }
 
-pub fn clickable_row(
-    inner: gtk::Box,
-    spec: crate::actions::RunSpec,
-    executor: &crate::actions::Executor,
-) -> gtk::Button {
+/// Strip a [`row_wrap`] envelope so click shells carry row margins once.
+fn unwrap_row_inner(wrapped: gtk::Box) -> gtk::Box {
+    if !wrapped.style_context().has_class("chefbar-row") {
+        return wrapped;
+    }
+    if let Some(child) = wrapped.children().into_iter().next() {
+        wrapped.remove(&child);
+        match child.downcast::<gtk::Box>() {
+            Ok(row) => return row,
+            Err(widget) => wrapped.add(&widget),
+        }
+    }
+    wrapped
+}
+
+fn row_click_shell() -> gtk::Button {
     let row_btn = gtk::Button::new();
     row_btn.set_relief(gtk::ReliefStyle::None);
     row_btn.set_hexpand(true);
     row_btn.set_halign(gtk::Align::Fill);
     row_btn.style_context().add_class("chefbar-row-btn");
-    row_btn.add(&inner);
+    row_btn.style_context().add_class("chefbar-row");
+    row_btn.set_margin_start(16);
+    row_btn.set_margin_end(16);
+    row_btn
+}
+
+/// Clickable row shell for wrapped domain/info rows — row chrome on the button,
+/// bare inner content, no nested horizontal margins.
+pub fn row_action_button(inner: gtk::Box) -> gtk::Button {
+    let bare = unwrap_row_inner(inner);
+    let row_btn = row_click_shell();
+    row_btn.add(&bare);
+    row_btn
+}
+
+pub fn clickable_row(
+    inner: gtk::Box,
+    spec: crate::actions::RunSpec,
+    executor: &crate::actions::Executor,
+) -> gtk::Button {
+    let row_btn = row_action_button(inner);
     let executor = executor.clone();
     row_btn.connect_clicked(move |_| {
         executor.run_for_ui(&spec);

@@ -132,6 +132,8 @@ impl EndpointPolicy {
                 || self.profile_https_hosts.contains(&host)
                 || self.is_private_online(&host)
                 || (self.allow_tsnet_https && host.ends_with(".ts.net"))
+                || host == "linear.app"
+                || host.ends_with(".linear.app")
             {
                 return true;
             }
@@ -220,6 +222,14 @@ mod tests {
     fn public_http_and_unknown_https_are_blocked() {
         let policy = EndpointPolicy::default();
         assert!(!policy.allows("http://example.com/api"));
+        assert!(!policy.allows("https://example.com/api"));
+    }
+
+    #[test]
+    fn linear_app_https_allowed_unknown_https_still_blocked() {
+        let policy = EndpointPolicy::default();
+        assert!(policy.allows("https://linear.app/chefgroepp/issue/GRO-1425"));
+        assert!(policy.allows("https://api.linear.app/graphql"));
         assert!(!policy.allows("https://example.com/api"));
     }
 
