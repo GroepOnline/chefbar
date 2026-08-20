@@ -18,6 +18,15 @@ use crate::models::{OpsSnapshot, Snapshot};
 /// Max rijen per domein-zone; de rest wordt "+n meer" in de sectie-sub.
 const MAX_ROWS: usize = 8;
 
+/// Gebundelde inputs voor domein-render (clippy: max 7 args).
+pub struct DomainRenderCtx<'a> {
+    pub snap: &'a Snapshot,
+    pub ops: &'a OpsSnapshot,
+    pub q: &'a str,
+    pub executor: &'a Executor,
+    pub window: &'a gtk::Window,
+}
+
 fn fleet_dot(online: usize, total: usize) -> &'static str {
     if total == 0 {
         ""
@@ -31,15 +40,14 @@ fn fleet_dot(online: usize, total: usize) -> &'static str {
 }
 
 /// Render de domein-sectie(s) voor `kind` in `content`.
-pub fn render_domain(
-    content: &gtk::Box,
-    kind: &HarnessKind,
-    snap: &Snapshot,
-    ops: &OpsSnapshot,
-    q: &str,
-    executor: &Executor,
-    window: &gtk::Window,
-) {
+pub fn render_domain(content: &gtk::Box, kind: &HarnessKind, ctx: &DomainRenderCtx<'_>) {
+    let DomainRenderCtx {
+        snap,
+        ops,
+        q,
+        executor,
+        window,
+    } = ctx;
     match kind {
         HarnessKind::Inbox => render_inbox(content, snap, q),
         HarnessKind::Fleet => render_fleet(content, snap, q, executor),

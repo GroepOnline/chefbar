@@ -568,7 +568,7 @@ impl Panel {
                 let mutes = crate::mutes::load();
                 let actions = build_actions(&ops, &snap, &profile, sessions, &mutes);
                 let rank_ctx = RankContext::local();
-                rank_actions_with(&actions, &query, 8, Some(&rank_ctx))
+                rank_actions_with(&actions, &query, 9, Some(&rank_ctx))
             };
             let ranked: Vec<_> = ranked
                 .into_iter()
@@ -1136,7 +1136,17 @@ fn render_into(
         );
     }
 
-    domains::render_domain(content, &view_kind, &snap, &ops, query, executor, window);
+    domains::render_domain(
+        content,
+        &view_kind,
+        &domains::DomainRenderCtx {
+            snap: &snap,
+            ops: &ops,
+            q: query,
+            executor,
+            window,
+        },
+    );
 
     if !searching {
         render_doen_chips(content, &ranked, &harness_label, executor, window, drawer);

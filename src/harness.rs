@@ -426,13 +426,12 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     let vault_brain = &snapshot.brain;
     let digest_n = snapshot.brain_digest.chunks.len();
     let counts = vault_brain.counts.clone().unwrap_or_default();
-    let brain_status = if vault_brain.error.is_some() && !vault_brain.ok {
-        HarnessStatus::Blocked
-    } else if vault_brain.stale == Some(true) {
-        HarnessStatus::Blocked
-    } else {
-        HarnessStatus::Idle
-    };
+    let brain_status =
+        if (vault_brain.error.is_some() && !vault_brain.ok) || vault_brain.stale == Some(true) {
+            HarnessStatus::Blocked
+        } else {
+            HarnessStatus::Idle
+        };
     let skill_n = usize::try_from(counts.skills.max(0)).unwrap_or(0);
     let brain_active = vault_brain.source.clone().or_else(|| {
         if digest_n > 0 {

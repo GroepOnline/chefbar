@@ -1212,13 +1212,17 @@ impl Executor {
                 });
             }
             RunSpec::OpenLinearIssue(issue_id) => {
-                // Open Linear issue via dashboard fallback; policy-checked via open_url.
-                let url = format!(
-                    "{}/linear/{}",
-                    self.profile.dashboard.trim_end_matches('/'),
-                    urlencoding(issue_id)
-                );
-                crate::notify::open_url(&url);
+                let target = issue_id.trim();
+                if target.starts_with("http://") || target.starts_with("https://") {
+                    crate::notify::open_url(target);
+                } else {
+                    let url = format!(
+                        "{}/linear/{}",
+                        self.profile.dashboard.trim_end_matches('/'),
+                        urlencoding(target)
+                    );
+                    crate::notify::open_url(&url);
+                }
             }
             RunSpec::CopySecretMeta { id } => {
                 let id = id.clone();
