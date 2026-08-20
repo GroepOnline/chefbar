@@ -66,92 +66,38 @@ pub fn render_domain(
     }
 }
 
-fn age_label(value: Option<i64>) -> String {
-    match value {
-        Some(seconds) if seconds < 60 => format!("{seconds}s"),
-        Some(seconds) if seconds < 3_600 => format!("{} min", seconds / 60),
-        Some(seconds) if seconds < 86_400 => format!("{} uur", seconds / 3_600),
-        Some(seconds) => format!("{} dagen", seconds / 86_400),
-        None => "onbekend".into(),
-    }
-}
-
 fn render_brain(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
-    let brain = &snap.brain_insight;
-    section_title(content, "Brain", "autoriteit, herstel en leren");
-    if crate::brain::is_insight_parked(brain) {
-        content.pack_start(
-            &empty_state_cta(
-                "Brain-insight staat geparkeerd",
-                "Live status van de Brain API komt pas zodra een mTLS-client is geconfigureerd.",
-                "Zet CHEFBAR_BRAIN_MTLS_CERT en CHEFBAR_BRAIN_MTLS_KEY",
-            ),
-            false,
-            false,
-            0,
-        );
+    section_title(content, "Brain", "digest en vault-skills");
+    let vault = &snap.brain;
+    let counts = vault.counts.clone().unwrap_or_default();
+    let skills_n = if counts.skills > 0 {
+        counts.skills.to_string()
     } else {
-        let sha: String = brain.canonical_git_sha.chars().take(8).collect();
-        let queued = brain.learning.queued_candidates.to_string();
-        let feedback = brain.learning.feedback_events.to_string();
+        vault.skills.len().to_string()
+    };
+    let evals_n = if counts.evals > 0 {
+        counts.evals.to_string()
+    } else {
+        vault.evals.len().to_string()
+    };
+    if vault.ok || !vault.skills.is_empty() || vault.error.is_some() {
+        let status = if vault.ok { "ok" } else { "hulp" };
         content.pack_start(
             &kpi_strip(&[
-                (
-                    "status",
-                    if brain.status.is_empty() {
-                        "onbekend"
-                    } else {
-                        &brain.status
-                    },
-                ),
-                ("autoriteit", if sha.is_empty() { "—" } else { &sha }),
-                ("wacht", &queued),
-                ("feedback", &feedback),
+                ("status", status),
+                ("skills", &skills_n),
+                ("evals", &evals_n),
             ]),
             false,
             false,
             0,
         );
-
         let group = group_box();
-        let backup = format!(
-            "{} · {}",
-            if brain.backup.is_empty() {
-                "onbekend"
-            } else {
-                &brain.backup
-            },
-            age_label(brain.backup_freshness_seconds)
-        );
-        group.pack_start(&info_row("Back-up", Some(&backup)), false, false, 0);
-        let restore = age_label(brain.restore_age_seconds);
-        group.pack_start(&info_row("Herstelproef", Some(&restore)), false, false, 0);
-        let projections = format!(
-            "lexicaal {} · dense {} · graph {}{}",
-            brain.projections.lexical,
-            brain.projections.dense,
-            brain.projections.graph,
-            if brain.projection_lag {
-                " · loopt achter"
-            } else {
-                ""
-            }
-        );
-        group.pack_start(&info_row("Projecties", Some(&projections)), false, false, 0);
-        let champion = if brain.learning.champion.is_empty() {
-            "onbekend"
-        } else {
-            &brain.learning.champion
-        };
-        group.pack_start(&info_row("Kampioen", Some(champion)), false, false, 0);
-        let eval_status = brain
-            .eval
-            .get("status")
-            .and_then(|value| value.as_str())
-            .unwrap_or("onbekend");
-        group.pack_start(&info_row("Evaluatie", Some(eval_status)), false, false, 0);
-        if let Some(mode) = brain.degraded_mode.as_deref() {
-            group.pack_start(&info_row("Veilige modus", Some(mode)), false, false, 0);
+        if let Some(src) = vault.source.as_deref() {
+            group.pack_start(&info_row("Bron", Some(src)), false, false, 0);
+        }
+        if let Some(err) = vault.error.as_deref() {
+            group.pack_start(&info_row("Fout", Some(err)), false, false, 0);
         }
         content.pack_start(&group, false, false, 0);
     }

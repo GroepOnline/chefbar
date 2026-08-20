@@ -423,32 +423,32 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     ));
 
     // ---- ChefGroep Brain --------------------------------------------------
-    let brain = &snapshot.brain_insight;
-    let brain_status = match brain.status.as_str() {
-        "parked" | "blocked" => HarnessStatus::Blocked,
-        "degraded" => HarnessStatus::Running,
-        "healthy" => HarnessStatus::Idle,
-        _ => HarnessStatus::Idle,
-    };
-    let brain_active = if brain.status == "parked" {
-        Some("wacht op mTLS".into())
-    } else if !brain.canonical_git_sha.is_empty() {
-        format!(
-            "autoriteit {}",
-            &brain.canonical_git_sha[..8.min(brain.canonical_git_sha.len())]
-        )
-        .into()
+    let vault_brain = &snapshot.brain;
+    let digest_n = snapshot.brain_digest.chunks.len();
+    let counts = vault_brain.counts.clone().unwrap_or_default();
+    let brain_status = if vault_brain.error.is_some() && !vault_brain.ok {
+        HarnessStatus::Blocked
+    } else if vault_brain.stale == Some(true) {
+        HarnessStatus::Running
     } else {
-        None
+        HarnessStatus::Idle
     };
+    let skill_n = usize::try_from(counts.skills.max(0)).unwrap_or(0);
+    let brain_active = vault_brain.source.clone().or_else(|| {
+        if digest_n > 0 {
+            Some(format!("{digest_n} digest"))
+        } else {
+            None
+        }
+    });
     out.push(Harness::new(
         HarnessKind::Brain.id(),
         "Brain",
         HarnessKind::Brain,
         brain_status,
-        brain.learning.queued_candidates.max(0) as usize,
+        skill_n.max(digest_n),
         brain_active,
-        brain.degraded_mode.clone(),
+        vault_brain.source.clone(),
     ));
 
     // ---- Eval harnas (compat) ---------------------------------------------
