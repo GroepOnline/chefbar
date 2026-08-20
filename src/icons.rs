@@ -1,6 +1,6 @@
-//! Lucide-stroke icons for ChefApp (GTK3 pixbuf, no emoji, no Adwaita).
+//! Lucide-stroke iconen voor ChefApp (GTK3 pixbuf, geen emoji, geen Adwaita).
 //!
-//! SVGs use `currentColor`; [`image`] substitutes the active Signaal ink.
+//! SVG's gebruiken `currentColor`; [`image`] vervangt door de actieve Signaal-ink.
 
 use std::cell::RefCell;
 
@@ -239,7 +239,8 @@ pub fn recolor_all() {
             let Some(image) = icon.image.upgrade() else {
                 continue;
             };
-            if let Some(pixbuf) = pixbuf_from_svg(&markup(&icon.name, color_for(icon.kind)), icon.px)
+            if let Some(pixbuf) =
+                pixbuf_from_svg(&markup(&icon.name, color_for(icon.kind)), icon.px)
             {
                 image.set_from_pixbuf(Some(&pixbuf));
             }

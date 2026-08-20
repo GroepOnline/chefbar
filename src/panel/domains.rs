@@ -81,7 +81,13 @@ fn render_brain(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
         vault.evals.len().to_string()
     };
     if vault.ok || !vault.skills.is_empty() || vault.error.is_some() {
-        let status = if vault.ok { "ok" } else { "hulp" };
+        let status = if vault.stale == Some(true) {
+            "stale"
+        } else if vault.ok {
+            "ok"
+        } else {
+            "hulp"
+        };
         content.pack_start(
             &kpi_strip(&[
                 ("status", status),
@@ -95,6 +101,14 @@ fn render_brain(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
         let group = group_box();
         if let Some(src) = vault.source.as_deref() {
             group.pack_start(&info_row("Bron", Some(src)), false, false, 0);
+        }
+        if vault.stale == Some(true) {
+            group.pack_start(
+                &info_row("Verversing", Some("data is verouderd")),
+                false,
+                false,
+                0,
+            );
         }
         if let Some(err) = vault.error.as_deref() {
             group.pack_start(&info_row("Fout", Some(err)), false, false, 0);
@@ -890,9 +904,9 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executo
     for (k, v) in all.iter().take(MAX_ROWS) {
         let inner = info_row(k, Some(v));
         let key = k.to_lowercase();
-        if key.contains("pull") || key.contains("push") || key.contains("sync") {
+        if key == "pull" || key == "push" {
             group.pack_start(
-                &clickable_row(inner, RunSpec::ShareSync(k.to_string()), executor),
+                &clickable_row(inner, RunSpec::ShareSync(key), executor),
                 false,
                 false,
                 0,
@@ -1240,7 +1254,7 @@ fn render_linear(
                 child.set_margin_bottom(6);
             }
             if !issue.id.is_empty() {
-                let target = issue.url.clone().unwrap_or_else(|| issue.id.clone());
+                let target = issue.id.clone();
                 let executor = executor.clone();
                 row_btn.connect_clicked(move |_| {
                     executor.run_for_ui(&crate::actions::RunSpec::OpenLinearIssue(target.clone()));

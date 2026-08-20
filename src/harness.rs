@@ -200,7 +200,7 @@ impl HarnessKind {
             HarnessKind::Desktop => vec!["desktop", "webtop", "share", "sync"],
             HarnessKind::Tasks => vec!["tasks", "taken", "commander", "job", "taak"],
             HarnessKind::Linear => vec!["linear", "taken", "issues", "tickets", "ticket"],
-            HarnessKind::Agents => vec!["agents", "acp", "run", "agent"],
+            HarnessKind::Agents => vec!["agents", "acp", "run"],
             HarnessKind::Flows => vec!["flows", "flow", "pipeline"],
             HarnessKind::Containers => vec!["containers", "docker", "image", "prune", "drift"],
             HarnessKind::Secrets => {
@@ -429,7 +429,7 @@ pub fn build_harnesses(snapshot: &Snapshot, ops: &OpsSnapshot) -> Vec<Harness> {
     let brain_status = if vault_brain.error.is_some() && !vault_brain.ok {
         HarnessStatus::Blocked
     } else if vault_brain.stale == Some(true) {
-        HarnessStatus::Running
+        HarnessStatus::Blocked
     } else {
         HarnessStatus::Idle
     };

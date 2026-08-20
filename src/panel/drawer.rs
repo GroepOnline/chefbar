@@ -126,7 +126,7 @@ impl Drawer {
             "KLAAR" => "ok",
             "HULP" => "warn",
             "FOUT" | "LIMIET" => "error",
-            "BEZIG" | "TAAK" => "running",
+            "BEZIG" | "TAAK" => "info",
             _ => "",
         };
         if !streak_cls.is_empty() {

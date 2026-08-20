@@ -118,10 +118,10 @@ pub fn set_theme(theme: &str) {
 
 /// Bouwt de volledige stylesheet voor het gekozen thema.
 pub fn styles_css(theme: &str) -> String {
-    let t = if theme == THEME_LIGHT {
-        Tokens::light()
-    } else {
+    let t = if theme == THEME_DARK {
         Tokens::dark()
+    } else {
+        Tokens::light()
     };
     t.stylesheet()
 }
