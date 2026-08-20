@@ -31,7 +31,7 @@
     {
       "id": 4,
       "prompt": "Animate cards on every poll so it feels alive.",
-      "expected_output": "Refuse; PANEL_MS fades only on open/close/drawer.",
+      "expected_output": "Refuse; PANEL_MS fades only on open/close, never on poll.",
       "expectations": [
         "Forbids poll animations",
         "Names PANEL_MS or instant rebuild"

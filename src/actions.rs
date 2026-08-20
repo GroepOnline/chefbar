@@ -54,6 +54,10 @@ pub enum RunSpec {
     TogglePalette,
     ToggleMute(String),
     SendControlChat,
+    ApproveRequest(String),
+    RejectRequest(String),
+    StartAgentRun(String),
+    TriggerFlow(String),
 }
 
 impl RunSpec {
@@ -100,6 +104,10 @@ impl RunSpec {
             RunSpec::ToggleMute(key) => format!("ToggleMute:{key}"),
             RunSpec::BrainOpen(target) => format!("BrainOpen:{target}"),
             RunSpec::SendControlChat => "SendControlChat".into(),
+            RunSpec::ApproveRequest(id) => format!("ApproveRequest:{id}"),
+            RunSpec::RejectRequest(id) => format!("RejectRequest:{id}"),
+            RunSpec::StartAgentRun(id) => format!("StartAgentRun:{id}"),
+            RunSpec::TriggerFlow(id) => format!("TriggerFlow:{id}"),
         }
     }
 }
@@ -1320,6 +1328,27 @@ impl Executor {
                     }
                 }
             }
+            RunSpec::ApproveRequest(_) | RunSpec::RejectRequest(_) => {
+                crate::notify::notify(
+                    "Goedkeuringen",
+                    "wacht op Kater M2 — er is nog geen live approval-API",
+                    "hulp",
+                );
+            }
+            RunSpec::StartAgentRun(_) => {
+                crate::notify::notify(
+                    "Agents",
+                    "wacht op een live ACP-probe — runs starten we niet vanuit deze zone",
+                    "hulp",
+                );
+            }
+            RunSpec::TriggerFlow(_) => {
+                crate::notify::notify(
+                    "Flows",
+                    "wacht tot Agents read-only groen is — flows blijven gated",
+                    "hulp",
+                );
+            }
         }
     }
 
@@ -1583,6 +1612,18 @@ mod tests {
         assert_eq!(
             RunSpec::CopySecretMeta { id: "sec-1".into() }.frecency_key(),
             "CopySecretMeta:sec-1"
+        );
+        assert_eq!(
+            RunSpec::ApproveRequest("appr-1".into()).frecency_key(),
+            "ApproveRequest:appr-1"
+        );
+        assert_eq!(
+            RunSpec::StartAgentRun("run-1".into()).frecency_key(),
+            "StartAgentRun:run-1"
+        );
+        assert_eq!(
+            RunSpec::TriggerFlow("flow-1".into()).frecency_key(),
+            "TriggerFlow:flow-1"
         );
     }
 

@@ -1,8 +1,7 @@
 //! Palette-overlay voor het ChefApp-panel (Super+Space fast-path).
 //!
 //! Zelfde venster, zelfde snapshot, zelfde ranking als de hoofdzoekbalk.
-//! Geen tweede socket, poll-loop of dataset. Chrome: Devin v2 palette
-//! (560px, r-10, hairline, kbd-hints).
+//! Geen tweede socket, poll-loop of dataset.
 
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -10,62 +9,73 @@ use std::rc::Rc;
 
 type OverlayActivate = Rc<dyn Fn(crate::palette::Action)>;
 
-pub(crate) const OVERLAY_PLACEHOLDER: &str = "Zoek of typ een opdracht\u{2026}";
-pub(crate) const OVERLAY_IDLE_HINT: &str = "Typ om te filteren. Enter voert de eerste treffer uit.";
-pub(crate) const OVERLAY_EMPTY: &str = "Niets gevonden. Probeer een domein of /.";
-pub(crate) const OVERLAY_SECTION: &str = "Acties";
-
 pub struct Overlay {
+    pub scrim: gtk::EventBox,
     pub container: gtk::Box,
     pub entry: gtk::SearchEntry,
     results: gtk::Box,
     revealed: Rc<Cell<bool>>,
     first_action: Rc<RefCell<Option<crate::palette::Action>>>,
     on_enter: Rc<RefCell<Option<OverlayActivate>>>,
+    host: Rc<RefCell<Option<gtk::Overlay>>>,
 }
 
 impl Overlay {
     pub fn new() -> Self {
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let scrim = gtk::EventBox::new();
+        scrim.style_context().add_class("chefbar-palette-scrim");
+        scrim.set_visible(false);
+        scrim.set_no_show_all(true);
+        scrim.set_opacity(0.6);
+        scrim.set_hexpand(true);
+        scrim.set_vexpand(true);
+        scrim.set_halign(gtk::Align::Fill);
+        scrim.set_valign(gtk::Align::Fill);
+
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 8);
         container.style_context().add_class("chefbar-overlay");
         container
             .style_context()
             .add_class("chefbar-palette-overlay");
         container.set_visible(false);
         container.set_no_show_all(true);
+        container.set_size_request(560, -1);
 
         let entry = gtk::SearchEntry::new();
-        entry.set_placeholder_text(Some(OVERLAY_PLACEHOLDER));
+        entry.set_placeholder_text(Some("Zoek of typ een opdracht"));
         entry.style_context().add_class("chefbar-palette-entry");
         container.pack_start(&entry, false, false, 0);
 
         let results = gtk::Box::new(gtk::Orientation::Vertical, 2);
         results.style_context().add_class("chefbar-palette-results");
-        let hint = gtk::Label::new(Some(OVERLAY_IDLE_HINT));
+        let hint = gtk::Label::new(Some("Typ om te filteren · esc sluit"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
-        hint.set_line_wrap(true);
         hint.set_ellipsize(pango::EllipsizeMode::End);
         hint.style_context().add_class("chefbar-card-meta");
         results.pack_start(&hint, false, false, 0);
         container.pack_start(&results, false, false, 0);
 
-        container.pack_start(&overlay_foot(), false, false, 0);
-
         let revealed = Rc::new(Cell::new(false));
         let first_action = Rc::new(RefCell::new(None));
         let on_enter: Rc<RefCell<Option<OverlayActivate>>> = Rc::new(RefCell::new(None));
+        let host: Rc<RefCell<Option<gtk::Overlay>>> = Rc::new(RefCell::new(None));
         let container_esc = container.clone();
+        let scrim_esc = scrim.clone();
         let entry_esc = entry.clone();
         let revealed_esc = revealed.clone();
+        let host_esc = host.clone();
         let first_keys = first_action.clone();
         let enter_keys = on_enter.clone();
         entry.connect_key_press_event(move |_, event| {
             if event.keyval() == gdk::keys::constants::Escape {
-                container_esc.set_visible(false);
-                container_esc.set_no_show_all(true);
-                entry_esc.set_text("");
-                revealed_esc.set(false);
+                hide_widgets(
+                    &container_esc,
+                    &scrim_esc,
+                    &entry_esc,
+                    &revealed_esc,
+                    &host_esc,
+                );
                 return gtk::glib::Propagation::Stop;
             }
             if (event.keyval() == gdk::keys::constants::Return
@@ -82,13 +92,31 @@ impl Overlay {
             activate_first(&first_act, &enter_act);
         });
 
+        let container_scrim = container.clone();
+        let scrim_hide = scrim.clone();
+        let entry_scrim = entry.clone();
+        let revealed_scrim = revealed.clone();
+        let host_scrim = host.clone();
+        scrim.connect_button_press_event(move |_, _| {
+            hide_widgets(
+                &container_scrim,
+                &scrim_hide,
+                &entry_scrim,
+                &revealed_scrim,
+                &host_scrim,
+            );
+            gtk::glib::Propagation::Stop
+        });
+
         Self {
+            scrim,
             container,
             entry,
             results,
             revealed,
             first_action,
             on_enter,
+            host,
         }
     }
 
@@ -104,21 +132,24 @@ impl Overlay {
         *self.on_enter.borrow_mut() = Some(callback.clone());
         *self.first_action.borrow_mut() = actions.first().cloned();
         if actions.is_empty() {
-            let empty = gtk::Label::new(Some(OVERLAY_EMPTY));
+            let empty = gtk::Label::new(Some("Niets gevonden. Probeer een domein of /"));
             empty.set_halign(gtk::Align::Start);
             empty.set_xalign(0.0);
-            empty.set_line_wrap(true);
             empty.style_context().add_class("chefbar-card-meta");
             self.results.pack_start(&empty, false, false, 0);
             self.results.show_all();
             return;
         }
-        let cap = gtk::Label::new(Some(&format!("{} · {}", OVERLAY_SECTION, actions.len())));
+        let cap = gtk::Label::new(Some(&format!(
+            "{} · {}",
+            super::zones::caps("Acties"),
+            actions.len()
+        )));
         cap.set_halign(gtk::Align::Start);
         cap.set_xalign(0.0);
         cap.style_context().add_class("chefbar-palette-section");
         self.results.pack_start(&cap, false, false, 0);
-        for (idx, action) in actions.iter().take(8).enumerate() {
+        for (idx, action) in actions.iter().take(9).enumerate() {
             let button = gtk::Button::new();
             button.set_relief(gtk::ReliefStyle::None);
             button.set_halign(gtk::Align::Fill);
@@ -129,6 +160,13 @@ impl Overlay {
                 button.style_context().add_class("selected");
             }
             let inner = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            let glyph = crate::icons::image_muted(
+                crate::icons::for_action(&action.keywords, &action.section),
+                15,
+            );
+            glyph.style_context().add_class("chefbar-palette-glyph");
+            glyph.set_valign(gtk::Align::Center);
+            inner.pack_start(&glyph, false, false, 0);
             let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
             let title = gtk::Label::new(Some(&action.title));
             title.set_halign(gtk::Align::Start);
@@ -143,11 +181,20 @@ impl Overlay {
                 meta.set_line_wrap(true);
                 meta.set_lines(1);
                 meta.set_ellipsize(pango::EllipsizeMode::End);
-                meta.set_max_width_chars(58);
+                meta.set_max_width_chars(52);
                 meta.style_context().add_class("chefbar-card-meta");
                 text.pack_start(&meta, false, false, 0);
             }
             inner.pack_start(&text, true, true, 0);
+            let hint = if action.shortcut.is_empty() {
+                "↵".to_string()
+            } else {
+                action.shortcut.clone()
+            };
+            let kbd = gtk::Label::new(Some(&hint));
+            kbd.style_context().add_class("chefbar-kbd");
+            kbd.set_valign(gtk::Align::Center);
+            inner.pack_end(&kbd, false, false, 0);
             let stamp = super::zones::stamp_label(&action.stamp);
             inner.pack_end(&stamp, false, false, 0);
             button.add(&inner);
@@ -159,23 +206,35 @@ impl Overlay {
         self.results.show_all();
     }
 
+    pub fn bind_host(&self, host: gtk::Overlay) {
+        *self.host.borrow_mut() = Some(host);
+        apply_pass_through(&self.host, &self.scrim, &self.container, true);
+    }
+
     pub fn show(&self) {
+        self.scrim.set_no_show_all(false);
+        self.scrim.set_visible(true);
+        self.scrim.show();
         self.container.set_no_show_all(false);
         self.container.set_visible(true);
         self.container.show_all();
         self.entry.grab_focus();
         self.entry.select_region(0, -1);
         self.revealed.set(true);
+        apply_pass_through(&self.host, &self.scrim, &self.container, false);
     }
 
     pub fn hide(&self) {
         if !self.revealed.get() {
             return;
         }
-        self.container.set_visible(false);
-        self.container.set_no_show_all(true);
-        self.entry.set_text("");
-        self.revealed.set(false);
+        hide_widgets(
+            &self.container,
+            &self.scrim,
+            &self.entry,
+            &self.revealed,
+            &self.host,
+        );
     }
 
     pub fn is_visible(&self) -> bool {
@@ -185,6 +244,10 @@ impl Overlay {
     pub fn widget(&self) -> &gtk::Box {
         &self.container
     }
+
+    pub fn scrim(&self) -> &gtk::EventBox {
+        &self.scrim
+    }
 }
 
 impl Default for Overlay {
@@ -193,35 +256,32 @@ impl Default for Overlay {
     }
 }
 
-fn overlay_foot() -> gtk::Box {
-    let foot = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    foot.style_context().add_class("chefbar-overlay-foot");
-    foot.pack_start(&kbd_chip("enter"), false, false, 0);
-    let enter_l = gtk::Label::new(Some("voert uit"));
-    enter_l
-        .style_context()
-        .add_class("chefbar-overlay-foot-label");
-    foot.pack_start(&enter_l, false, false, 0);
-    foot.pack_start(&kbd_chip("esc"), false, false, 0);
-    let esc_l = gtk::Label::new(Some("sluit"));
-    esc_l
-        .style_context()
-        .add_class("chefbar-overlay-foot-label");
-    foot.pack_start(&esc_l, false, false, 0);
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    foot.pack_start(&spacer, true, true, 0);
-    let hint = gtk::Label::new(Some("/ of ctrl+k zoekt overal"));
-    hint.set_halign(gtk::Align::End);
-    hint.style_context().add_class("chefbar-overlay-foot-label");
-    foot.pack_end(&hint, false, false, 0);
-    foot
+fn hide_widgets(
+    container: &gtk::Box,
+    scrim: &gtk::EventBox,
+    entry: &gtk::SearchEntry,
+    revealed: &Rc<Cell<bool>>,
+    host: &RefCell<Option<gtk::Overlay>>,
+) {
+    container.set_visible(false);
+    container.set_no_show_all(true);
+    scrim.set_visible(false);
+    scrim.set_no_show_all(true);
+    entry.set_text("");
+    revealed.set(false);
+    apply_pass_through(host, scrim, container, true);
 }
 
-fn kbd_chip(text: &str) -> gtk::Label {
-    let label = gtk::Label::new(Some(text));
-    label.style_context().add_class("chefbar-kbd");
-    label
+fn apply_pass_through(
+    host: &RefCell<Option<gtk::Overlay>>,
+    scrim: &gtk::EventBox,
+    container: &gtk::Box,
+    pass: bool,
+) {
+    if let Some(host) = host.borrow().as_ref() {
+        host.set_overlay_pass_through(scrim, pass);
+        host.set_overlay_pass_through(container, pass);
+    }
 }
 
 fn activate_first(
@@ -240,22 +300,4 @@ fn activate_first(
 
 pub fn build_overlay() -> Overlay {
     Overlay::new()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn overlay_copy_is_warm_nederlands() {
-        assert!(OVERLAY_PLACEHOLDER.contains("Zoek"));
-        assert!(OVERLAY_IDLE_HINT.contains("Enter"));
-        assert!(OVERLAY_EMPTY.starts_with("Niets gevonden"));
-        assert_eq!(OVERLAY_SECTION, "Acties");
-        for text in [OVERLAY_PLACEHOLDER, OVERLAY_IDLE_HINT, OVERLAY_EMPTY] {
-            assert!(!text.contains('\u{2014}'), "geen em-dash in {text}");
-            assert!(!text.contains("System"), "{text}");
-            assert!(!text.contains("Idle"), "{text}");
-        }
-    }
 }

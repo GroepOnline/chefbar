@@ -4,7 +4,7 @@ use gtk::prelude::*;
 use std::cell::Cell;
 use std::rc::Rc;
 
-use crate::motion::DRAWER_MS;
+use crate::motion::{motion_enabled, DRAWER_MS};
 
 pub const DRAWER_WIDTH: i32 = 300;
 
@@ -23,12 +23,12 @@ impl Drawer {
     pub fn new() -> Self {
         let revealer = gtk::Revealer::new();
         revealer.set_transition_type(gtk::RevealerTransitionType::SlideLeft);
-        revealer.set_transition_duration(DRAWER_MS);
+        revealer.set_transition_duration(if motion_enabled() { DRAWER_MS } else { 0 });
         revealer.set_reveal_child(false);
         revealer.set_halign(gtk::Align::End);
         revealer.set_valign(gtk::Align::Fill);
 
-        let inner = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        let inner = gtk::Box::new(gtk::Orientation::Vertical, 8);
         inner.style_context().add_class("chefbar-drawer");
         inner.set_size_request(DRAWER_WIDTH, -1);
         inner.set_hexpand(false);
@@ -38,7 +38,6 @@ impl Drawer {
         header.set_margin_top(12);
         header.set_margin_start(12);
         header.set_margin_end(12);
-        // v2 worked-row-streep: kleur volgt de stamp van de actie.
         let streak = gtk::Box::new(gtk::Orientation::Vertical, 0);
         streak.set_size_request(2, -1);
         streak.set_valign(gtk::Align::Fill);
@@ -49,12 +48,14 @@ impl Drawer {
         title.set_xalign(0.0);
         title.set_ellipsize(pango::EllipsizeMode::End);
         title.style_context().add_class("chefbar-drawer-title");
+        title.set_attributes(Some(&crate::css::heading_attrs()));
         title.set_hexpand(true);
         header.pack_start(&title, true, true, 0);
         let close = gtk::Button::new();
-        let icon = gtk::Image::from_icon_name(Some("window-close-symbolic"), gtk::IconSize::Button);
+        let icon = crate::icons::image("x", 15);
         close.set_image(Some(&icon));
         close.set_relief(gtk::ReliefStyle::None);
+        close.set_tooltip_text(Some("Sluit"));
         close.style_context().add_class("chefbar-gbtn");
         header.pack_end(&close, false, false, 0);
         inner.pack_start(&header, false, false, 0);
@@ -76,7 +77,7 @@ impl Drawer {
         actions.set_margin_bottom(6);
         inner.pack_start(&actions, false, false, 0);
 
-        let hint = gtk::Label::new(Some("enter voert uit \u{00b7} esc sluit"));
+        let hint = gtk::Label::new(Some("Enter voert uit · esc sluit"));
         hint.set_halign(gtk::Align::Start);
         hint.set_xalign(0.0);
         hint.style_context().add_class("chefbar-drawer-hint");
@@ -125,7 +126,7 @@ impl Drawer {
             "KLAAR" => "ok",
             "HULP" => "warn",
             "FOUT" | "LIMIET" => "error",
-            "BEZIG" | "TAAK" => "info",
+            "BEZIG" | "TAAK" => "running",
             _ => "",
         };
         if !streak_cls.is_empty() {
@@ -190,6 +191,7 @@ impl Default for Drawer {
 }
 
 fn slide_drawer(revealer: &gtk::Revealer, show: bool) {
+    revealer.set_transition_duration(if motion_enabled() { DRAWER_MS } else { 0 });
     if show {
         revealer.set_visible(true);
         revealer.set_reveal_child(true);

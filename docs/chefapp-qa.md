@@ -48,7 +48,7 @@
   - [ ] `chefbar --ipc "state fout"` → fout-glyph
   - [ ] `chefbar --ipc "state offline"` → offline-glyph; na 10 s terug naar live
 - [ ] Statuslijn max 5 live regels + profielregel; nieuwste eerst binnen priority-groep
-- [ ] Menu-items werken: FocusDomain / Pause / Doctor / Quit (geen Open Thuis/Ploeg, geen desktop start/stop)
+- [ ] Menu-items werken: FocusDomain / Open Thuis / Pause / Doctor / Quit
 
 ## Offline & freshness
 
@@ -78,6 +78,18 @@
 - [ ] `scripts/visual-shot.sh drawer dark` → screenshot bestaat (warning-only tot drawer stabiel)
 - [ ] `scripts/visual-shot.sh all dark` → 5 screenshots met prefix `/tmp/chefbar-dark-*.png`
 
+## ChefApp x10 — visueel (V0–V3)
+
+Runner-only (`chef-runner-01-1` of CI). Geen `cargo` op laptop `joep`.
+
+- [ ] `design-system.json` pin + `assets/design-tokens.snapshot.css` matchen `css.rs` light/dark
+- [ ] General Sans + IBM Plex Mono zichtbaar (of fail-zichtbaar, niet stil Cantarell)
+- [ ] Lucide-rail, geen Adwaita header/drawer-iconen; palette 560px + scrim
+- [ ] Geen `to_uppercase()`-shout op sectiekoppen; illegal-CSS (gap/inset/--vars/gradient) leeg
+- [ ] Motion: panel 280ms, drawer 160ms, overlay 100ms; poll-rebuild zonder fade; reduced-motion instant
+- [ ] `scripts/visual-shot.sh --mode all --theme light` en `--theme dark` groen
+- [ ] Agents/Flows/Goedkeuringen blijven gated empty tot ACP / Kater M2
+
 ## Install & doctor
 
 - [ ] `shellcheck install.sh scripts/*.sh` groen
@@ -87,10 +99,11 @@
 
 ## Opmerkingen / bevindingen
 
-- Datum: ___________
-- Tester: ___________
-- Branch / SHA: ___________
-- Open issues: ___________
+- Datum: 2026-08-20
+- Tester: chef-runner-01-1 (`~/chefapp-x10-visual`, `dbus-run-session`)
+- Branch: `feat/chefapp-x10-visual` (GRO-1425)
+- Visual-shot: `--mode all` dark `ALL_DARK=0` (`#5C97FF`) en light `ALL_LIGHT=0` (`#317CFF`)
+- Open: StatusNotifier-tray blijft freedesktop-symbolic (host lookup, geen GTK-pixbuf). General Sans/IBM Plex Mono fail-zichtbaar via `install.sh`, niet stil Cantarell. P2 Goedkeuringen wacht op Kater M2; P3 Agents op ACP/`CHEFBAR_AGENTS_API`; P4 Brain-insight op mTLS; P5 Flows op Agents. Geen 5.0 Super App-claim.
 
 ## ChefApp 5.0 — acceptatiechecklist (§7)
 

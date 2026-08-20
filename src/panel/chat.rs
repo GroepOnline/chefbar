@@ -43,6 +43,7 @@ impl ChatPane {
         title.set_xalign(0.0);
         title.set_hexpand(true);
         title.style_context().add_class("chefbar-title");
+        title.set_attributes(Some(&crate::css::heading_attrs()));
         title_row.pack_start(&title, true, true, 0);
         let combo = gtk::ComboBoxText::new();
         combo.style_context().add_class("chefbar-chat-combo");
@@ -78,9 +79,12 @@ impl ChatPane {
         entry.set_placeholder_text(Some("Vraag over fleet, deploy, status…"));
         entry.set_hexpand(true);
         entry.style_context().add_class("chefbar-chat-entry");
-        let send = gtk::Button::with_label("Stuur");
-        send.style_context().add_class("chefbar-btn");
-        send.style_context().add_class("chefbar-primary");
+        let send = gtk::Button::new();
+        send.set_relief(gtk::ReliefStyle::None);
+        send.set_tooltip_text(Some("Stuur"));
+        send.style_context().add_class("chefbar-gbtn");
+        send.style_context().add_class("chefbar-solid");
+        send.set_image(Some(&crate::icons::image_on_solid("send", 15)));
         composer.pack_start(&entry, true, true, 0);
         composer.pack_start(&send, false, false, 0);
         root.pack_start(&composer, false, false, 0);
@@ -239,14 +243,15 @@ fn paint_combo(
         .target
         .clone()
         .or_else(|| resolve_target(&ops, pinned.as_deref()));
-    let mut ids = String::new();
-    for (i, target) in targets.iter().enumerate() {
-        if i > 0 {
-            ids.push('|');
-        }
-        ids.push_str(&target.id);
-    }
-    let fp = format!("{}#{}", ids, current.as_deref().unwrap_or(""));
+    let fp = format!(
+        "{}#{}",
+        targets
+            .iter()
+            .map(|t| t.id.as_str())
+            .collect::<Vec<_>>()
+            .join("|"),
+        current.as_deref().unwrap_or("")
+    );
     if !force && fp == *combo_fp.borrow() {
         return;
     }
@@ -284,12 +289,20 @@ fn render_messages(transcript: &gtk::Box, log: &ChatLog) {
     for msg in &log.messages {
         let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
         row.style_context().add_class("chefbar-chat-msg");
-        row.style_context().add_class(match msg.role {
-            ChatRole::Operator => "operator",
-            ChatRole::Agent => "agent",
-            ChatRole::System => "system",
-        });
-        let who = msg.who_label();
+        let who = match msg.role {
+            ChatRole::Operator => {
+                row.style_context().add_class("operator");
+                "jij"
+            }
+            ChatRole::Agent => {
+                row.style_context().add_class("agent");
+                log.kind.as_deref().unwrap_or("agent")
+            }
+            ChatRole::System => {
+                row.style_context().add_class("system");
+                "app"
+            }
+        };
         let stamp = gtk::Label::new(Some(who));
         stamp.set_xalign(0.0);
         stamp.style_context().add_class("chefbar-chat-who");

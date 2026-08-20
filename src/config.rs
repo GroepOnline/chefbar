@@ -28,6 +28,8 @@ pub struct RawProfile {
     pub linear_api: Option<String>,
     pub vaultwarden_url: Option<String>,
     pub brain_api: Option<String>,
+    pub agents_api: Option<String>,
+    pub flows_api: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +44,8 @@ pub struct EndpointProfile {
     pub linear_api: Option<String>,
     pub vaultwarden_url: Option<String>,
     pub brain_api: Option<String>,
+    pub agents_api: Option<String>,
+    pub flows_api: Option<String>,
 }
 
 impl Default for EndpointProfile {
@@ -57,6 +61,8 @@ impl Default for EndpointProfile {
             linear_api: None,
             vaultwarden_url: None,
             brain_api: None,
+            agents_api: None,
+            flows_api: None,
         }
     }
 }
@@ -73,6 +79,8 @@ impl EndpointProfile {
             "linearApi" => self.linear_api.as_deref(),
             "vaultwardenUrl" => self.vaultwarden_url.as_deref(),
             "brainApi" => self.brain_api.as_deref(),
+            "agentsApi" => self.agents_api.as_deref(),
+            "flowsApi" => self.flows_api.as_deref(),
             _ => None,
         }
     }
@@ -114,6 +122,12 @@ impl EndpointProfile {
             urls.push(url);
         }
         if let Some(url) = &self.brain_api {
+            urls.push(url);
+        }
+        if let Some(url) = &self.agents_api {
+            urls.push(url);
+        }
+        if let Some(url) = &self.flows_api {
             urls.push(url);
         }
         urls
@@ -183,6 +197,8 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
             linear_api: None,
             vaultwarden_url: None,
             brain_api: None,
+            agents_api: None,
+            flows_api: None,
         });
 
     let env_or = |env_name: &str, raw: Option<String>, fallback: &str| -> String {
@@ -218,6 +234,8 @@ pub fn load_profile(path: Option<&std::path::Path>) -> EndpointProfile {
                 .or(raw.vaultwarden_url),
         ),
         brain_api: clean_optional(env::var("CHEFBAR_BRAIN_API").ok().or(raw.brain_api)),
+        agents_api: clean_optional(env::var("CHEFBAR_AGENTS_API").ok().or(raw.agents_api)),
+        flows_api: clean_optional(env::var("CHEFBAR_FLOWS_API").ok().or(raw.flows_api)),
     }
 }
 
@@ -252,6 +270,8 @@ mod tests {
             Some("https://vault.bitwarden.example")
         );
         assert_eq!(profile.brain_api, None);
+        assert_eq!(profile.agents_api, None);
+        assert_eq!(profile.flows_api, None);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -261,6 +281,10 @@ mod tests {
         assert_eq!(profile.vault_api, DEFAULT_VAULT_API);
         assert_eq!(profile.label("vaultApi"), "127.0.0.1:8321");
         assert_eq!(profile.brain_api, None);
+        assert_eq!(profile.agents_api, None);
+        assert_eq!(profile.flows_api, None);
         assert_eq!(profile.endpoint("brainApi"), None);
+        assert_eq!(profile.endpoint("agentsApi"), None);
+        assert_eq!(profile.endpoint("flowsApi"), None);
     }
 }

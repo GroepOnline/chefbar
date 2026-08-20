@@ -8,12 +8,12 @@
 use gtk::prelude::*;
 
 use super::zones::{
-    bucket_title, domain_row, empty_state, group_box, info_row, kpi_strip, section_title, short_ts,
-    state_label, status_dot_cls,
+    bucket_title, clickable_row, domain_row, empty_state, empty_state_cta, group_box, info_row,
+    kpi_strip, section_title, short_ts, state_label, status_dot_cls,
 };
-use crate::actions::Executor;
+use crate::actions::{Executor, RunSpec};
 use crate::harness::HarnessKind;
-use crate::models::Snapshot;
+use crate::models::{OpsSnapshot, Snapshot};
 
 /// Max rijen per domein-zone; de rest wordt "+n meer" in de sectie-sub.
 const MAX_ROWS: usize = 8;
@@ -35,31 +35,228 @@ pub fn render_domain(
     content: &gtk::Box,
     kind: &HarnessKind,
     snap: &Snapshot,
+    ops: &OpsSnapshot,
     q: &str,
     executor: &Executor,
     window: &gtk::Window,
 ) {
     match kind {
         HarnessKind::Inbox => render_inbox(content, snap, q),
-        HarnessKind::Fleet => render_fleet(content, snap, q),
-        HarnessKind::Herdr => render_herdr(content, snap, q),
+        HarnessKind::Fleet => render_fleet(content, snap, q, executor),
+        HarnessKind::Herdr => render_herdr(content, snap, ops, q, executor),
         HarnessKind::Containers => render_containers(content, snap, q),
         HarnessKind::Vault => render_vault(content, snap, q),
         HarnessKind::Commerce => render_providers(content, snap, q),
         HarnessKind::Crm => render_crm(content, snap, q),
-        HarnessKind::Share => render_share(content, snap, q),
+        HarnessKind::Share => render_share(content, snap, q, executor),
         HarnessKind::Sync => render_sync(content, snap, q),
         HarnessKind::Clipboard => render_clipboard(content, snap, q),
         HarnessKind::Desktop => render_desktop(content, snap, q),
         HarnessKind::Tasks => render_taken(content, snap, q),
         HarnessKind::Linear => render_linear(content, snap, q, executor, window),
-        HarnessKind::Secrets => render_secrets(content, snap, q),
+        HarnessKind::Agents => render_agents(content),
+        HarnessKind::Flows => render_flows(content),
+        HarnessKind::Secrets => render_secrets(content, snap, q, executor),
         HarnessKind::Kater => render_kater(content, snap, q),
+        HarnessKind::Brain => render_brain(content, snap, q, executor),
         HarnessKind::Health => render_health(content, snap, q),
         HarnessKind::Eval => render_eval(content, snap, q),
         // Control is the persistent chat canvas, not an operate-view rebuild.
         HarnessKind::Control => {}
     }
+}
+
+fn age_label(value: Option<i64>) -> String {
+    match value {
+        Some(seconds) if seconds < 60 => format!("{seconds}s"),
+        Some(seconds) if seconds < 3_600 => format!("{} min", seconds / 60),
+        Some(seconds) if seconds < 86_400 => format!("{} uur", seconds / 3_600),
+        Some(seconds) => format!("{} dagen", seconds / 86_400),
+        None => "onbekend".into(),
+    }
+}
+
+fn render_brain(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
+    let brain = &snap.brain_insight;
+    section_title(content, "Brain", "autoriteit, herstel en leren");
+    if crate::brain::is_insight_parked(brain) {
+        content.pack_start(
+            &empty_state_cta(
+                "Brain-insight staat geparkeerd",
+                "Live status van de Brain API komt pas zodra een mTLS-client is geconfigureerd.",
+                "Zet CHEFBAR_BRAIN_MTLS_CERT en CHEFBAR_BRAIN_MTLS_KEY",
+            ),
+            false,
+            false,
+            0,
+        );
+    } else {
+        let sha: String = brain.canonical_git_sha.chars().take(8).collect();
+        let queued = brain.learning.queued_candidates.to_string();
+        let feedback = brain.learning.feedback_events.to_string();
+        content.pack_start(
+            &kpi_strip(&[
+                (
+                    "status",
+                    if brain.status.is_empty() {
+                        "onbekend"
+                    } else {
+                        &brain.status
+                    },
+                ),
+                ("autoriteit", if sha.is_empty() { "—" } else { &sha }),
+                ("wacht", &queued),
+                ("feedback", &feedback),
+            ]),
+            false,
+            false,
+            0,
+        );
+
+        let group = group_box();
+        let backup = format!(
+            "{} · {}",
+            if brain.backup.is_empty() {
+                "onbekend"
+            } else {
+                &brain.backup
+            },
+            age_label(brain.backup_freshness_seconds)
+        );
+        group.pack_start(&info_row("Back-up", Some(&backup)), false, false, 0);
+        let restore = age_label(brain.restore_age_seconds);
+        group.pack_start(&info_row("Herstelproef", Some(&restore)), false, false, 0);
+        let projections = format!(
+            "lexicaal {} · dense {} · graph {}{}",
+            brain.projections.lexical,
+            brain.projections.dense,
+            brain.projections.graph,
+            if brain.projection_lag {
+                " · loopt achter"
+            } else {
+                ""
+            }
+        );
+        group.pack_start(&info_row("Projecties", Some(&projections)), false, false, 0);
+        let champion = if brain.learning.champion.is_empty() {
+            "onbekend"
+        } else {
+            &brain.learning.champion
+        };
+        group.pack_start(&info_row("Kampioen", Some(champion)), false, false, 0);
+        let eval_status = brain
+            .eval
+            .get("status")
+            .and_then(|value| value.as_str())
+            .unwrap_or("onbekend");
+        group.pack_start(&info_row("Evaluatie", Some(eval_status)), false, false, 0);
+        if let Some(mode) = brain.degraded_mode.as_deref() {
+            group.pack_start(&info_row("Veilige modus", Some(mode)), false, false, 0);
+        }
+        content.pack_start(&group, false, false, 0);
+    }
+
+    bucket_title(content, "DAILY digest");
+    let digest = &snap.brain_digest;
+    let needle = q.to_lowercase();
+    let chunks: Vec<_> = digest
+        .chunks
+        .iter()
+        .filter(|chunk| {
+            needle.is_empty()
+                || chunk.title.to_lowercase().contains(&needle)
+                || chunk
+                    .excerpt
+                    .as_deref()
+                    .map(|excerpt| excerpt.to_lowercase().contains(&needle))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if chunks.is_empty() {
+        content.pack_start(
+            &empty_state(
+                "Geen digest-chunks",
+                "Evidence uit de operator-brain verschijnt hier zodra de digest beschikbaar is. Brain-body blijft geparkeerd tot mTLS.",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    let group = group_box();
+    for chunk in chunks.iter().take(MAX_ROWS) {
+        let meta = chunk.excerpt.as_deref().or(chunk.path.as_deref());
+        let inner = domain_row("ok", &chunk.title, meta, None);
+        let target = chunk
+            .url
+            .clone()
+            .or_else(|| chunk.path.clone())
+            .unwrap_or_default();
+        if target.is_empty() {
+            group.pack_start(&inner, false, false, 0);
+        } else {
+            group.pack_start(
+                &clickable_row(inner, RunSpec::BrainOpen(target), executor),
+                false,
+                false,
+                0,
+            );
+        }
+    }
+    content.pack_start(&group, false, false, 0);
+}
+
+fn render_agents(content: &gtk::Box) {
+    section_title(content, "Agents", "ACP · read-only tot de probe groen is");
+    if crate::config::global_profile().agents_api.is_none() {
+        content.pack_start(
+            &empty_state_cta(
+                "Agents wachten op ACP",
+                "Deze zone blijft leeg tot CHEFBAR_AGENTS_API een live ACP-endpoint is. Geen tweede poll, geen verzonnen runs.",
+                "Live panes blijven op hun eigen websocket",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    content.pack_start(
+        &empty_state(
+            "Geen runs in beeld",
+            "ACP is gezet. Runs verschijnen hier read-only; starten blijft geblokkeerd tot de probe bewijs levert.",
+        ),
+        false,
+        false,
+        0,
+    );
+}
+
+fn render_flows(content: &gtk::Box) {
+    section_title(content, "Flows", "na Agents read-only");
+    if crate::config::global_profile().flows_api.is_none() {
+        content.pack_start(
+            &empty_state_cta(
+                "Flows wachten op Agents",
+                "Flows blijven gated tot CHEFBAR_FLOWS_API gezet is en Agents read-only groen is.",
+                "Geen tweede venster, geen verzonnen pipelines",
+            ),
+            false,
+            false,
+            0,
+        );
+        return;
+    }
+    content.pack_start(
+        &empty_state(
+            "Geen flows in beeld",
+            "Het endpoint is gezet. Triggers blijven uit tot Agents hun gate haalt.",
+        ),
+        false,
+        false,
+        0,
+    );
 }
 
 /// Linear/taken-status → vaste bucket. Pure, GTK-vrij, getest.
@@ -145,6 +342,7 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
             false,
             0,
         );
+        pack_approvals_empty(content);
         return;
     }
     let total = all.len();
@@ -210,13 +408,28 @@ fn render_inbox(content: &gtk::Box, snap: &Snapshot, q: &str) {
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
     }
+    pack_approvals_empty(content);
+}
+
+fn pack_approvals_empty(content: &gtk::Box) {
+    bucket_title(content, "Goedkeuringen");
+    content.pack_start(
+        &empty_state_cta(
+            "Geen goedkeuringen",
+            "Kater M2 levert hier wachtende toestemmingen. Tot die API live is blijft deze bak leeg — geen tweede dialoog, geen verzonnen items.",
+            "Eén toets in de drawer volgt zodra M2 groen is",
+        ),
+        false,
+        false,
+        0,
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Fleet
 // ---------------------------------------------------------------------------
 
-fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
+fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .fleet_nodes
@@ -273,17 +486,34 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
         let group = group_box();
         let take_n = remaining.min(rows.len());
         for node in rows.iter().take(take_n) {
-            group.pack_start(
-                &domain_row(
-                    if node.online { "ok" } else { "down" },
-                    &node.title,
-                    node.host.as_deref(),
-                    Some((&node.status, status_dot_cls(&node.status))),
-                ),
-                false,
-                false,
-                0,
+            let inner = domain_row(
+                if node.online { "ok" } else { "down" },
+                &node.title,
+                node.host.as_deref(),
+                Some((&node.status, status_dot_cls(&node.status))),
             );
+            let target = node
+                .host
+                .clone()
+                .filter(|host| !host.is_empty())
+                .unwrap_or_else(|| node.id.clone());
+            if target.is_empty() {
+                group.pack_start(&inner, false, false, 0);
+            } else {
+                group.pack_start(
+                    &clickable_row(
+                        inner,
+                        RunSpec::FleetExec {
+                            node: target,
+                            template: "status".into(),
+                        },
+                        executor,
+                    ),
+                    false,
+                    false,
+                    0,
+                );
+            }
         }
         remaining -= take_n;
         content.pack_start(&group, false, false, 0);
@@ -294,7 +524,13 @@ fn render_fleet(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Herdr
 // ---------------------------------------------------------------------------
 
-fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
+fn render_herdr(
+    content: &gtk::Box,
+    snap: &Snapshot,
+    ops: &OpsSnapshot,
+    q: &str,
+    executor: &Executor,
+) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .herdr_workspaces
@@ -341,17 +577,32 @@ fn render_herdr(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for ws in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&ws.status),
-                &ws.title,
-                ws.cwd.as_deref(),
-                Some((&ws.status, status_dot_cls(&ws.status))),
-            ),
-            false,
-            false,
-            0,
+        let inner = domain_row(
+            status_dot_cls(&ws.status),
+            &ws.title,
+            ws.cwd.as_deref(),
+            Some((&ws.status, status_dot_cls(&ws.status))),
         );
+        if ws.id.is_empty() {
+            group.pack_start(&inner, false, false, 0);
+        } else if let Some(agent) = ops
+            .agents
+            .iter()
+            .find(|agent| agent.workspace_id == ws.id && !agent.terminal_id.is_empty())
+        {
+            group.pack_start(
+                &clickable_row(
+                    inner,
+                    RunSpec::FocusAgent(agent.terminal_id.clone()),
+                    executor,
+                ),
+                false,
+                false,
+                0,
+            );
+        } else {
+            group.pack_start(&inner, false, false, 0);
+        }
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -660,7 +911,7 @@ fn render_crm(content: &gtk::Box, snap: &Snapshot, q: &str) {
 // Share
 // ---------------------------------------------------------------------------
 
-fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
+fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
     let ql = q.to_lowercase();
     let mut entries: Vec<_> = snap
         .share_sync
@@ -691,7 +942,18 @@ fn render_share(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for (k, v) in all.iter().take(MAX_ROWS) {
-        group.pack_start(&info_row(k, Some(v)), false, false, 0);
+        let inner = info_row(k, Some(v));
+        let key = k.to_lowercase();
+        if key.contains("pull") || key.contains("push") || key.contains("sync") {
+            group.pack_start(
+                &clickable_row(inner, RunSpec::ShareSync(k.to_string()), executor),
+                false,
+                false,
+                0,
+            );
+        } else {
+            group.pack_start(&inner, false, false, 0);
+        }
     }
     content.pack_start(&group, false, false, 0);
 }
@@ -775,7 +1037,7 @@ fn render_clipboard(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Klembord",
+        "Clipboard",
         &format!("{} · klik om te kopiëren", count_sub(q, shown, total)),
     );
     if total == 0 {
@@ -839,7 +1101,7 @@ fn render_desktop(content: &gtk::Box, snap: &Snapshot, q: &str) {
         .collect();
     let total = all.len();
     let shown = total.min(MAX_ROWS);
-    section_title(content, "Bureaublad", &count_sub(q, shown, total));
+    section_title(content, "Desktop", &count_sub(q, shown, total));
     if total == 0 {
         content.pack_start(
             &empty_state(
@@ -1031,10 +1293,11 @@ fn render_linear(
                 child.set_margin_top(6);
                 child.set_margin_bottom(6);
             }
-            if let Some(url) = issue.url.clone() {
+            if !issue.id.is_empty() {
+                let target = issue.url.clone().unwrap_or_else(|| issue.id.clone());
                 let executor = executor.clone();
                 row_btn.connect_clicked(move |_| {
-                    executor.run_for_ui(&crate::actions::RunSpec::OpenUrl(url.clone()));
+                    executor.run_for_ui(&crate::actions::RunSpec::OpenLinearIssue(target.clone()));
                 });
             } else {
                 row_btn.set_sensitive(false);
@@ -1050,7 +1313,7 @@ fn render_linear(
 // Secrets
 // ---------------------------------------------------------------------------
 
-fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
+fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str, executor: &Executor) {
     let ql = q.to_lowercase();
     let all: Vec<_> = snap
         .secrets_meta
@@ -1065,7 +1328,7 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     let shown = total.min(MAX_ROWS);
     section_title(
         content,
-        "Sleutels",
+        "Secrets",
         &format!(
             "{} · alleen meta, nooit plaintext",
             count_sub(q, shown, total)
@@ -1074,8 +1337,8 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     if total == 0 {
         content.pack_start(
             &empty_state(
-                "Geen sleutels gekoppeld",
-                "Vaultwarden-collecties verschijnen hier als meta, nooit plaintext.",
+                "Geen secrets gekoppeld",
+                "Vaultwarden-collecties verschijnen hier als meta, nooit als plaintext.",
             ),
             false,
             false,
@@ -1085,17 +1348,28 @@ fn render_secrets(content: &gtk::Box, snap: &Snapshot, q: &str) {
     }
     let group = group_box();
     for secret in all.iter().take(MAX_ROWS) {
-        group.pack_start(
-            &domain_row(
-                status_dot_cls(&secret.status),
-                &secret.title,
-                (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
-                Some((&secret.status, status_dot_cls(&secret.status))),
-            ),
-            false,
-            false,
-            0,
+        let inner = domain_row(
+            status_dot_cls(&secret.status),
+            &secret.title,
+            (!secret.meta.is_empty()).then_some(secret.meta.as_str()),
+            Some((&secret.status, status_dot_cls(&secret.status))),
         );
+        if secret.id.is_empty() {
+            group.pack_start(&inner, false, false, 0);
+        } else {
+            group.pack_start(
+                &clickable_row(
+                    inner,
+                    RunSpec::CopySecretMeta {
+                        id: secret.id.clone(),
+                    },
+                    executor,
+                ),
+                false,
+                false,
+                0,
+            );
+        }
     }
     content.pack_start(&group, false, false, 0);
 }

@@ -259,6 +259,7 @@ impl Panel {
                     crate::css::THEME_LIGHT
                 };
                 crate::css::set_theme(next);
+                crate::icons::recolor_all();
                 *theme_toggle.borrow_mut() = next.to_string();
                 btn.set_label(if next == crate::css::THEME_LIGHT {
                     "Licht"
@@ -296,11 +297,14 @@ impl Panel {
         // hidden, zodat het canvas gewoon klikbaar blijft).
         overlay.widget().set_halign(gtk::Align::Center);
         overlay.widget().set_valign(gtk::Align::Start);
-        overlay.widget().set_margin_top(88);
+        overlay.widget().set_margin_top(56);
         overlay.widget().set_margin_start(96);
         overlay.widget().set_margin_end(96);
+        overlay.scrim().set_halign(gtk::Align::Fill);
+        overlay.scrim().set_valign(gtk::Align::Fill);
+        window_overlay.add_overlay(overlay.scrim());
         window_overlay.add_overlay(overlay.widget());
-        window_overlay.set_overlay_pass_through(overlay.widget(), true);
+        overlay.bind_host(window_overlay.clone());
         window.add(&window_overlay);
 
         // Esc / "/" / focus — nu met drawer > overlay > panel prioriteit
@@ -440,6 +444,7 @@ impl Panel {
             }
             if self.overlay.is_visible() {
                 self.overlay.hide();
+                self.sync_overlay_pass_through();
                 return;
             }
             fade_out(&self.window, PANEL_MS);
@@ -469,6 +474,7 @@ impl Panel {
         } else {
             self.overlay.show();
         }
+        self.sync_overlay_pass_through();
     }
 
     pub fn open_inbox(&self) {
@@ -508,12 +514,17 @@ impl Panel {
             if !self.overlay.is_visible() {
                 self.overlay.widget().set_visible(false);
                 self.overlay.widget().set_no_show_all(true);
+                self.overlay.scrim().set_visible(false);
+                self.overlay.scrim().set_no_show_all(true);
             }
             self.window_overlay.show_all();
             if !self.overlay.is_visible() {
                 self.overlay.widget().set_visible(false);
                 self.overlay.widget().set_no_show_all(true);
+                self.overlay.scrim().set_visible(false);
+                self.overlay.scrim().set_no_show_all(true);
             }
+            self.sync_overlay_pass_through();
             fade_in(&self.window, PANEL_MS);
             self.window.present();
         }
@@ -529,6 +540,14 @@ impl Panel {
 
     pub fn overlay(&self) -> &Overlay {
         &self.overlay
+    }
+
+    fn sync_overlay_pass_through(&self) {
+        let pass = !self.overlay.is_visible();
+        self.window_overlay
+            .set_overlay_pass_through(self.overlay.scrim(), pass);
+        self.window_overlay
+            .set_overlay_pass_through(self.overlay.widget(), pass);
     }
 
     fn wire_overlay(&self) {
@@ -1117,7 +1136,7 @@ fn render_into(
         );
     }
 
-    domains::render_domain(content, &view_kind, &snap, query, executor, window);
+    domains::render_domain(content, &view_kind, &snap, &ops, query, executor, window);
 
     if !searching {
         render_doen_chips(content, &ranked, &harness_label, executor, window, drawer);
@@ -1397,9 +1416,7 @@ fn sync_nav_buttons(buttons: &[(String, gtk::Button)], shared: &Shared, active: 
             } else {
                 base.to_string()
             };
-            if btn.label().as_deref() != Some(text.as_str()) {
-                btn.set_label(&text);
-            }
+            sidebar::set_nav_caption(btn, &text, h.queue_depth);
             btn.set_tooltip_text(Some(&format!("{} \u{00b7} {}", h.id, h.status.label())));
         }
         if id == active {

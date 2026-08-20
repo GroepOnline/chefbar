@@ -9,6 +9,11 @@ use gtk::prelude::*;
 
 use crate::palette::Action;
 
+/// GTK3 has no `text-transform`. Caps eyebrows live here, once.
+pub fn caps(text: &str) -> String {
+    text.to_uppercase()
+}
+
 /// Bouwt een zone-container met titel, subtitle en een count-badge (optioneel).
 /// De caller vult de zone met cards via `build_card` of eigen widgets.
 pub fn build_zone(title: &str, subtitle: &str, count: Option<usize>) -> gtk::Box {
@@ -18,14 +23,14 @@ pub fn build_zone(title: &str, subtitle: &str, count: Option<usize>) -> gtk::Box
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     header.style_context().add_class("chefbar-zone-header");
     if let Some(n) = count {
-        let t = gtk::Label::new(Some(&format!("{} · {}", title.to_uppercase(), n)));
+        let t = gtk::Label::new(Some(&format!("{} · {}", caps(title), n)));
         t.set_halign(gtk::Align::Start);
         t.set_xalign(0.0);
         t.set_ellipsize(pango::EllipsizeMode::End);
         t.style_context().add_class("chefbar-section-title");
         header.pack_start(&t, false, false, 0);
     } else {
-        let t = gtk::Label::new(Some(&title.to_uppercase()));
+        let t = gtk::Label::new(Some(&caps(title)));
         t.set_halign(gtk::Align::Start);
         t.set_xalign(0.0);
         t.set_ellipsize(pango::EllipsizeMode::End);
@@ -79,7 +84,7 @@ pub fn build_card(action: &Action) -> gtk::Button {
 // Deze functies zijn exact de monoliet-versies, alleen verplaatst.
 
 pub fn section_title(content: &gtk::Box, title: &str, sub: &str) {
-    let label = gtk::Label::new(Some(&title.to_uppercase()));
+    let label = gtk::Label::new(Some(&caps(title)));
     label.set_halign(gtk::Align::Start);
     label.set_xalign(0.0);
     label.set_ellipsize(pango::EllipsizeMode::End);
@@ -98,7 +103,6 @@ pub fn section_title(content: &gtk::Box, title: &str, sub: &str) {
 pub fn group_box() -> gtk::Box {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
     group.style_context().add_class("chefbar-group");
-    group.style_context().add_class("chefbar-list");
     group
 }
 
@@ -118,10 +122,11 @@ pub fn row_wrap(inner: &gtk::Box) -> gtk::Box {
 }
 
 pub fn stamp_label(text: &str) -> gtk::Label {
-    let label = gtk::Label::new(Some(text));
+    let text = caps(text);
+    let label = gtk::Label::new(Some(&text));
     label.set_halign(gtk::Align::End);
     label.set_valign(gtk::Align::Center);
-    let cls = match text {
+    let cls = match text.as_str() {
         "KLAAR" => "ok",
         "HULP" => "warn",
         "FOUT" | "LIMIET" => "error",
@@ -205,6 +210,24 @@ pub fn domain_row(
     row_wrap(&row)
 }
 
+pub fn clickable_row(
+    inner: gtk::Box,
+    spec: crate::actions::RunSpec,
+    executor: &crate::actions::Executor,
+) -> gtk::Button {
+    let row_btn = gtk::Button::new();
+    row_btn.set_relief(gtk::ReliefStyle::None);
+    row_btn.set_hexpand(true);
+    row_btn.set_halign(gtk::Align::Fill);
+    row_btn.style_context().add_class("chefbar-row-btn");
+    row_btn.add(&inner);
+    let executor = executor.clone();
+    row_btn.connect_clicked(move |_| {
+        executor.run_for_ui(&spec);
+    });
+    row_btn
+}
+
 pub fn info_row(text: &str, meta: Option<&str>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let label = gtk::Label::new(Some(text));
@@ -234,6 +257,10 @@ pub fn truncate_q(q: &str, max: usize) -> String {
 }
 
 pub fn empty_state(title: &str, sub: &str) -> gtk::Box {
+    empty_state_cta(title, sub, "")
+}
+
+pub fn empty_state_cta(title: &str, sub: &str, cta: &str) -> gtk::Box {
     let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     outer.style_context().add_class("chefbar-empty");
     let t = gtk::Label::new(Some(title));
@@ -252,6 +279,14 @@ pub fn empty_state(title: &str, sub: &str) -> gtk::Box {
         s.set_max_width_chars(62);
         s.style_context().add_class("chefbar-empty-sub");
         outer.pack_start(&s, false, false, 0);
+    }
+    if !cta.is_empty() {
+        let c = gtk::Label::new(Some(cta));
+        c.set_halign(gtk::Align::Start);
+        c.set_xalign(0.0);
+        c.set_ellipsize(pango::EllipsizeMode::End);
+        c.style_context().add_class("chefbar-empty-cta");
+        outer.pack_start(&c, false, false, 0);
     }
     outer
 }
@@ -301,14 +336,14 @@ pub fn state_label(health: &crate::models::HealthInfo) -> String {
 
 /// Kleine subkop binnen een domein (niet de zone-titel). Bestaande tokens.
 pub fn bucket_title(content: &gtk::Box, title: &str) {
-    let label = gtk::Label::new(Some(&title.to_uppercase()));
+    let label = gtk::Label::new(Some(&caps(title)));
     label.set_halign(gtk::Align::Start);
     label.set_xalign(0.0);
     label.set_ellipsize(pango::EllipsizeMode::End);
     label.set_margin_start(16);
     label.set_margin_end(16);
     label.set_margin_top(8);
-    label.style_context().add_class("chefbar-section-sub");
+    label.style_context().add_class("chefbar-section-title");
     content.pack_start(&label, false, false, 0);
 }
 

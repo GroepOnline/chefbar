@@ -28,8 +28,8 @@ ACCENT_HEX="${CHEFBAR_ACCENT:-${ACCENT_HEX:-#5C97FF}}"
 DOMAIN=""
 
 DOMAINS=(
-  inbox fleet herdr vault commerce crm share clipboard desktop
-  tasks linear containers secrets kater health
+  inbox tasks linear agents flows fleet herdr vault commerce crm share clipboard
+  desktop containers secrets kater brain health
 )
 
 usage() {
