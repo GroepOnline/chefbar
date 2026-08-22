@@ -31,6 +31,21 @@ CI is notify-first (geen poll-loops). Full lane = self-hosted GHA
 Rust check/fmt/clippy/test = Buildkite `onlinechef/chefbar` (`.buildkite/`;
 niet required — zie `.buildkite/README.md`).
 
+### GHA host-deps (aws-chefbar-compat)
+
+PR CI landt op self-hosted labels `pr-isolated` / `heavy` (compat-host
+`aws-chefbar-compat`). De Rust GTK-build heeft **host** packages nodig:
+
+- `pkg-config`
+- `libgtk-3-dev`
+- `libglib2.0-dev`
+
+Zonder die packages faalt `glib-sys` met “The pkg-config command could not be
+found” na een nutteloze toolchain-warmup. CI heeft daarom een **Host deps
+preflight** vóór `cargo check`. De runner-service draait met
+`NoNewPrivileges=true`, dus de workflow mag **geen** `sudo apt` doen — packages
+installeren op de host zelf (als root/operator), niet in de job.
+
 ## Gates
 
 - `cargo fmt --check` en `cargo clippy --all-targets -- -D warnings` draaien in
