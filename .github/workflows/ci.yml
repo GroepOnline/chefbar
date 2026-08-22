@@ -32,6 +32,21 @@ jobs:
           shared-key: chefbar-build
           cache-bin: "false"
 
+      # Fail fast on missing GTK/glib host deps (glib-sys build needs pkg-config).
+      # Runner-service NoNewPrivileges=true: do not sudo apt here — fix the host.
+      - name: Host deps preflight (pkg-config + GTK/glib)
+        run: |
+          HINT='Install on aws-chefbar-compat host: pkg-config libgtk-3-dev libglib2.0-dev (NoNewPrivileges — not via workflow sudo)'
+          if ! command -v pkg-config >/dev/null 2>&1; then
+            echo "::error::host-deps: pkg-config missing. ${HINT}"
+            exit 1
+          fi
+          if ! pkg-config --exists glib-2.0 gtk+-3.0; then
+            echo "::error::host-deps: glib-2.0/gtk+-3.0 pkg-config modules missing. ${HINT}"
+            exit 1
+          fi
+          echo "host-deps OK: pkg-config + glib-2.0 + gtk+-3.0"
+
       - name: Cargo check (fast gate)
         run: cargo check --all-targets
 
