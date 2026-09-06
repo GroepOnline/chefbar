@@ -16,7 +16,7 @@ De visual runner ondersteunt panel, overlay/palette, drawer, beide density-varia
 
 ## Gates
 
-De broncode bouwt en test uitsluitend op `chef-runner-01-1` (geen lokale Rust-build op Joep):
+De broncode bouwt en test op self-hosted CI (`pr-isolated`/`heavy`). Geen lokale Rust-build op Joep. UpCloud `chef-runner-01-1` is **retired_unreachable**:
 
 ```text
 cargo fmt --all -- --check

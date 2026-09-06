@@ -80,7 +80,7 @@
 
 ## ChefApp x10 — visueel (V0–V3)
 
-Runner-only (`chef-runner-01-1` of CI). Geen `cargo` op laptop `joep`.
+Runner-only (self-hosted GHA: PR `pr-isolated`, `main` `heavy`). Geen `cargo` op laptop `joep`. UpCloud `chef-runner-01-1` is **retired_unreachable**.
 
 - [ ] `design-system.json` pin + `assets/design-tokens.snapshot.css` matchen `css.rs` light/dark
 - [ ] General Sans + IBM Plex Mono zichtbaar (of fail-zichtbaar, niet stil Cantarell)
@@ -100,7 +100,7 @@ Runner-only (`chef-runner-01-1` of CI). Geen `cargo` op laptop `joep`.
 ## Opmerkingen / bevindingen
 
 - Datum: 2026-08-20
-- Tester: chef-runner-01-1 (`~/chefapp-x10-visual`, `dbus-run-session`)
+- Tester: **HISTORICAL** chef-runner-01-1 (`~/chefapp-x10-visual`, `dbus-run-session`) — host retired_unreachable; do not SSH there
 - Branch: `feat/chefapp-x10-visual` (GRO-1425)
 - Visual-shot: `--mode all` dark `ALL_DARK=0` (`#5C97FF`) en light `ALL_LIGHT=0` (`#317CFF`)
 - Open: StatusNotifier-tray blijft freedesktop-symbolic (host lookup, geen GTK-pixbuf). General Sans/IBM Plex Mono fail-zichtbaar via `install.sh`, niet stil Cantarell. P2 Goedkeuringen wacht op Kater M2; P3 Agents op ACP/`CHEFBAR_AGENTS_API`; P4 Brain-insight op mTLS; P5 Flows op Agents. Geen 5.0 Super App-claim.
@@ -120,7 +120,7 @@ Voer deze acht punten handmatig uit op de runner/service-installatie en noteer d
 
 ### Lane-G visual matrix
 
-Op `chef-runner-01-1` na een release-build:
+Op een self-hosted CI-runner na een release-build:
 
 ```bash
 shellcheck install.sh scripts/*.sh

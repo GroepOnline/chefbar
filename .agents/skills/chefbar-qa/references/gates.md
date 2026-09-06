@@ -16,4 +16,4 @@ Visual job `visual` is warning-only (`continue-on-error`). `scripts/visual-shot.
 
 Doctor (not always in CI): exit 0 ok, 1 warn, 2 error. Fingerprints `sha256[:12]` only.
 
-Laptop `joep`: no Rust toolchain. Cloud + `chef-runner-01-1`: cargo present.
+Laptop `joep`: no Rust toolchain. Cloud + self-hosted GHA (`pr-isolated`/`heavy`): cargo present. UpCloud `chef-runner-01-1` is retired_unreachable.

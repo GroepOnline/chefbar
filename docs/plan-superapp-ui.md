@@ -47,7 +47,7 @@ per domein zijn eigen data.
 
 ## Gates
 
-Build/test alleen op `chef-runner-01-1` (`~/chefbar-superapp`):
+Build/test op self-hosted CI (`pr-isolated`/`heavy`). UpCloud `chef-runner-01-1` is **retired_unreachable**:
 fmt --check, clippy -D warnings, test --all-targets, build --release.
 Visual: `scripts/visual-shot.sh --mode all` (Xvfb) — drawer-mode werkt nu via
 de nieuwe IPC-preview. Review-loop: screenshots → mimo-v2.5 vision-subagent.

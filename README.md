@@ -1,6 +1,8 @@
 
 ## ChefApp 5.0 — mission control
 
+> **Mirror/runtime truth (2026-09-07):** current ChefApp code authority is `GroepOnline/ChefFactory/apps/chefapp`. This standalone repo remains a mirror/compatibility surface. Build/test uses GitHub Actions self-hosted CI (`pr-isolated` for PRs, `heavy` for `main`); retired UpCloud `chef-runner-01-1` is historical only and must not be used for daily SSH/builds.
+
 ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
 **Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
 Data blijft offline-tolerant en freshness-first; writes lopen uitsluitend via policy- en audit-gecontroleerde acties.
@@ -14,7 +16,7 @@ Detail: [plan-superapp-ui.md](docs/plan-superapp-ui.md) (lane-contract), [plan-c
 Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:
 
 ```bash
-# op chef-runner-01-1, nadat target/release/chefbar bestaat
+# op een self-hosted CI-runner (`pr-isolated`/`heavy`), nadat target/release/chefbar bestaat
 scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-domain
 scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
 ```
@@ -198,11 +200,9 @@ steps:
 
 Cursor Cloud Agents bootstrap via `.cursor/environment.json` (`install` + `start`): toolchain-updates en de Chrome-wrapper zitten daar, niet in een handmatige `apt`/`bun`-ronde. Daytona nood-runner en Cloudflare browser-kit notes: [docs/cloud-agent.md](docs/cloud-agent.md).
 
-Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rustup` zijn fail-fast stubs die naar de runner verwijzen (zie `~/AGENTS.md`). Build/test altijd op de runner:
+Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rustup` zijn fail-fast stubs (zie `~/AGENTS.md`). Build/test loopt via **GitHub Actions** op self-hosted runners: PRs gebruiken `pr-isolated`, `main` gebruikt `heavy`. Push branch → open PR → wacht op CI notify.
 
-```bash
-ssh chef@chef-runner-01-1 'cd ~/chefbar-check && export PATH=$HOME/.cargo/bin:$PATH && cargo test --all-targets && cargo build --release'
-```
+**HISTORICAL:** UpCloud `chef-runner-01` / `chef-runner-01-1` is `retired_unreachable` sinds 2026-08-22. Daily SSH daarheen is geen live pad.
 
 Release-artifacts komen uit CI (artifact `chefbar-release`).
 
