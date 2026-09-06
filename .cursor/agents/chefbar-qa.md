@@ -25,7 +25,7 @@ Skills: `chefbar-qa`, and `chefbar-bench` when evals/routing/skills changed.
 
 ## Playbook
 
-1. Match CI (`.github/workflows/ci.yml`, runner `[self-hosted, Linux, X64, company-control]`):
+1. Match CI (`.github/workflows/ci.yml`): PRs use `[self-hosted, Linux, X64, pr-isolated]`; pushes to `main` use `[self-hosted, Linux, X64, heavy]`:
 
    ```bash
    cargo fmt --all -- --check

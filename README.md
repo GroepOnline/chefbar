@@ -1,7 +1,7 @@
 
 ## ChefApp 5.0 — mission control
 
-> **Mirror/runtime truth (2026-09-07):** current ChefApp code authority is `GroepOnline/ChefFactory/apps/chefapp`. This standalone repo remains a mirror/compatibility surface. Build/test uses GitHub Actions self-hosted CI (`pr-isolated` for PRs, `heavy` for `main`); retired UpCloud `chef-runner-01-1` is historical only and must not be used for daily SSH/builds.
+> **Mirror/runtime truth:** current ChefApp code authority is `GroepOnline/ChefFactory/apps/chefapp`. This standalone repo remains a mirror/compatibility surface. Build/test uses GitHub Actions self-hosted CI (`pr-isolated` for PRs, `heavy` for `main`); retired UpCloud `chef-runner-01-1` is historical only and must not be used for daily SSH/builds.
 
 ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
 **Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
