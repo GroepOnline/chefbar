@@ -33,14 +33,17 @@ jobs:
           set -euo pipefail
           changed="$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")"
           printf '%s\n' "$changed"
-          if [ -z "$changed" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if printf '%s\n' "$changed" | grep -Ev '^(AGENTS\.md|README\.md|CONTRIBUTING\.md|docs/|\.agents/skills/|\.cursor/(agents|rules)/|\.github/workflows/ci\.yml$)' >/dev/null; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          else
+          docs_only() {
+            [ -n "$1" ] && ! printf '%s\n' "$1" | grep -Ev '^(AGENTS\.md|README\.md|CONTRIBUTING\.md|docs/.*|\.agents/skills/.*|\.cursor/(agents|rules)/.*)$' >/dev/null
+          }
+          docs_only $'README.md\ndocs/example.md' || { echo '::error::docs fixture rejected'; exit 1; }
+          ! docs_only $'.github/workflows/ci.yml' || { echo '::error::workflow fixture accepted'; exit 1; }
+          ! docs_only 'src/lib.rs' || { echo '::error::source fixture accepted'; exit 1; }
+          ! docs_only '' || { echo '::error::empty diff fixture accepted'; exit 1; }
+          if docs_only "$changed"; then
             echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Documentation static gate
