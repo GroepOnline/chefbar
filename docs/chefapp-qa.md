@@ -1,4 +1,10 @@
-# ChefApp QA — handmatige checklist (4.0)
+# ChefApp QA — historical standalone checklist (4.0)
+
+> **Superseded for active work.** ChefBar is the historical name of the same
+> product now maintained in
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> Use that repository's exact-head CI and QA contract; this checklist is retained
+> only as historical evidence and compatibility context.
 
 > Voor elke PR naar `feat/chefapp-4.0` en vóór merge naar `main`.
 > Afvinken: `[x]` = ok, `[ ]` = open, `[-]` = n.v.t. voor deze change.

@@ -1,4 +1,9 @@
-# ChefBar agent harness
+# ChefBar agent harness — historical standalone reference
+
+> **Superseded for active work.** The same ChefApp product, its agent policy,
+> and its active CI live in
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> This harness documents the former standalone repository only.
 
 Skills, Cursor-subagents, Kater-koppelingen, named chains en graph-loops voor deze repo. Kort: [`AGENTS.md`](../AGENTS.md) (catalogus, niet always-on). Invariants: `.cursor/rules/chefbar-invariants.mdc` — description-trigger of chain, niet `alwaysApply`.
 

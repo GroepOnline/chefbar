@@ -1,4 +1,14 @@
-# Contributing — ChefBar
+# Contributing — ChefBar archive
+
+ChefBar is the historical name of the same product now maintained as ChefApp in
+[`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+That path is the sole authority for active feature work, release artifacts, CI,
+installation guidance, and contribution policy. This repository is retained for
+history and compatibility only: do not open new product work, repair this
+repository's CI, or publish releases from it.
+
+The remainder of this document records the former standalone delivery process.
+It is historical evidence, not current operational guidance.
 
 ## Harde regel: geen Rust-builds op de laptop
 

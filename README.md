@@ -1,7 +1,17 @@
 
-## ChefApp 5.0 — mission control
+## ChefBar archive — ChefApp lives in ChefFactory
 
-> **Mirror/runtime truth:** current ChefApp code authority is `GroepOnline/ChefFactory/apps/chefapp`. This standalone repo remains a mirror/compatibility surface. Build/test uses GitHub Actions self-hosted CI (`pr-isolated` for PRs, `heavy` for `main`); retired UpCloud `chef-runner-01-1` is historical only and must not be used for daily SSH/builds.
+ChefBar is the historical name of the same native GTK3/Rust mission-control
+product now maintained as **ChefApp**. The sole active authority for product
+code, features, releases, CI, installation guidance, and current documentation is
+[`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+
+This repository remains available only for historical context and compatibility.
+Do not open new product work here, release from it, or treat its workflows and
+plans as current. Historical runner, branch, and artifact references below are
+evidence of an earlier delivery path, not operational instructions.
+
+## Historical product overview
 
 ChefApp 5.0 breidt de native ChefBar-vorm uit naar één read-first control-plane voor 15 domeinen:
 **Inbox, Fleet, Herdr, Vault, Accounts, Providers, CRM, Share, Clipboard, Desktop, Taken, Linear, Containers, Secrets** en **Kater**.
@@ -11,7 +21,7 @@ Elk domein is een eigen operate-surface (KPI, buckets, typed rijen) uit de gedee
 
 Detail: [plan-superapp-ui.md](docs/plan-superapp-ui.md) (lane-contract), [plan-chefapp-5.0.md](docs/plan-chefapp-5.0.md) (campagne) en [chefapp-qa.md](docs/chefapp-qa.md) (acceptatie).
 
-### Lane-G tooling
+### Historical Lane-G tooling
 
 Lane G beheert de reproduceerbare QA-laag en documentatie. Visual shots draaien zonder lokale Rust-build via:
 
@@ -21,7 +31,7 @@ scripts/visual-shot.sh --mode all-domains --theme dark --out /tmp/chefbar-dark-d
 scripts/visual-shot.sh --mode all --theme dark --out /tmp/chefbar-dark
 ```
 
-De CI houdt `cargo fmt` en `cargo clippy --all-targets -- -D warnings` als harde gates; visual shots en screenshot-diffs zijn warning-only. Zie [het 5.0-plan](docs/plan-chefapp-5.0.md) en de [QA-checklist](docs/chefapp-qa.md).
+Deze voormalige CI hield `cargo fmt` en `cargo clippy --all-targets -- -D warnings` als harde gates; visual shots en screenshot-diffs waren warning-only. Zie de actuele ChefApp CI- en releasecontracten in `ChefFactory/apps/chefapp`.
 
 # ChefBar 3.1
 
@@ -185,9 +195,11 @@ CHEFBAR_CONTROL_AGENT=w2R:p2 chefbar
 # alternatief: CHEFBAR_CONTROL_PANE (zelfde rol)
 ```
 
-## Development
+## Historical development notes
 
-ChefBar bouwt niet lokaal op de laptop. CI is notify-first: full lane op self-hosted GHA (`.github/workflows/ci.yml`); optionele snelle Rust-lane op Buildkite (`.buildkite/`, niet required).
+The workflow excerpt below is historical. Do not run, repair, or use this
+repository's CI/release path for current ChefApp work; use the Factory authority
+linked above.
 
 ```yaml
 # PR → pr-isolated; push/main → heavy (niet alleen company-control)
@@ -204,7 +216,8 @@ Lokaal op de laptop is er **geen** Rust-toolchain (bewust): `cargo`/`rustc`/`rus
 
 **HISTORICAL:** UpCloud `chef-runner-01` / `chef-runner-01-1` is `retired_unreachable` sinds 2026-08-22. Daily SSH daarheen is geen live pad.
 
-Release-artifacts komen uit CI (artifact `chefbar-release`).
+The former `chefbar-release` artifact is historical and is not a current ChefApp
+release source.
 
 | Onderdeel | Waar |
 | --- | --- |
@@ -250,7 +263,7 @@ Zie `docs/roadmap.md` voor detail. Samenvatting van wat 3.1 bracht:
 
 Bewust uitgesteld: Wayland layer-shell (eigen change met CI-afhankelijkheid) en OIDC via de `get_headers` seam (wacht op `auth.chefgroep.online`).
 
-## ChefApp 4.0 (in ontwikkeling)
+## ChefApp 4.0 (historical)
 
 Van hulpje naar volwaardige app — één venster, één shortcut, alle domeinen. Branch: [`feat/chefapp-4.0`](docs/plan-full-chefapp.md) (stack root, 7 file-disjointe lanes parallel).
 
@@ -267,8 +280,9 @@ Van hulpje naar volwaardige app — één venster, één shortcut, alle domeinen
 
 Drie surfaces op één snapshot (tray · palette-overlay · panel 860×880 + drawer) — zie §4 van het plan.
 
-Docs: [plan-full-chefapp.md](docs/plan-full-chefapp.md) (SSOT, requirement atlas, UX/tech-architectuur, lane-contracts) · [chefapp-qa.md](docs/chefapp-qa.md) (handmatige checklist: Super+Space <300 ms, één venster, offline-banner, tray-glyphs, palette, drawer, density).
-QA: `scripts/visual-shot.sh` (panel/palette/drawer/density, Xvfb + accent-assert) · `shellcheck` · `cargo fmt/clippy/test` op runner.
+The local plans and checklist are historical snapshots, not SSOT. Current product
+docs live with the source in `ChefFactory/apps/chefapp`.
+Historical QA evidence: `scripts/visual-shot.sh` (panel/palette/drawer/density, Xvfb + accent-assert) · `shellcheck` · `cargo fmt/clippy/test` on the former runner path.
 
 Scope blijft strak. Geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel, één actor, één venster.
 

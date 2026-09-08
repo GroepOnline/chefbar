@@ -1,6 +1,15 @@
 # ChefBar — agentinstructies
 
-ChefBar is de native GTK3/Rust mission-control app van ChefGroep. Eén poll-actor, één snapshot, één Unix-socket, één venster. Geen Electron, geen webview, geen tweede daemon.
+ChefBar is de historische naam van de native GTK3/Rust mission-control app van
+ChefGroep: hetzelfde product dat nu als **ChefApp** in
+[`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp)
+wordt onderhouden. Eén poll-actor, één snapshot, één Unix-socket, één venster.
+Geen Electron, geen webview, geen tweede daemon.
+
+Dit standalone repository is alleen een historische/compatibility surface. Nieuwe
+features, actieve release- en CI-configuratie, productdocumentatie en agentbeleid
+worden uitsluitend in `ChefFactory/apps/chefapp` gewijzigd. Gebruik deze checkout
+niet als een parallel product of als bron voor nieuwe productcode.
 
 Dit bestand is de **catalogus**, geen always-on wet. ChefBar-skills staan in `.agents/skills/` (Agent Skills, alle agents). Cursor-workers, slash-commands en rules blijven in `.cursor/` (Cursor-formaat). Ecosysteem via `npx skills` + `skills-lock.json`. Uitleg: [`docs/agent-harness.md`](docs/agent-harness.md).
 

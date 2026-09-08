@@ -1,4 +1,9 @@
-# ChefApp 5.0 — plan & lane contracts
+# ChefApp 5.0 — historical standalone plan & lane contracts
+
+> **Superseded for active work.** ChefBar and ChefApp are the same product.
+> Active source, features, release policy, CI, and product plans are owned by
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> This document records the standalone delivery campaign only.
 
 ChefApp 5.0 maakt van ChefBar één native, read-first control-plane voor de Vault-tabs, server-API’s en Factory-control-plane. De campagne start vanaf `feat/chefapp-5.0` (`c197b57`); lanes blijven file-disjoint.
 

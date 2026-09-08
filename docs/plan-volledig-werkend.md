@@ -1,4 +1,9 @@
-# ChefBar volledig werkend — masterplan (2026-08-12)
+# ChefBar volledig werkend — historical standalone masterplan (2026-08-12)
+
+> **Superseded for active work.** ChefBar is the historical name of the same
+> ChefApp product now maintained in
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> Current features, CI, releases, and product planning belong there.
 
 Aanleiding: screenshots + melding "rare bugs, totaal niet werkend, rare jumps, mist veel".
 Dit plan catalogueert eerst wat er ECHT mis is (met bewijs), daarna de werkstromen

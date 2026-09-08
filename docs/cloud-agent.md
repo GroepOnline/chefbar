@@ -1,4 +1,9 @@
-# Cloud Agent, Daytona nood-runner, browser kits
+# Cloud Agent, Daytona nood-runner, browser kits — historical standalone reference
+
+> **Superseded for active work.** ChefBar is the historical name of the same
+> ChefApp product now maintained in
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> Current CI and agent-runtime guidance belong with that source.
 
 ChefBar's Cursor Cloud environment is **repo-managed** via `.cursor/environment.json`.
 New agents after merge run:
