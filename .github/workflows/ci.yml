@@ -25,6 +25,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: CodeQL workflow contract
+        run: python3 -m unittest tests.test_codeql_workflow
+
       - name: Classify documentation-only changes
         id: scope
         env:
