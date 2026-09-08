@@ -1,6 +1,11 @@
-# ChefApp — van hulpje naar volwaardige app (plan 2026-08-12)
+# ChefApp — historical standalone plan (2026-08-12)
 
-> Status: **afgerond — Fase 0+lanes A-G merged (2026-08-12, cbd1b1d)**. Dit document is de SSOT voor de sprong van ChefBar 3.1 (dun, stabiel) naar **ChefApp 4.0** — de native mission-control app voor alles ChefGroep.
+> **Superseded for active work.** ChefBar and ChefApp are the same product.
+> Active source, features, release policy, CI, and product plans are owned by
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> This document records the standalone delivery campaign only.
+
+> Status: **afgerond — Fase 0+lanes A-G merged (2026-08-12, cbd1b1d)**. Dit document was de SSOT voor de sprong van ChefBar 3.1 (dun, stabiel) naar **ChefApp 4.0** — de native mission-control app voor alles ChefGroep.
 > ChefApp 5.0 lane G: tooling/documentatie bijgewerkt; zie `docs/plan-chefapp-5.0.md` en `docs/chefapp-qa.md`.
 > Branch: `main` ← `feat/chefapp-4.0` stack (merge-train A→F,G→B→C,D,E + palette/panel_state fixes). Uitvoer: 7 file-disjointe lanes parallel, één merge-train.
 > Merge: `main` @ `cbd1b1d` — alle harde gates groen (115 tests, clippy, fmt, shellcheck).
@@ -13,7 +18,7 @@
 
 | Laag | Huidige realiteit |
 |---|---|
-| **Stack** | Rust, GTK 3 (`gtk 0.18`), `ksni 0.2` tray, `ureq 2` zonder redirects, `clap 4`, `url 2`. Geen Electron, geen webview. Build alleen op `chef-runner-01-1` (laptop heeft geen toolchain — stubs). |
+| **Stack** | Rust, GTK 3 (`gtk 0.18`), `ksni 0.2` tray, `ureq 2` zonder redirects, `clap 4`, `url 2`. Geen Electron, geen webview. Build/test via self-hosted GHA (`pr-isolated`/`heavy`; laptop heeft geen toolchain — stubs). |
 | **Architectuur** | Één poll-actor (`src/state.rs`: vault 5 s, ops 15 s, budget 8 s) → één `Snapshot` + `OpsSnapshot` onder `RwLock` → tray/panel delen dat beeld. Geen tweede loop, geen tweede socket. |
 | **Sources** | `vault-api` (`/api/status`, providers, accounts, share-sync, commander) + `joep-ops` (`:10101`, agents/herdr) + lokaal (`watchdog-state.json`, dagscore-md/json, share-clipboard). Tailscale-forward `/ vault-forward.service` vervangt ssh-forward; `ops.chefgroep.online` wordt lokaal geserveerd. |
 | **Panel** | 760×840 fixed, `set_resizable(false)`, undecorated, `keep_above`, gecentreerd. Sidebar 220 px + search-header + card-zones + footer. `panel.rs` = 1504 regels monoliet. |
@@ -479,10 +484,11 @@ Praktisch: start alle 7 lanes tegelijk, maar C/D/E doen eerst hun file-splits zo
 
 ### 6.5 Gates (per lane, vóór merge)
 
-Elke lane moet lokaal groen zijn — **op de runner**, nooit laptop:
+Elke lane moet groen zijn in **self-hosted CI** (`pr-isolated`/`heavy`), nooit via een laptop-build:
 
 ```bash
-ssh chef@chef-runner-01-1 'cd ~/chefbar-check && git fetch && git checkout feat/chefapp-4.0-lane-<x> && export PATH=$HOME/.cargo/bin:$PATH && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets && cargo build --release'
+# HISTORICAL: do not SSH to retired UpCloud chef-runner-01-1 for daily builds.
+# Push lane branch → open PR → self-hosted CI runs fmt/clippy/test/build.
 ```
 
 Plus lane-specifiek: E → `shellcheck install.sh`, C/F → `scripts/visual-shot.sh` (Xvfb), G → `scripts/ci-local.sh` (schema/compat waar van toepassing).
@@ -498,7 +504,7 @@ Je bent Lane <X> van ChefApp 4.0. Repo: GroepOnline/chefbar (checkout ~/ChefFact
 Base: feat/chefapp-4.0 (pull --rebase eerst). Jouw branch: feat/chefapp-4.0-lane-<x>.
 Worktree: ~/ChefFactory/chefbar-worktrees/chefapp-<x> (maak met git worktree add).
 Scope: alleen files uit jouw matrix (zie docs/plan-full-chefapp.md §6.2). Raak niets anders aan.
-Regels: geen Rust-build op laptop joep — alles op chef@chef-runner-01-1. fmt+clippy hard.
+Regels: geen Rust-build op laptop joep — alles via self-hosted CI (`pr-isolated`/`heavy`). fmt+clippy hard.
 Push SHAs terug. Eén PR met base feat/chefapp-4.0. Geen force-push naar main.
 Done = gates groen + file-disjoint gerespecteerd + tests + visual waar relevant.
 ```

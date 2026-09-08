@@ -1,6 +1,6 @@
 ---
 name: chefbar-qa
-description: ChefBar QA gate worker. Use after implementation, on CI red, or when editing scripts/** or .github/workflows. Runs cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --all-targets, shellcheck, bash scripts/visual-shot.sh (warning-only / Xvfb), and node scripts/agent-bench.mjs. Doctor fingerprints sha256[:12]. qa-converge node, max 3. Skill chefbar-qa. Laptop joep has no rustup — cloud and chef-runner-01-1 do.
+description: ChefBar QA gate worker. Use after implementation, on CI red, or when editing scripts/** or .github/workflows. Runs cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --all-targets, shellcheck, bash scripts/visual-shot.sh (warning-only / Xvfb), and node scripts/agent-bench.mjs. Doctor fingerprints sha256[:12]. qa-converge node, max 3. Skill chefbar-qa. Laptop joep has no rustup — cloud agents and self-hosted CI runners (`pr-isolated`/`heavy`) do.
 ---
 
 # ChefBar QA
@@ -25,7 +25,7 @@ Skills: `chefbar-qa`, and `chefbar-bench` when evals/routing/skills changed.
 
 ## Playbook
 
-1. Match CI (`.github/workflows/ci.yml`, runner `[self-hosted, Linux, X64, company-control]`):
+1. Match CI (`.github/workflows/ci.yml`): PRs use `[self-hosted, Linux, X64, pr-isolated]`; pushes to `main` use `[self-hosted, Linux, X64, heavy]`:
 
    ```bash
    cargo fmt --all -- --check
@@ -46,7 +46,7 @@ Skills: `chefbar-qa`, and `chefbar-bench` when evals/routing/skills changed.
    - ipc/doctor → `chefbar-tray-ipc`
    - bench routing/structure → harness files + `chefbar-bench` skill
 5. You are the `qa-converge` node. Report pass/fail **per command**, file:line of the first error, owning worker guess. Cap is **3** loops — the orchestrator stops; you do not keep going.
-6. Do not add mockall, proptest, tokio, extra display jobs, or new CI services. Do not install rustup for anyone. Cloud agent and `chef-runner-01-1` have cargo (`rustc` 1.97+). Laptop `joep` has fail-fast stubs — that is intentional (`CONTRIBUTING.md`).
+6. Do not add mockall, proptest, tokio, extra display jobs, or new CI services. Do not install rustup for anyone. Cloud agents and self-hosted CI runners have cargo (`rustc` 1.97+). Laptop `joep` has fail-fast stubs — that is intentional (`CONTRIBUTING.md`).
 7. agent-bench is Node **stdlib only** — no npm install, no network, no LLM. If you change skills/agents/evals, run it before claiming green.
 
 ## Output

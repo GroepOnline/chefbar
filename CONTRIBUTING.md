@@ -1,4 +1,14 @@
-# Contributing — ChefBar
+# Contributing — ChefBar archive
+
+ChefBar is the historical name of the same product now maintained as ChefApp in
+[`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+That path is the sole authority for active feature work, release artifacts, CI,
+installation guidance, and contribution policy. This repository is retained for
+history and compatibility only: do not open new product work, repair this
+repository's CI, or publish releases from it.
+
+The remainder of this document records the former standalone delivery process.
+It is historical evidence, not current operational guidance.
 
 ## Harde regel: geen Rust-builds op de laptop
 
@@ -12,24 +22,18 @@ toolchain is verwijderd (6.7G vrijgemaakt). Er is niets om mee te bouwen.
 
 ## Waar bouwen
 
-Alles op de runner (`chef-runner-01-1`, user `chef`, cargo aanwezig):
+Niet op laptop `joep`. Rust build/test draait via **GitHub Actions** op de bestaande self-hosted capability-pool:
 
-```bash
-# checkout bijwerken
-ssh chef@chef-runner-01-1 'cd ~/chefbar-check && git pull --rebase'
+| Trigger | Labels |
+| --- | --- |
+| PR | `[self-hosted, Linux, X64, pr-isolated]` |
+| push `main` | `[self-hosted, Linux, X64, heavy]` |
 
-# testen + build
-ssh chef@chef-runner-01-1 'cd ~/chefbar-check && export PATH=$HOME/.cargo/bin:$PATH && cargo test --all-targets && cargo build --release'
+Workflow: `.github/workflows/ci.yml`. Release-artifact: `chefbar-release`. CI is notify-first; push branch → open PR → wacht op de gate.
 
-# binary ophalen
-scp chef@chef-runner-01-1:/home/chef/chefbar-check/target/release/chefbar /tmp/chefbar.bin
-./install.sh --systemd /tmp/chefbar.bin
-```
+**HISTORICAL:** UpCloud `chef-runner-01` / `chef-runner-01-1` is `retired_unreachable` sinds 2026-08-22. Daily SSH, checkout-sync en binary-copy via die host zijn geen live paden.
 
-CI is notify-first (geen poll-loops). Full lane = self-hosted GHA
-(`.github/workflows/ci.yml`, artifact `chefbar-release`). Optionele snelle
-Rust check/fmt/clippy/test = Buildkite `onlinechef/chefbar` (`.buildkite/`;
-niet required — zie `.buildkite/README.md`).
+Optionele snelle Rust check/fmt/clippy/test = Buildkite `onlinechef/chefbar` (`.buildkite/`; niet required — zie `.buildkite/README.md`).
 
 ### GHA host-deps (aws-chefbar-compat)
 
@@ -59,7 +63,7 @@ installeren op de host zelf (als root/operator), niet in de job.
 
 - **File-disjoint:** elke lane raakt alleen zijn eigen matrix (zie `docs/plan-full-chefapp.md` §6.2). Lane G raakt alleen `scripts/**`, `.github/workflows/ci.yml`, `docs/**`, `README.md`, `CONTRIBUTING.md`, `Cargo.toml` (dev-deps/scripts).
 - **Worktree per lane:** `git worktree add ~/ChefFactory/chefbar-worktrees/chefapp-<x> feat/chefapp-4.0-lane-<x>`.
-- **No-local-build blijft:** build/test alleen op `chef@chef-runner-01-1` (zie boven).
+- **No-local-build blijft:** build/test alleen via de self-hosted CI-pool (`pr-isolated`/`heavy`; zie boven).
 - **Merge-train:** `A → F,G → B → C,D,E`, squash naar `feat/chefapp-4.0`, dan squash naar `main`. Lane G (tooling) hoeft niet te wachten — schrijft alleen scripts/docs.
 
 ## Conventional commits
@@ -71,7 +75,7 @@ installeren op de host zelf (als root/operator), niet in de job.
 
 Lane G blijft file-disjoint: wijzigingen zijn beperkt tot `scripts/**`, `.github/workflows/ci.yml`, `docs/**`, `README.md`, `CONTRIBUTING.md`, `Cargo.toml` (alleen dev-deps/scripts) en `tests/**`. Raak voor deze lane geen `src/**` aan.
 
-De verplichte gate op `chef-runner-01-1` is:
+De verplichte gate in self-hosted CI is:
 
 ```bash
 cargo fmt --all -- --check

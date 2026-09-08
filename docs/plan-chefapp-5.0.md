@@ -1,4 +1,9 @@
-# ChefApp 5.0 — plan & lane contracts
+# ChefApp 5.0 — historical standalone plan & lane contracts
+
+> **Superseded for active work.** ChefBar and ChefApp are the same product.
+> Active source, features, release policy, CI, and product plans are owned by
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> This document records the standalone delivery campaign only.
 
 ChefApp 5.0 maakt van ChefBar één native, read-first control-plane voor de Vault-tabs, server-API’s en Factory-control-plane. De campagne start vanaf `feat/chefapp-5.0` (`c197b57`); lanes blijven file-disjoint.
 
@@ -16,7 +21,7 @@ De visual runner ondersteunt panel, overlay/palette, drawer, beide density-varia
 
 ## Gates
 
-De broncode bouwt en test uitsluitend op `chef-runner-01-1` (geen lokale Rust-build op Joep):
+De broncode bouwt en test op self-hosted CI (`pr-isolated`/`heavy`). Geen lokale Rust-build op Joep. UpCloud `chef-runner-01-1` is **retired_unreachable**:
 
 ```text
 cargo fmt --all -- --check

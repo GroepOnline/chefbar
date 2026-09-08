@@ -16,6 +16,6 @@ Not always-on. Loaded when the YAML description matches or a graph-loop chain pa
 7. **GTK3 CSS subset.** In `src/css.rs` do not emit `--custom-properties`, `gap`, `inset`, gradients, or glow. Map Signaal v2 tokens in Rust, then print GTK3-legal properties.
 8. **Silence.** Toasts only on transitions; `coalesce_toasts` caps one toast per poll cycle. No badge-spam.
 9. **No secrets in output.** Doctor and logs may print `sha256[:12]` fingerprints only.
-10. **Laptop has no toolchain.** Do not tell the user to install rustup on `joep`. Cloud agents and `chef-runner-01-1` / CI may run `cargo`.
+10. **Laptop has no toolchain.** Do not tell the user to install rustup on `joep`. Cloud agents and self-hosted CI (`pr-isolated`/`heavy`) may run `cargo`; retired UpCloud `chef-runner-01-1` must not be used.
 
 For multi-module work, load skill `chefbar-graph-loop` and dispatch file-disjoint workers from `.cursor/agents/`.

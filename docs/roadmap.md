@@ -1,4 +1,9 @@
-# ChefBar roadmap 3.1
+# ChefBar roadmap 3.1 — historical standalone record
+
+> **Superseded for active work.** ChefBar is the historical name of the same
+> ChefApp product now maintained in
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> Current features, CI, releases, and roadmap decisions belong there.
 
 Drie features verscherpen 3.0 zonder de architectuur open te breken. Scope is
 strak: geen tweede bar, geen tweede daemon, geen tweede waarheid. Eén profiel,

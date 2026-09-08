@@ -18,15 +18,51 @@ jobs:
     runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     env:
       CARGO_TERM_COLOR: always
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify documentation-only changes
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")"
+          printf '%s\n' "$changed"
+          docs_only() {
+            [ -n "$1" ] && ! printf '%s\n' "$1" | grep -Ev '^(AGENTS\.md|README\.md|CONTRIBUTING\.md|docs/.*|\.agents/skills/.*|\.cursor/(agents|rules)/.*)$' >/dev/null
+          }
+          docs_only $'README.md\ndocs/example.md' || { echo '::error::docs fixture rejected'; exit 1; }
+          ! docs_only $'.github/workflows/ci.yml' || { echo '::error::workflow fixture accepted'; exit 1; }
+          ! docs_only 'src/lib.rs' || { echo '::error::source fixture accepted'; exit 1; }
+          ! docs_only '' || { echo '::error::empty diff fixture accepted'; exit 1; }
+          if docs_only "$changed"; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Documentation static gate
+        if: steps.scope.outputs.docs_only == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          git diff --check "$BASE_SHA" "$GITHUB_SHA"
+          node scripts/agent-bench.mjs
 
       - name: Install Rust toolchain (stable)
+        if: steps.scope.outputs.docs_only != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Cache Cargo / target
+        if: steps.scope.outputs.docs_only != 'true'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2.9.2)
         with:
           shared-key: chefbar-build
@@ -35,6 +71,7 @@ jobs:
       # Fail fast on missing GTK/glib host deps (glib-sys build needs pkg-config).
       # Runner-service NoNewPrivileges=true: do not sudo apt here — fix the host.
       - name: Host deps preflight (pkg-config + GTK/glib)
+        if: steps.scope.outputs.docs_only != 'true'
         run: |
           HINT='Install on aws-chefbar-compat host: pkg-config libgtk-3-dev libglib2.0-dev (NoNewPrivileges — not via workflow sudo)'
           if ! command -v pkg-config >/dev/null 2>&1; then
@@ -48,27 +85,35 @@ jobs:
           echo "host-deps OK: pkg-config + glib-2.0 + gtk+-3.0"
 
       - name: Cargo check (fast gate)
+        if: steps.scope.outputs.docs_only != 'true'
         run: cargo check --all-targets
 
       - name: Format (harde gate)
+        if: steps.scope.outputs.docs_only != 'true'
         run: cargo fmt --all -- --check
 
       - name: Clippy (harde gate, warnings = fail)
+        if: steps.scope.outputs.docs_only != 'true'
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Shellcheck
+        if: steps.scope.outputs.docs_only != 'true'
         run: shellcheck install.sh .cursor/*.sh scripts/*.sh
 
       - name: Agent harness benchmark
+        if: steps.scope.outputs.docs_only != 'true'
         run: node scripts/agent-bench.mjs
 
       - name: Test
+        if: steps.scope.outputs.docs_only != 'true'
         run: cargo test --all-targets
 
       - name: Build release
+        if: steps.scope.outputs.docs_only != 'true'
         run: cargo build --release
 
       - name: Upload release artifact
+        if: steps.scope.outputs.docs_only != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: chefbar-release
@@ -76,6 +121,7 @@ jobs:
           if-no-files-found: error
 
       - name: Smoke install dry-run
+        if: steps.scope.outputs.docs_only != 'true'
         run: |
           bash -n install.sh
           ./install.sh --help
@@ -86,6 +132,7 @@ jobs:
   visual:
     name: Visual shot (Xvfb + accent assert)
     needs: build
+    if: needs.build.outputs.docs_only != 'true'
     runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     continue-on-error: true
     steps:

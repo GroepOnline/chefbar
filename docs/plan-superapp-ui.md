@@ -1,4 +1,9 @@
-# Super-app UI-lane (visueel + 15-domein render)
+# Super-app UI-lane — historical standalone visual plan
+
+> **Superseded for active work.** ChefBar and ChefApp are the same product.
+> Active source, features, release policy, CI, and product plans are owned by
+> [`GroepOnline/ChefFactory/apps/chefapp`](https://github.com/GroepOnline/ChefFactory/tree/main/apps/chefapp).
+> This document records the standalone delivery campaign only.
 
 Branch: `feat/superapp-visual` → base `feat/chefapp-5.0`. Eigenaar: Pi-sessie
 "superapp visual". Dirigent-coördinatie: Cursor (Herdr w2R). Sibling: w2R:p2
@@ -47,7 +52,7 @@ per domein zijn eigen data.
 
 ## Gates
 
-Build/test alleen op `chef-runner-01-1` (`~/chefbar-superapp`):
+Build/test op self-hosted CI (`pr-isolated`/`heavy`). UpCloud `chef-runner-01-1` is **retired_unreachable**:
 fmt --check, clippy -D warnings, test --all-targets, build --release.
 Visual: `scripts/visual-shot.sh --mode all` (Xvfb) — drawer-mode werkt nu via
 de nieuwe IPC-preview. Review-loop: screenshots → mimo-v2.5 vision-subagent.
