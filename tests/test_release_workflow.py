@@ -59,7 +59,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_identity_source_is_option_env_not_vergen(self) -> None:
         lib = (ROOT / "src" / "lib.rs").read_text(encoding="utf-8")
         self.assertIn('option_env!("CHEFBAR_BUILD_SHA")', lib)
-        self.assertIn('Some("") | None => "unknown"', lib)
+        self.assertIn('Some(sha) if !sha.is_empty() => sha', lib)
+        self.assertIn('_ => "unknown"', lib)
         self.assertNotIn("vergen", lib.lower())
 
 

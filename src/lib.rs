@@ -40,14 +40,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RAW_BUILD_SHA: Option<&str> = option_env!("CHEFBAR_BUILD_SHA");
 
 /// Injected by release CI. Missing or empty is `unknown`, never a guessed SHA.
-pub const BUILD_SHA: &str = match RAW_BUILD_SHA {
-    Some("") | None => "unknown",
-    Some(sha) => sha,
-};
+pub fn build_sha() -> &'static str {
+    match RAW_BUILD_SHA {
+        Some(sha) if !sha.is_empty() => sha,
+        _ => "unknown",
+    }
+}
 
 /// Visible runtime identity: Cargo version plus build SHA.
 pub fn identity() -> String {
-    format!("{VERSION} ({BUILD_SHA})")
+    format!("{VERSION} ({})", build_sha())
 }
 
 /// Thuis-map, één centrale plek (port van HOME in de Python-app).
@@ -66,11 +68,11 @@ mod identity_tests {
             crate::VERSION
         );
         assert!(
-            line.contains(crate::BUILD_SHA),
+            line.contains(crate::build_sha()),
             "identity {line:?} must include BUILD_SHA"
         );
         assert!(
-            !crate::BUILD_SHA.is_empty(),
+            !crate::build_sha().is_empty(),
             "missing build SHA must be the literal unknown, not empty"
         );
     }
