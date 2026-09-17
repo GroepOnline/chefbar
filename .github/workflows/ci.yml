@@ -28,6 +28,9 @@ jobs:
       - name: CodeQL workflow contract
         run: python3 -m unittest tests.test_codeql_workflow
 
+      - name: Release workflow contract
+        run: python3 -m unittest tests.test_release_workflow
+
       - name: Classify documentation-only changes
         id: scope
         env:

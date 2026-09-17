@@ -8,10 +8,17 @@ use chefbar::config::{global_profile, load_profile, set_global_profile};
 use chefbar::css;
 use chefbar::policy::EndpointPolicy;
 use clap::Parser;
+use std::sync::OnceLock;
+
+fn cli_version() -> &'static str {
+    static LINE: OnceLock<String> = OnceLock::new();
+    LINE.get_or_init(chefbar::identity)
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "chefbar",
-    version,
+    version = cli_version(),
     about = "ChefGroep assistent-app (Rust native)"
 )]
 struct Cli {

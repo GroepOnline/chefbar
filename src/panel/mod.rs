@@ -991,8 +991,8 @@ fn update_control_chrome(shared: &Shared, header_title: &gtk::Label, footer_labe
     let footer_text = format!("Control \u{00b7} {target} \u{00b7} {fetched}");
     footer_label.set_text(&footer_text);
     footer_label.set_tooltip_text(Some(&format!(
-        "v{} \u{00b7} {} \u{00b7} {footer_text}",
-        crate::VERSION,
+        "{} \u{00b7} {} \u{00b7} {footer_text}",
+        crate::identity(),
         profile.name
     )));
 }
@@ -1397,8 +1397,8 @@ fn render_into(
     };
     footer_label.set_text(&footer_text);
     footer_label.set_tooltip_text(Some(&format!(
-        "v{} \u{00b7} {} \u{00b7} {footer_text}",
-        crate::VERSION,
+        "{} \u{00b7} {} \u{00b7} {footer_text}",
+        crate::identity(),
         profile.name
     )));
 
