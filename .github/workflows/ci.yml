@@ -125,6 +125,7 @@ jobs:
           name: chefbar-release
           path: target/release/chefbar
           if-no-files-found: error
+          retention-days: 7
 
       - name: Smoke install dry-run
         if: steps.scope.outputs.docs_only != 'true'
@@ -222,3 +223,4 @@ jobs:
             /tmp/chefbar-*.png
             /tmp/chefbar-*-stderr.log
           if-no-files-found: ignore
+          retention-days: 1
