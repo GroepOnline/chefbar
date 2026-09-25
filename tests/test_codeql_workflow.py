@@ -34,9 +34,8 @@ class CodeqlWorkflowTests(unittest.TestCase):
     def test_triggers_runner_and_permissions_remain_explicit(self) -> None:
         for trigger in ("push:", "pull_request:", "schedule:"):
             self.assertIn(trigger, self.text)
-        self.assertIn(
-            "runs-on: [self-hosted, Linux, X64, pr-isolated]", self.text
-        )
+        self.assertIn("runs-on: ubuntu-latest", self.text)
+        self.assertNotIn("self-hosted", self.text)
         for permission in (
             "actions: read",
             "contents: read",

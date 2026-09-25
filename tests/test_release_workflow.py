@@ -55,6 +55,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", self.text)
         self.assertIn("fetch-depth: 0", self.text)
         self.assertIn("cargo build --release --locked", self.text)
+        self.assertIn("runs-on: ubuntu-latest", self.text)
+        self.assertNotIn("self-hosted", self.text)
+        self.assertIn("retention-days: 7", self.text)
+        self.assertIn("libgtk-3-dev", self.text)
 
     def test_identity_source_is_option_env_not_vergen(self) -> None:
         lib = (ROOT / "src" / "lib.rs").read_text(encoding="utf-8")
