@@ -21,7 +21,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: [self-hosted, Linux, X64, pr-isolated]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -33,9 +33,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # CodeQL default setup sized itself from host RAM (6752 MB / 2 threads),
-      # not this runner's 3 GiB memory cgroup. Keep the same default query suite
-      # and languages while fitting query execution inside the actual cgroup.
+      # Keep the default query suite and languages, and bound query execution
+      # so analysis does not size itself from host RAM.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:

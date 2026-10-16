@@ -163,7 +163,7 @@ pub fn run_checks() -> DoctorReport {
     }
 
     // 5. Versie + IPC-socket.
-    lines.push(format!("versie   {}", crate::VERSION));
+    lines.push(format!("versie   {}", crate::identity()));
     let socket = crate::ipc::socket_path();
     lines.push(if socket.exists() {
         "ipc      socket aanwezig".into()

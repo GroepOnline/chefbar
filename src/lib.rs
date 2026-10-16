@@ -37,7 +37,43 @@ pub mod vault_bridge;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+const RAW_BUILD_SHA: Option<&str> = option_env!("CHEFBAR_BUILD_SHA");
+
+/// Injected by release CI. Missing or empty is `unknown`, never a guessed SHA.
+pub fn build_sha() -> &'static str {
+    match RAW_BUILD_SHA {
+        Some(sha) if !sha.is_empty() => sha,
+        _ => "unknown",
+    }
+}
+
+/// Visible runtime identity: Cargo version plus build SHA.
+pub fn identity() -> String {
+    format!("{VERSION} ({})", build_sha())
+}
+
 /// Thuis-map, één centrale plek (port van HOME in de Python-app).
 pub fn home_dir() -> std::path::PathBuf {
     dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+#[cfg(test)]
+mod identity_tests {
+    #[test]
+    fn identity_uses_cargo_version_and_never_invents_a_sha() {
+        let line = crate::identity();
+        assert!(
+            line.starts_with(crate::VERSION),
+            "identity {line:?} must start with {}",
+            crate::VERSION
+        );
+        assert!(
+            line.contains(crate::build_sha()),
+            "identity {line:?} must include BUILD_SHA"
+        );
+        assert!(
+            !crate::build_sha().is_empty(),
+            "missing build SHA must be the literal unknown, not empty"
+        );
+    }
 }

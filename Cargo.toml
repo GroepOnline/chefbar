@@ -1,6 +1,6 @@
 [package]
 name = "chefbar"
-version = "4.0.0-dev"
+version = "4.0.3"
 edition = "2021"
 description = "ChefBar — ChefGroep assistent-app (Rust native, Signaal v2 · Devin-richting)"
 license = "MIT"
