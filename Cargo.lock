@@ -192,6 +192,7 @@ dependencies = [
  "clap 4.6.6",
  "dirs",
  "gdk",
+ "gdk-pixbuf",
  "gtk",
  "ksni",
  "libc",
