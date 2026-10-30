@@ -33,7 +33,7 @@ Workflow: `.github/workflows/ci.yml`. Release-artifact: `chefbar-release`. CI is
 
 **HISTORICAL:** UpCloud `chef-runner-01` / `chef-runner-01-1` is `retired_unreachable` sinds 2026-08-22. Daily SSH, checkout-sync en binary-copy via die host zijn geen live paden.
 
-Optionele snelle Rust check/fmt/clippy/test = Buildkite `onlinechef/chefbar` (`.buildkite/`; niet required — zie `.buildkite/README.md`).
+Rust check/fmt/clippy/test draait via GitHub Actions (`.github/workflows/ci.yml`) op eigen runners. De eerdere optionele Buildkite-lane is uitgefaseerd.
 
 ### GHA host-deps (aws-chefbar-compat)
 
