@@ -83,8 +83,35 @@ jobs:
       - name: Install host build dependencies
         if: steps.scope.outputs.docs_only != 'true'
         run: |
-          sudo apt-get update -qq
+          set -euo pipefail
+          # The runner image bakes third-party apt sources (e.g. packages.microsoft.com,
+          # which started answering 403 Forbidden / "no longer signed"). A plain
+          # `apt-get update` then fails with exit 100 before we ever get to install.
+          # Our deps come from the official Ubuntu archives only, so scope the index
+          # update to Ubuntu's own source list and not to every source on the image.
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            ubuntu_sources="sources.list.d/ubuntu.sources"
+          else
+            ubuntu_sources="sources.list"
+          fi
+          update() {
+            sudo apt-get update -qq \
+              -o Dir::Etc::sourcelist="$ubuntu_sources" \
+              -o Dir::Etc::sourceparts="-"
+          }
+          for attempt in 1 2 3; do
+            if update; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::apt-get update failed after 3 attempts"
+              exit 1
+            fi
+            echo "apt-get update attempt $attempt failed, retrying in $((attempt * 5))s"
+            sleep "$((attempt * 5))"
+          done
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            -o DPkg::Lock::Timeout=60 \
             pkg-config libgtk-3-dev libglib2.0-dev shellcheck
 
       - name: Host deps preflight (pkg-config + GTK/glib)
